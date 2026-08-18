@@ -52,11 +52,11 @@ export function stateLockPath(teamDirectory: string): string {
 
 /**
  * master.sentinel — write-once file pinning the team's authoritative
- * leadSessionId (C-17/C-14). Written at team_create with read-only permissions;
+ * leadSessionId. Written at team_create with read-only permissions;
  * never overwritten by any tool. At restart, user scope verifies it against
  * state.json while project scope verifies it against the directory-derived
- * owner. A mismatch or unreadable sentinel fails closed; a missing legacy
- * sentinel falls back to the scope's previous source with a warning.
+ * owner. A mismatch or unreadable sentinel fails closed; a missing sentinel
+ * falls back to the directory or state value with a warning.
  */
 export function masterSentinelPath(teamDirectory: string): string {
     return path.join(teamDirectory, "master.sentinel")
@@ -70,7 +70,7 @@ export function teamLifecycleLockPath(teamDirectory: string): string {
 }
 
 /**
- * C2: namespace-level lock guarding team name lifecycle (create/rename/delete).
+ * Namespace-level lock guarding team name lifecycle (create/rename/delete).
  * Placed in the storage root (parent of all team directories) so that rename
  * and create cannot race on the old/new name slots. Each operation acquires
  * this lock in addition to the per-team lifecycle lock.
@@ -80,7 +80,7 @@ export function teamNamespaceLockPath(storageRoot: string): string {
 }
 
 /**
- * C-16: deletion marker placed in the PARENT of the team directory so it
+ * Deletion marker placed in the PARENT of the team directory so it
  * survives the team dir rm. Another process holding a stale Team reference
  * checks this marker inside the state lock before writing state.json,
  * preventing cross-process team resurrection.
@@ -255,7 +255,7 @@ export function runReduceOutputPath(teamDirectory: string, runId: string): strin
  * .md readdir scan, mirroring runReduceOutputPath.
  */
 export function runSignoffOutputPath(teamDirectory: string, runId: string, reviewer?: string): string {
-    // MEDIUM: per-reviewer signoff files for clear attribution.
+    // Per-reviewer signoff files provide clear attribution.
     if (reviewer) {
         assertSafeSegment(reviewer, "runSignoffOutputPath", "reviewer")
         return path.join(runDir(teamDirectory, runId), `signoff-${reviewer}.md`)

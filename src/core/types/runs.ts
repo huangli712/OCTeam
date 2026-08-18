@@ -96,10 +96,6 @@ export type WorkflowRunStep = {
     approvalBefore?: boolean
     approvalAfter?: boolean
     maxOutputBytes?: number
-    // MEDIUM: humanApproval is a per-run config field on ActiveTaskBase,
-    // not a per-step run-record field. persistRun never writes it here.
-    // Keeping it on WorkflowRunStep creates a false schema surface that
-    // can accept forged values. Removed.
     completed: boolean
     skipped?: boolean
     branchStatuses?: Record<string, WorkflowBranchStatus>

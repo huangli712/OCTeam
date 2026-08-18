@@ -108,11 +108,8 @@ export function teamRemoveMemberTool(ctx: PluginContext): ToolDefinition {
                     }
                     throw err
                 }
-                // C16: clean up mailbox ONLY after both config + state saved
-                // successfully. Pre-fix code deleted the inbox BEFORE saving,
-                // so a save failure rolled back the member but permanently
-                // lost messages. Now a save failure leaves the inbox intact
-                // for the restored member.
+                // Clean up the mailbox only after config and state are saved so a
+                // save failure can restore the member with its messages intact.
                 try {
                     const mbPath = inboxPath(team.directory, args.member_name)
                     await fs.rm(mbPath, { recursive: true, force: true })

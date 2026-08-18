@@ -70,10 +70,8 @@ export async function advanceRouteAfterDecision(ctx: PluginContext, team: Team):
             return
         }
         const text = b.task ?? task.task ?? ""
-        // HIGH: per-target error handling — if dispatch fails, finish the
-        // run instead of silently continuing. Pre-fix code let the first
-        // failure abort the entire loop, but with a generic throw that
-        // left the team busy without an error reason.
+        // Handle each target's dispatch failure by finishing the run with a
+        // specific reason instead of leaving the team busy after a generic throw.
         try {
             await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory, team)
         } catch (err) {
@@ -110,7 +108,7 @@ export async function handleRouteIdle(
             // Uses the shared decisionParseFailures counter (ActiveTask base
             // field, same as loop's parse-failure handling).
             task.decisionParseFailures++
-            // H42: allow task-level override of the parse-failure threshold.
+            // Allow a task-level override of the parse-failure threshold.
             const maxFailures = task.maxRouteParseFailures ?? MAX_ROUTE_PARSE_FAILURES
             if (task.decisionParseFailures >= maxFailures) {
                 await finishRun(ctx, team, "route_complete:decision_parse_failure", "failed")
@@ -130,11 +128,8 @@ export async function handleRouteIdle(
             await saveTeamState(team)
             return
         }
-        // H47: detect unknown target names BEFORE partial dispatch. Without
-        // this, decision.targets = ["known", "typo"] silently drops "typo"
-        // and only dispatches "known" — the router's required work is lost
-        // without feedback. Now fail the run when any target is unknown so
-        // the operator sees the invalid branch name.
+        // Detect unknown target names before partial dispatch so a mixed valid
+        // and invalid decision fails visibly instead of silently dropping work.
         const knownNames = new Set(branches.map(b => b.name))
         const unknown = decision.targets.filter(t => !knownNames.has(t))
         if (unknown.length > 0) {
@@ -169,12 +164,12 @@ export async function handleRouteIdle(
 
     // Phase B: target barrier (any selected target's idle re-checks readiness).
     const targets = task.routeTargets ?? []
-    // LOW: empty targets must not complete successfully.
+    // Empty targets must not complete successfully.
     if (targets.length === 0) {
         await finishRun(ctx, team, "route_complete:no_targets", "failed")
         return
     }
-    // H-29: detect partial fan-out failure. If SOME targets were dispatched
+    // Detect partial fan-out failure. If some targets were dispatched
     // (turnCount > 0) but others were NOT (turnCount === 0), the barrier would
     // falsely conclude "all targets idle → run complete" for the undispatched
     // ones. Only check when at least one target has turnCount > 0 (proving the

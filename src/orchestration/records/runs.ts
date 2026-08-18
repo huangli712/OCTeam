@@ -105,7 +105,7 @@ function parseRunEvent(line: string): RunEvent {
 /** Project a runtime join metadata object into the persisted (RunRecord) shape. */
 function runJoinMetadata(join: WorkflowJoinMetadata | undefined): WorkflowRunStep["join"] {
     if (join === undefined) return undefined
-    // MEDIUM #15: joinedOutput is NOT included in record.json to keep the
+    // joinedOutput is not included in record.json to keep the
     // record lean. Instead, persistRun writes it to a per-step artifact
     // file (join-<stepIndex>.md) so it's recoverable without bloating state.
     return {
@@ -147,14 +147,14 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
     const memberOutputs: RunRecord["memberOutputs"] = {}
     const memberNames = new Set(team.members.filter(member => !member.isMaster).map(member => member.name))
     let entries: string[] = []
-    // C-2: runDir is <team>/runs/<runId>; verify the ancestor chain before
+    // Verify the run directory's ancestor chain before
     // readdir so a symlinked intermediate (e.g. <team>/runs) cannot redirect
     // the enumeration outside the team root.
     try {
         await assertNoSymlinkTraversal(team.directory, dir)
         entries = await fs.readdir(dir)
     } catch (err) {
-        // H37: only ENOENT is the benign "no member turns yet" case. Any other
+        // Only ENOENT is the benign "no member turns yet" case. Any other
         // error (EACCES, EIO) means the enumeration is unreliable, so rethrow
         // instead of persisting a record with silently-empty memberOutputs. The
         // best-effort caller boundary (deliverSummaryToLeader) logs the failure.
@@ -170,20 +170,20 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
         if (!file.endsWith(".md")) continue
         const member = file.slice(0, -3)
         if (!memberNames.has(member)) continue
-        // M10: skip files whose name starts with "master" — a member with
+        // Skip files whose name starts with "master" because a member with
         // FS write access could plant a master.md to impersonate the leader.
         // Keep this defense even when a configured member has that prefix.
         if (member.startsWith("master")) continue
         try {
             const filePath = `${dir}/${file}`
-            // C-2: verify each <runDir>/<member>.md path before stat so a
+            // Verify each <runDir>/<member>.md path before stat so a
             // symlinked member-named file cannot redirect the stat or later
             // reads outside the team root.
             await assertNoSymlinkTraversal(team.directory, filePath)
             const stat = await fs.stat(filePath)
             memberOutputs[member] = { bytes: stat.size, file }
         } catch (err) {
-            // H37: ENOENT means the file was raced/removed between readdir and
+            // ENOENT means the file was raced/removed between readdir and
             // stat — skip it. Any other error (EACCES, EIO, symlink rejection)
             // means the metadata is unreliable, so rethrow instead of silently
             // dropping this member's output from the record.
@@ -293,10 +293,8 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
                         return {
                             ...base,
                             member: step.member,
-                            // M9: include task retry audit fields so run records
-                            // capture the actual retry configuration and execution
-                            // history (attempts consumed, retry_on condition used).
-                            // Pre-fix code only included `member`.
+                            // Include task retry fields so records capture the configured
+                            // condition and the attempts consumed during execution.
                             fallbackMember: step.fallbackMember,
                             retryOn: step.retryOn,
                             maxTaskRetries: step.maxTaskRetries,
@@ -307,7 +305,7 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
                         return {
                             ...base,
                             verifier: step.verifier,
-                            // M-27: persist ensemble gate fields so run records
+                            // Persist ensemble gate fields so run records
                             // capture which verifiers ran and their policy.
                             verifiers: step.verifiers,
                             ensemblePolicy: step.ensemblePolicy,
@@ -321,7 +319,7 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
                             attempts: step.attempts,
                             onInvalid: step.onInvalid,
                             invalidAttempts: step.invalidAttempts,
-                            // M-27: persist malformed/timeout counters and
+                            // Persist malformed/timeout counters and
                             // policies so the run record reflects the full
                             // retry/escalation history.
                             onMalformed: step.onMalformed,
@@ -337,14 +335,14 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
                             onFailGoto: step.onFailGoto === undefined || step.onFailGoto < 0 ? undefined : step.onFailGoto + 1,
                             onInvalidGoto: step.onInvalidGoto === undefined || step.onInvalidGoto < 0 ? undefined : step.onInvalidGoto + 1,
                             maxJumps: step.maxJumps,
-                            // M-27: persist `where` condition and `loop` config
+                            // Persist `where` condition and `loop` config
                             // so the run record reflects the gate's jump
                             // conditions and backward-iteration setup.
                             where: step.where,
                             loop: step.loop,
                             criteria: step.criteria,
                             jumpCount: step.jumpCount,
-                            // M-RUNREC: persist runtime ensemble + loop audit
+                            // Persist runtime ensemble and loop audit
                             // fields so run records can reconstruct the actual
                             // decision process (which verifier ran, how many
                             // loop iterations executed).
@@ -421,7 +419,7 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
             artifacts.signoff[reviewer] = f
         }
     }
-    // MEDIUM #15: index join output artifacts (join-<step>.md).
+    // Index join output artifacts (join-<step>.md).
     const joinFiles = entries.filter(f => f.startsWith("join-") && f.endsWith(".md"))
     if (joinFiles.length > 0) {
         artifacts.join = {}
@@ -431,7 +429,7 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
         record.artifacts = artifacts
     }
 
-    // HIGH: schema validation before write. If the record is invalid,
+    // Validate the schema before writing. If the record is invalid,
     // write to record.invalid.json instead so readRunRecord doesn't
     // produce a record that readers will silently strip or reject.
     const serialized = JSON.stringify(record, null, 2)
@@ -445,7 +443,7 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
         await atomicWrite(runRecordPath(team.directory, runId), serialized, team.directory)
     }
     await pruneRuns(team.directory, DEFAULT_MAX_RUNS)
-    // MEDIUM: flush pending event writes so terminal events are durable
+    // Flush pending event writes so terminal events are durable
     // before the caller reports completion.
     try { await flushRunEvents(team.directory, runId) } catch { /* best-effort */ }
 }
@@ -457,17 +455,17 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
  */
 export async function pruneRuns(teamDirectory: string, keep: number): Promise<void> {
     const root = runsDir(teamDirectory)
-    // C-2: refuse to scan/remove through a symlinked runs/ — without this,
+    // Refuse to scan or remove through a symlinked runs/ directory; otherwise,
     // a symlinked <team>/runs could let pruneRuns issue rm -rf against an
     // attacker-controlled location outside the team root.
     await assertNoSymlinkTraversal(teamDirectory, root)
     let runIds: string[] = []
     try {
-        // HIGH: exclude .quarantine and non-directory entries.
+        // Exclude .quarantine and non-directory entries.
         const entries = await fs.readdir(root, { withFileTypes: true })
         runIds = entries.filter(e => e.isDirectory() && e.name !== ".quarantine").map(e => e.name)
     } catch (err) {
-        // M-PRUNE: distinguish ENOENT (no runs/ yet) from real errors.
+        // Distinguish ENOENT (no runs/ yet) from real errors.
         if (!isEnoent(err)) {
             logger.warn("pruneRuns: readdir failed", { dir: root, error: err instanceof Error ? err.message : String(err) })
         }
@@ -477,7 +475,7 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
     const dated: Array<{ runId: string; finishedAt: number }> = []
     const quarantine: Array<{ runId: string; reason: string }> = []
     const corrupted: string[] = []
-    // C-2: pre-check each runRecordPath before reading so a symlinked
+    // Pre-check each runRecordPath before reading so a symlinked
     // <team>/runs/<runId>/record.json cannot read attacker-controlled content
     // from outside the team root. Filter out runIds whose path fails the check
     // (treat as corrupt so quarantine preserves any legitimate outputs).
@@ -537,15 +535,14 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
         else if (kind === "missing") quarantine.push({ runId, reason: "record.json is missing" })
         else corrupted.push(runId)
     }
-    // HIGH: quarantine orphaned run directories instead of deleting them.
-    // Pre-fix code deleted crash-during-capture evidence. Now: rename to
-    // a quarantine subdirectory so crash recovery tools can inspect them.
+    // Quarantine orphaned run directories so crash recovery tools can inspect
+    // capture evidence instead of losing it to retention cleanup.
     for (const { runId, reason } of quarantine) {
         const target = runDir(teamDirectory, runId)
         const quarantineDir = path.join(runsDir(teamDirectory), ".quarantine")
         const quarantined = path.join(quarantineDir, runId)
         try {
-            // HIGH: verify the quarantine target path before rename so a
+            // Verify the quarantine target path before rename so a
             // symlinked .quarantine can't redirect outside the team root.
             await assertNoSymlinkTraversal(teamDirectory, quarantined)
             await fs.mkdir(quarantineDir, { recursive: true })
@@ -582,18 +579,17 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
  */
 export async function listRunRecords(teamDirectory: string): Promise<RunRecord[]> {
     const root = runsDir(teamDirectory)
-    // C-2: refuse to list through a symlinked runs/.
+    // Refuse to list through a symlinked runs/ directory.
     await assertNoSymlinkTraversal(teamDirectory, root)
     let runIds: string[] = []
     try {
-        // MEDIUM: use withFileTypes to skip non-directory entries (.quarantine,
+        // Use withFileTypes to skip non-directory entries (.quarantine,
         // stray files) so they don't cause ENOTDIR on record reads.
         const entries = await fs.readdir(root, { withFileTypes: true })
         runIds = entries.filter(e => e.isDirectory() && e.name !== ".quarantine").map(e => e.name)
     } catch (err) {
-        // M-12: distinguish ENOENT (no runs/ yet — return []) from real
-        // storage failures (EACCES, EIO). Pre-fix code masked ALL errors as
-        // "no runs," hiding disk problems from operators.
+        // Distinguish ENOENT (no runs/ yet) from storage failures such as
+        // EACCES or EIO so disk problems remain visible to operators.
         if (!isEnoent(err)) {
             logger.warn("listRunRecords: readdir failed", { dir: root, error: err instanceof Error ? err.message : String(err) })
             throw err
@@ -605,7 +601,7 @@ export async function listRunRecords(teamDirectory: string): Promise<RunRecord[]
         const recordPath = runRecordPath(teamDirectory, runId)
         let raw: string
         try {
-            // C1: use fd-based safe read with size cap to shrink TOCTOU
+            // Use an fd-based safe read with a size cap to narrow the TOCTOU
             // window and prevent OOM from crafted oversized run records.
             const recordContent = await safeReadFile(teamDirectory, recordPath, { maxBytes: 2 * 1024 * 1024 })
             if (recordContent === undefined) continue
@@ -633,7 +629,7 @@ export async function listRunRecords(teamDirectory: string): Promise<RunRecord[]
 /** Read a single run record by id, or null if absent/corrupt. */
 export async function readRunRecord(teamDirectory: string, runId: string): Promise<RunRecord | null> {
     const recordPath = runRecordPath(teamDirectory, runId)
-    // C-2: refuse to read through a symlinked record.json or intermediate dir.
+    // Refuse to read through a symlinked record.json or intermediate directory.
     // This MUST run before the try-catch below: the catch swallows non-ENOENT
     // errors as "corrupt run", which would silently accept attacker-controlled
     // content from a redirected file.
@@ -668,7 +664,7 @@ export async function readRunRecord(teamDirectory: string, runId: string): Promi
  */
 export async function readRunEvents(teamDirectory: string, runId: string): Promise<RunEvent[]> {
     const eventsPath = runEventsPath(teamDirectory, runId)
-    // C-2: refuse to read through a symlinked events.jsonl or intermediate dir.
+    // Refuse to read through a symlinked events.jsonl or intermediate directory.
     // See readRunRecord: must run before the try-catch below so the symlink
     // rejection is not swallowed as "file unreadable".
     await assertNoSymlinkTraversal(teamDirectory, eventsPath)

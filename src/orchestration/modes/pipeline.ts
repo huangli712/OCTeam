@@ -47,7 +47,7 @@ export async function advancePipelineAfterStage(ctx: PluginContext, team: Team):
         ? `${upstream}\n\n[Your task]\n${nextStage.task}`
         : nextStage.task
 
-    // H-11: route through the canonical dispatch primitive so promptAsync +
+    // Route through the canonical dispatch primitive so promptAsync +
     // member state transition + saveTeamState + event recording are atomic.
     await dispatchToMember(
         ctx,
@@ -67,8 +67,8 @@ export async function handlePipelineIdle(ctx: PluginContext, team: Team, member:
     const currentStage = stages[task.currentStageIndex]
     if (!currentStage || currentStage.member !== member.name) return // stray idle
 
-    // HIGH: empty turn should not mark stage as completed. Pre-fix code
-    // marked the stage complete even when the member produced no output.
+    // An empty turn must not mark the stage complete because the member has not
+    // produced an output for the next stage.
     if (task.responses[member.name] === undefined) {
         // Re-dispatch the member for this stage.
         const upstream = buildUpstreamContext(stages, task.responses, task.currentStageIndex)

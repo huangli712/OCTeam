@@ -238,8 +238,8 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
             "fanout steps: variable name bound to the current foreach value (default 'item').",
         ),
     }
-    /** Branches sub-schema for fanout steps. LOW: only task/gate allowed
-     *  inside branches — validate/lower explicitly reject nested fanout/join. */
+    /** Fanout branch steps may only be tasks or gates.
+     *  Validation and lowering reject nested fanout and join steps. */
     const workflowBranchStepSchema = tool.schema.object({
         kind: tool.schema.enum(["task", "gate"]),
         ...workflowStepSchemaFields,
@@ -313,10 +313,9 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
             // does not need to call lowerWorkflowSteps a second time.
             const loweredStepCount = lowerWorkflowSteps(resolvedArgs.steps).length
             if (args.dry_run) {
-                // M-22: wrap loadTeamState in try/catch so a corrupt or
-                // unreadable state file returns a clean tool error instead
-                // of leaking an internal exception. The normal start path
-                // handles this via startOrchestration's error wrapper.
+                // Load team state inside the error boundary so corrupt or unreadable
+                // state files return a clean tool error. The normal start path uses
+                // startOrchestration's error wrapper.
                 let team
                 try {
                     team = await loadTeamState(caller.storageRoot, args.team_id, caller.leadSessionId)

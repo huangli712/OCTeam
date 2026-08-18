@@ -29,10 +29,8 @@ export function buildUpstreamContext(
     responses: Record<string, string>,
     uptoIndex: number,
 ): string {
-    // HIGH: iterate from the most recent completed stage backward so
-    // truncation drops the oldest (least relevant) outputs, not the
-    // most recent ones. Pre-fix code iterated forward, keeping the
-    // earliest stages and discarding the immediately preceding one.
+    // Iterate backward from the most recent completed stage so truncation drops
+    // the oldest, least relevant outputs rather than the immediately preceding one.
     const collected: string[] = [];
     let used = 0;
     for (let i = uptoIndex - 1; i >= 0; i--) {
@@ -89,7 +87,7 @@ export async function advanceToStage(
         ? `${upstream}\n\n[Your task]\n${stage.task}${readOnlyContract}`
         : `${stage.task}${readOnlyContract}`;
     const rawText = contextPrefix ? `${contextPrefix}\n\n${base}` : base;
-    // H-11: route through the canonical dispatch primitive so promptAsync +
+    // Route through the canonical dispatch primitive so promptAsync +
     // member state transition + saveTeamState + event recording are atomic.
     await dispatchToMember(
         ctx,

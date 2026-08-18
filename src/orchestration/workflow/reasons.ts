@@ -8,8 +8,8 @@
  * there too — the builders below are the call-site contract, the prefixes are
  * the classifier contract.
  *
- * Backward compatibility: the builders produce the EXACT strings the engine
- * used to inline, so persisted run records and existing tests are unaffected.
+ * The builders preserve the engine's exact reason strings, keeping persisted
+ * run records and existing tests compatible.
  */
 
 /**
@@ -21,7 +21,7 @@ export const WORKFLOW_FAILED_REASON_PREFIXES = [
     "workflow_failed",
     "workflow_invalid",
     "workflow_timeout",
-    // LOW: engine inlines these without a builder; add them to the registry
+    // The engine emits these without a builder; keep them in the registry
     // so runStatusFromReason and tests classify them as failures.
     "workflow_input_skipped",
     "workflow_frontier_deadlock",

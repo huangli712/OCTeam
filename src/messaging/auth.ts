@@ -12,11 +12,10 @@
  * writeMailboxMessage, running in the host plugin, can), so the only forged
  * line that passes is a VERBATIM copy of a legitimate directive.
  *
- * One-shot binding: a successful delivery CONSUMES the auth record via
- * {@link consumeDirectiveAuth} (called from ackMessages). A replay of the same
- * JSONL after ack no longer matches anything in the registry → downgraded to a
- * regular message. This restores the contract documented above against the
- * accepted replay-after-ack gap (the previous code never consumed IDs).
+ * One-shot binding: a successful delivery consumes the auth record via
+ * {@link consumeDirectiveAuth} (called from ackMessages). After acknowledgement,
+ * a replay of the same JSONL line no longer matches the registry and is
+ * downgraded to a regular message.
  *
  * Recipient binding: the registry key is `(to, id)` so a broadcast (one base
  * id, written per-recipient with `to` mutated) authenticates each recipient
@@ -29,9 +28,8 @@ import { logger } from "../core/log.js"
 
 // Cap on tracked directive authentications. When exceeded, the oldest
 // entries are evicted oldest-first to bound memory growth.
-// H-G2: pre-fix cap of 64 was too low — a 12-member team × 6 broadcasts
-// already produces 72 in-flight authentications. Raised to 512 and added
-// a minimum-age guard so fresh in-flight directives are never evicted.
+// A cap of 512 accommodates six broadcasts to a 12-member team while bounding
+// memory growth. Minimum-age ordering evicts older entries before fresh ones.
 const AUTH_DIRECTIVE_MAP_CAP = 512
 const AUTH_MIN_AGE_MS = 60_000
 const authenticatedDirectives = new Map<string, { from: string; to: string; body: string; correlationId: string | undefined; teamName?: string; runId?: string; ts: number }>()
@@ -53,10 +51,9 @@ function evictStaleAuthDirectives(): void {
     const excess = authenticatedDirectives.size - AUTH_DIRECTIVE_MAP_CAP
     const toRemove = [...aged, ...fresh].slice(0, excess)
     for (const evicted of toRemove) {
-        // M-7: log eviction so operators can detect if legitimate directives
-        // are being silently downgraded. Pre-fix code deleted without logging,
-        // so a large broadcast exceeding the 64-entry cap would silently
-        // degrade earlier directives to regular messages.
+        // Log eviction so operators can detect legitimate directives being
+        // downgraded. A cap overflow can degrade earlier directives to regular
+        // messages.
         const teamDir = evicted[1].teamName ?? "(unknown)"
         logger.warn("evictStaleAuthDirectives: auth entry evicted (cap exceeded); directive will be downgraded to regular message if replayed", {
             teamDir, to: evicted[1].to, age: Date.now() - evicted[1].ts,
@@ -97,17 +94,17 @@ export function authenticateDirective(
  * CLOSED when the active run is unknown (e.g. team state unreadable in the
  * Transform hook).
  *
- * Fail-closed for unscoped directives (C8): a directive registered WITHOUT
+ * Unscoped directives fail closed: a directive registered WITHOUT
  * a runId is accepted ONLY when there is no active run (activeRunId ===
- * undefined), preserving backward compat for the pre-capture edge. When
- * there IS an active run, an unscoped directive is rejected — it cannot be
+ * undefined), which supports directives captured before runId assignment. When
+ * there IS an active run, an unscoped directive is rejected because it cannot be
  * verified as belonging to the current run, and accepting it would allow
  * cross-run replay.
  *
- * correlationId binding (C7): without it, an attacker who knows a
+ * The correlationId is authenticated because an attacker who knows a
  * directive's (id, from, body) can modify the correlationId to inject
  * additional text into the rendered attribute, bypassing the content
- * binding. The correlationId is now part of the authenticated content.
+ * binding.
  */
 export function isAuthenticatedDirective(
     msg: Message,
@@ -121,12 +118,12 @@ export function isAuthenticatedDirective(
     if (registered.to !== msg.to) return false
     if (registered.body !== msg.body) return false
     if (registered.correlationId !== msg.correlationId) return false
-    // Fail-closed runId binding (C8): a directive without a registered
-    // runId is accepted ONLY when there is no active run (activeRunId ===
-    // undefined). This preserves backward compat for the pre-capture edge
-    // (activeTask.runId still undefined). When there IS an active run,
-    // an unscoped directive is rejected — it cannot be verified as
-    // belonging to the current run, and accepting it would allow cross-run
+    // A directive without a registered runId is accepted ONLY when there is no
+    // active run (activeRunId ===
+    // undefined), supporting directives captured before activeTask.runId is
+    // assigned. When there IS an active run, an unscoped directive is rejected
+    // because it cannot be verified as belonging to the current run, and
+    // accepting it would allow cross-run
     // replay (an attacker who copied the directive line before ACK could
     // replay it in a subsequent run).
     if (registered.runId === undefined) {
@@ -147,14 +144,12 @@ export function isAuthenticatedDirective(
  * Consumption still occurs when unlink fails so the in-process auth record
  * cannot be replayed from a reservation left on disk.
  *
- * runId independence (C7): consumption intentionally does NOT re-check the
- * runId binding. ACK is called after successful delivery — the directive
+ * Consumption intentionally does NOT re-check the runId binding. ACK is called
+ * after successful delivery, so the directive
  * was already authenticated by formatMailboxInjection with the active run's
- * runId. The previous code passed msg.runId as activeRunId to
- * isAuthenticatedDirective, which meant an attacker who deleted msg.runId
- * could prevent ACK consumption and replay the directive indefinitely
- * within the same run. Only (to, id, from, body, correlationId) need to
- * match to consume the record.
+ * runId. Rechecking against msg.runId would let a missing value prevent ACK
+ * consumption and leave the directive replayable within the same run. Only
+ * (to, id, from, body, correlationId) need to match to consume the record.
  */
 export function consumeDirectiveAuth(
     msg: Message,

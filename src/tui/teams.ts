@@ -1,5 +1,5 @@
 /**
- * Phase 2.9: file-based team loader for the sidebar. Team/member/task state is
+ * File-based team loader for the sidebar. Team/member/task state is
  * the server module's private TeamState — the TUI reads it
  * straight from disk (<workspace>/.octeam and ~/.octeam) since TUI and server share
  * the same process filesystem. Polls on refresh; child-session info still comes
@@ -17,11 +17,13 @@ import { isValidTeamState } from "../state/store.js"
 import { assertNoSymlinkTraversal, safeReadFile } from "../state/locks.js"
 import { isEnoent } from "../core/utils.js"
 
+/** Result state for sidebar data, including optional partial data on errors. */
 export type LoadState<T> =
     | { status: "unknown" }
     | { status: "ok"; data: T }
     | { status: "error"; error: string; data?: T }
 
+/** Unread and total message counts for a mailbox. */
 export type MailboxCount = { unread: number; total: number }
 
 /** Flat member row for sidebar rendering from on-disk team state. */
@@ -67,9 +69,8 @@ export async function countMailbox(teamDirectory: string, recipient: string): Pr
             if (raw === undefined) return 0
             return raw.split("\n").filter(l => l.length > 0).length
         } catch (err: unknown) {
-            // M-22: ENOENT (no inbox yet) is expected — return 0. Other errors
-            // (EACCES, EIO, corruption) are real problems and must remain
-            // distinguishable from an empty mailbox.
+            // ENOENT is expected before an inbox exists. Other errors such as
+            // EACCES, EIO, or corruption remain distinct from an empty mailbox.
             const code = (err as NodeJS.ErrnoException).code
             if (code === "ENOENT") return 0
             throw err
@@ -101,19 +102,18 @@ async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promis
         if (!e.isDirectory()) continue
         try {
             const dir = teamDir(storageRoot, e.name, leadSessionId)
-            // HIGH-G: refuse to read state/config/mailbox through a symlinked
+            // Refuse to read state/config/mailbox through a symlinked
             // team directory. A member with FS write access could symlink the
             // team dir to /etc or an arbitrary large file, causing the TUI to
             // read or OOM on attacker-controlled content.
             await assertNoSymlinkTraversal(storageRoot, dir)
-            // H27: validate the descendant files (state.json, config.json,
+            // Validate the descendant files (state.json, config.json,
             // mailbox) are not symlinks. assertNoSymlinkTraversal above
             // only checks the team DIRECTORY, not its contents. A symlinked
             // state.json could read arbitrary content; /dev/zero could OOM.
             const stateP = statePath(dir)
-            // C1: use fd-based safeReadFile to shrink TOCTOU window and cap
-            // size at 1 MiB. Pre-fix code did lstat+size-check+readFile in
-            // three separate steps with races between each.
+            // Use fd-based safeReadFile to narrow the TOCTOU window and cap
+            // state.json at 1 MiB.
             const stateRaw = await safeReadFile(dir, stateP, { maxBytes: 1_048_576 })
             if (stateRaw === undefined) continue
             const state = JSON.parse(stateRaw)
@@ -125,7 +125,7 @@ async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promis
             const roleMap: Record<string, string> = {}
             try {
                 const configP = configPath(dir)
-                // C1: use fd-based safeReadFile for config.json too.
+                // Use fd-based safeReadFile for config.json too.
                 const configRaw = await safeReadFile(dir, configP, { maxBytes: 1_048_576 })
                 if (configRaw === undefined) throw new Error("config absent")
                 const config = JSON.parse(configRaw)
@@ -148,17 +148,15 @@ async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promis
                         role: typeof roleMap[m.name] === "string" ? roleMap[m.name] : undefined,
                         status: typeof m.status === "string" ? m.status : "unknown",
                         agent: typeof m.agent === "string" ? m.agent : undefined,
-                        // M-5: validate model is a string — disk tampering can
-                        // set it to a number/object, and sidebar.tsx calls
-                        // member.model.split() which would throw on non-strings.
+                        // Validate model as a string because disk tampering can
+                        // supply another type while sidebar.tsx calls split().
                         model: typeof m.model === "string" ? m.model : undefined,
                         sessionId: typeof m.sessionId === "string" ? m.sessionId : undefined,
                         worktreePath: typeof m.worktreePath === "string" ? m.worktreePath : undefined,
                         mailbox,
                         turnCount: typeof m.turnCount === "number" ? m.turnCount : undefined,
-                        // M-12: validate tokensByMember entries are numbers — a
-                        // tampered state.json can set them to objects/strings,
-                        // and the sidebar would crash on arithmetic or display.
+                        // Validate tokensByMember entries as numbers because
+                        // other types would break sidebar arithmetic or display.
                         tokens: typeof (state.activeTask?.tokensByMember?.[m.name] ?? state.lastMode?.tokensByMember?.[m.name]) === "number"
                             ? (state.activeTask?.tokensByMember?.[m.name] ?? state.lastMode?.tokensByMember?.[m.name])
                             : undefined,
@@ -166,9 +164,8 @@ async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promis
                 })),
                 active: state.activeTask && typeof state.activeTask === "object"
                     ? {
-                          // M-12: validate activeTask fields before passing to the
-                          // sidebar — a tampered state.json can set type/mode to
-                          // objects or numbers, crashing the sidebar renderer.
+                          // Validate activeTask fields before rendering because
+                          // other value types can break the sidebar.
                           type: typeof state.activeTask.type === "string" ? state.activeTask.type : "unknown",
                           mode: typeof state.activeTask.mode === "string" ? state.activeTask.mode : undefined,
                           round: typeof state.activeTask.currentRound === "number" ? state.activeTask.currentRound : undefined,
@@ -180,15 +177,14 @@ async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promis
                             mode: typeof state.lastMode.mode === "string" ? state.lastMode.mode : undefined,
                         }
                       : undefined,
-                // M-12: validate tokensUsed is a number.
+                // Validate tokensUsed as a number.
                 tokensUsed: typeof (state.activeTask?.tokensUsed ?? state.lastMode?.tokensUsed) === "number"
                     ? (state.activeTask?.tokensUsed ?? state.lastMode?.tokensUsed)
                     : undefined,
             })
         } catch (err: unknown) {
-            // M-22: ENOENT means the team dir was removed between readdir and
-            // readFile — skip silently. Other errors (EACCES, EIO, corrupt JSON)
-            // are real problems; log so operators notice.
+            // ENOENT means the team directory was removed between listing and
+            // reading, so skip it. Log other errors for operators.
             const code = (err as NodeJS.ErrnoException).code
             if (code !== "ENOENT") {
                 hadError = true

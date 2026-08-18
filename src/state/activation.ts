@@ -46,7 +46,7 @@ export async function withOrderedLocks(teams: Team[], fn: () => Promise<void>): 
     await run(0)
 }
 
-// --- interaction gates (moved from core/utils.ts) ---
+// --- Interaction gates ---
 
 /**
  * Master-only activation gate (pure predicate). Members always pass — a member's

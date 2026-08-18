@@ -45,8 +45,8 @@ export const metisAgent: OcteamAgentConfig = {
     description: "OCTeam pre-planning consultant",
     temperature: 0.3,
     color: "#a855f7",
-    // N1: '*' first so explicit allows override regardless of host match order.
-    // N2: nested task permission replaces ineffective taskTargets field.
+    // Put "*" first so explicit allows override regardless of host match order.
+    // Nested task permissions restrict delegation to the allowed agents.
     permission: {
         "*": "deny",
         // Team collaboration tools. They are instance-global (Hooks.tool);

@@ -58,7 +58,7 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
 
             let team
             try {
-                // M36 fix: use sender.storageRoot (authoritative) instead of
+                // Use sender.storageRoot, the authoritative root, instead of
                 // ctx.storageRoot so cross-scope teams resolve correctly.
                 team = await loadTeamState(sender.storageRoot, args.team_id, sender.leadSessionId)
             } catch (err) {
@@ -96,7 +96,7 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
                 return `Error: isolated mode forbids member-to-member messaging. You may message "master" only.`
             }
 
-            // Backpressure is now enforced INSIDE the mailbox lock by
+            // Enforce backpressure inside the mailbox lock through
             // writeMailboxMessage (via deliverToRecipients) so concurrent
             // senders cannot both pass the check and collectively exceed the cap.
 
@@ -138,11 +138,9 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
                 correlationId: args.correlation_id,
                 deliveryStatus: "pending",
             }
-            // G/H-3: capture the task reference BEFORE delivery so the rollback
-            // debits the SAME run's quota even if the run finished during
-            // delivery (pre-fix code re-read team.activeTask in the catch,
-            // debiting the new run). Also track actual failed recipients so
-            // partial-success does not refund already-delivered messages.
+            // Capture the task reference before delivery so rollback always debits
+            // the same run's quota. Track delivered recipients so partial success
+            // refunds only undelivered messages.
             const taskAtDispatch = team.activeTask
             let deliveredCount = 0
             try {
@@ -155,11 +153,9 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
                     () => { deliveredCount += 1 },
                 )
             } catch (err) {
-                // HIGH-F/G: roll back messagesSent only for the recipients that
-                // were NOT delivered. deliverToRecipients isolates per-recipient
-                // failures and continues, so on a partial-failure throw some
-                // recipients DID receive the message and their quota must not be
-                // refunded.
+                // Roll back messagesSent only for undelivered recipients. Delivery
+                // continues after per-recipient failures, so successful recipients
+                // retain their quota usage.
                 const undelivered = recipients.length - deliveredCount
                 if (taskAtDispatch && undelivered > 0) {
                     await team.mutex.runExclusive(async () => {

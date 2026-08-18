@@ -48,12 +48,7 @@ import { authenticateDirective, consumeDirectiveAuth } from "./auth.js"
 import { appendJsonl, readJsonl, truncateFile } from "./jsonl.js"
 import { logger } from "../core/log.js"
 
-/**
- * Append a single message to a recipient's inbox. Caller handles broadcast by
- * invoking this once per recipient. Enforces payload size before writing.
- * When `backpressureMaxBytes` is provided, checks inbox size INSIDE the lock
- * before appending and throws a BackpressureError if the cap would be exceeded.
- */
+/** Raised when a recipient's mailbox exceeds its configured byte limit. */
 export class BackpressureError extends Error {
     constructor(public readonly recipient: string, message: string) {
         super(message)
@@ -61,6 +56,7 @@ export class BackpressureError extends Error {
     }
 }
 
+/** Reports an acknowledgement failure along with messages already processed. */
 export class AckMessagesError extends Error {
     constructor(
         public readonly acknowledgedMessages: Message[],
@@ -71,6 +67,10 @@ export class AckMessagesError extends Error {
     }
 }
 
+/**
+ * Append one message to a recipient's inbox under its mailbox lock.
+ * Enforces backpressure and registers directive authentication after the write.
+ */
 export async function writeMailboxMessage(
     teamDirectory: string,
     recipient: string,
@@ -78,13 +78,9 @@ export async function writeMailboxMessage(
     backpressureMaxBytes?: number,
     authContext?: { teamName?: string; runId?: string },
 ): Promise<void> {
-    // H8: authenticate directives INSIDE the lock so the auth record and the
-    // mailbox write are transactionally consistent. Pre-fix code registered
-    // auth BEFORE acquiring the lock; if the write then failed (backpressure,
-    // I/O error), the auth record was orphaned — a forger using the same id
-    // could authenticate against it even though no legitimate message was
-    // written. Moving auth inside the lock means a failed write never
-    // registers auth.
+    // Authenticate directives inside the lock so the auth record and mailbox
+    // write are transactionally consistent. A failed write never registers an
+    // orphan auth record that could authenticate a forged line with the same id.
     await withLock(mailboxLockPath(teamDirectory, recipient), async () => {
         // Backpressure check INSIDE the lock so concurrent senders cannot
         // both pass the check and collectively exceed the cap.
@@ -95,22 +91,17 @@ export async function writeMailboxMessage(
                 throw new BackpressureError(recipient, `recipient "${recipient}" mailbox is full (backpressure)`)
             }
         }
-        // C8: fall back to message.runId when authContext.runId is absent.
-        // M11 fix: register auth AFTER append succeeds. Pre-fix code
-        // registered auth BEFORE append — if append failed (EIO, ENOSPC),
-        // the auth record persisted for a message that was never written to
-        // the mailbox, creating an orphan auth entry that could authenticate
-        // a forged inbox line matching the directive's id/from/to/body.
-        // Now: the message must be durably in the inbox before it can be
-        // authenticated. The mailbox lock prevents poll from observing the
-        // message between append and auth registration.
+        // Fall back to message.runId when authContext.runId is absent. Register
+        // auth only after append succeeds so an I/O failure cannot leave an
+        // orphan auth entry for a message that was never written. The mailbox
+        // lock prevents polling between append and auth registration.
         await appendJsonl(inboxPath(teamDirectory, recipient), message, teamDirectory)
         if (message.kind === "directive") {
             const runId = authContext?.runId ?? message.runId
-            // C-9: default the team binding to teamDirectory so directives
-            // are ALWAYS bound to the team they were written to, even when
-            // the caller omits authContext. This matches what deliver.ts now
-            // passes explicitly and makes cross-team replay impossible.
+            // Default the team binding to teamDirectory so directives are always
+            // bound to their destination team, even when the caller omits
+            // authContext. This matches the explicit context from deliver.ts and
+            // prevents cross-team replay.
             authenticateDirective(message, authContext?.teamName ?? teamDirectory, runId)
         }
     }, teamDirectory)
@@ -130,7 +121,7 @@ export async function pollMailbox(
     return withLock(mailboxLockPath(teamDirectory, recipient), async () => {
         const inbox = await readJsonl(inboxPath(teamDirectory, recipient), teamDirectory)
         if (inbox.length === 0) return []
-        // HIGH-E: dedup by message ID within this batch. A crash during
+        // Deduplicate by message ID within this batch. A crash during
         // pollMailbox's truncate-rollback can leave the same message in BOTH
         // inbox and reserved; the stale-reaper then re-appends the reserved
         // copy to inbox → two lines with the same ID. Without this dedup,
@@ -143,7 +134,7 @@ export async function pollMailbox(
             return true
         })
         if (deduped.length === 0) return []
-        // C6: drop forged cross-mailbox directives. A directive whose `to`
+        // Drop forged cross-mailbox directives. A directive whose `to`
         // does not match this mailbox's recipient was copied here by a member
         // with FS write access (the directive was authenticated for a
         // DIFFERENT recipient's mailbox). Without this filter the auth
@@ -171,7 +162,7 @@ export async function pollMailbox(
                 for (const done of safe) {
                     if (done.id === msg.id) break
                     await fs.unlink(reservedPath(teamDirectory, recipient, done.id)).catch((err: unknown) => {
-                        // H15: ENOENT is the benign race (already removed). Any
+                        // ENOENT is the benign race (already removed). Any
                         // other errno (EPERM, EBUSY) leaves an orphaned
                         // reservation that the stale-reaper eventually clears,
                         // but logging it makes the failure observable.
@@ -203,7 +194,7 @@ export async function pollMailbox(
             // stranded reserved file that the stale-reaper eventually clears.
             for (const msg of safe) {
                 await fs.unlink(reservedPath(teamDirectory, recipient, msg.id)).catch((err: unknown) => {
-                    // H15: ENOENT is the benign race (already removed). Any
+                    // ENOENT is the benign race (already removed). Any
                     // other errno leaves an orphaned reservation that the
                     // stale-reaper eventually clears, but logging makes it
                     // observable.
@@ -243,7 +234,7 @@ export async function ackMessages(
                 await appendJsonl(processedPath(teamDirectory, recipient), {
                     ...msg,
                     deliveryStatus: "processed",
-                    // M12 fix: record ACK time so retention pruning uses when the
+                    // Record ACK time so retention pruning uses when the
                     // message was actually processed, not when it was sent. A
                     // message that sat in the inbox for a long time before being
                     // ACKed would otherwise be pruned immediately on the next
@@ -254,14 +245,9 @@ export async function ackMessages(
                 throw new AckMessagesError(acknowledgedMessages, err)
             }
             acknowledgedMessages.push(msg)
-            // C-11: track per-message unlink outcome so one earlier failure
-            // does not suppress auth consumption for later directives whose
-            // own reservation unlink succeeded. Pre-fix code used a shared
-            // `unlinkErrors.length === 0` check, leaving successful directives'
-            // auth records unconsumed → same-run replay by copying the JSONL
-            // line back into the inbox.
-            // Note: auth consumption is now unconditional (HIGH #13), so
-            // thisMsgUnlinkFailed is tracked only for the error report.
+            // Track unlink failures independently so one failure does not suppress
+            // auth consumption for later directives. Auth consumption is
+            // unconditional, so unlink outcome is retained only for error reporting.
             await fs.unlink(reservedPath(teamDirectory, recipient, msg.id)).catch((err: unknown) => {
                 if (!isEnoent(err)) {
                     const errMsg = err instanceof Error ? err.message : String(err)
@@ -270,9 +256,8 @@ export async function ackMessages(
                 }
             })
             if (msg.kind === "directive") {
-                // HIGH #13: consume auth after processed append succeeds,
-                // regardless of unlink outcome. Pre-fix code only consumed
-                // on unlink success, leaving auth replayable if unlink failed.
+                // Consume auth after the processed append succeeds, regardless of
+                // unlink outcome, so cleanup failures cannot leave it replayable.
                 consumeDirectiveAuth(msg, teamDirectory)
             }
         }
@@ -291,23 +276,21 @@ export async function ackMessages(
 /**
  * Cap mailbox/{recipient}.processed.jsonl by AGE, not line count. Keeps
  * entries younger than PROCESSED_RETENTION_MS so the dedup window in
- * releaseStaleReservations always covers any in-flight reservation (whose
- * TTL is RESERVATION_TTL_MS = 30s). Pre-fix code capped at 1000 lines,
- * which under high message volume could prune the processed record of a
- * message whose reservation file was still pending → duplicate delivery.
+ * releaseStaleReservations always covers any in-flight reservation whose
+ * TTL is RESERVATION_TTL_MS = 30s, even under high message volume.
  * Caller MUST hold the mailbox lock.
  */
-// H-G4: retention must cover the worst-case reservation lifetime.
+// Retention must cover the worst-case reservation lifetime.
 // Reservations have TTL = RESERVATION_TTL_MS (30s); the stale-reaper checks
 // periodically, so a reservation can survive up to ~2× TTL past expiry.
-// Pre-fix multiplier of 2 (60s) was too tight if the reaper was delayed.
+// Four TTL intervals leave room for delayed reaper cycles.
 const PROCESSED_RETENTION_MS = RESERVATION_TTL_MS * 4
 const PROCESSED_MAX_BYTES = 1_048_576
 const PROCESSED_RETENTION_BYTES = 512 * 1024
 
 async function pruneProcessedLogUnlocked(teamDirectory: string, recipient: string): Promise<void> {
     const p = processedPath(teamDirectory, recipient)
-    // C-1: processedPath is a leaf under <team>/mailbox; the mailbox lock
+    // processedPath is a leaf under <team>/mailbox; the mailbox lock
     // only walks ancestors of the lockfile, so the processed.jsonl leaf
     // and any mailbox/ subdirs need their own guard.
     try {
@@ -321,7 +304,7 @@ async function pruneProcessedLogUnlocked(teamDirectory: string, recipient: strin
     let reservedIds: Set<string> | undefined
     const reservedLines = new Map<string, string>()
     try {
-        // H2: reject non-regular files and bound memory while compacting an
+        // Reject non-regular files and bound memory while compacting an
         // oversized log to its most recent complete-line window.
         const stat = await fs.lstat(p)
         if (!stat.isFile()) return
@@ -364,10 +347,10 @@ async function pruneProcessedLogUnlocked(teamDirectory: string, recipient: strin
         throw err
     }
     const lines = raw.split("\n").filter(l => l.length > 0)
-    // H14: prune by timestamp, not line count. Each processed entry has a
+    // Prune by timestamp, not line count. Each processed entry has a
     // `timestamp` field (the original Message.timestamp) and optionally a
     // `processedAt` field (when the message was ACKed).
-    // M12 fix: prefer `processedAt` for retention so a message that sat in
+    // Prefer `processedAt` for retention so a message that sat in
     // the inbox for a long time before ACK is not immediately pruned. Fall
     // back to `timestamp` for legacy entries without processedAt. Keep
     // entries whose retention time is within PROCESSED_RETENTION_MS of now.
@@ -397,14 +380,9 @@ async function pruneProcessedLogUnlocked(teamDirectory: string, recipient: strin
         kept.push(line)
     }
     if (pruned === 0 && !truncated) return
-    // MEDIUM: before writing the truncated log, collect IDs from active
-    // reservations so they're never lost from the processed dedup log.
-    // Pre-fix code's byte truncation could delete IDs that still have
-    // active reservations, causing the reaper to re-queue and re-deliver.
-    // C8: pre-fix code manually built `<team>/reserved/<recipient>` which
-    // does not exist — the actual layout is `<team>/mailbox/<recipient>.reserved`
-    // (see paths.ts reservedDir). Use the canonical helper to read active
-    // reservation IDs so truncation never drops them from the dedup log.
+    // Before writing the truncated log, collect IDs from active reservations so
+    // they remain in the processed dedup log and cannot be requeued. Read them
+    // through reservedDir, which resolves the canonical reservation layout.
     if (reservedIds === undefined) {
         try {
             reservedIds = new Set(await fs.readdir(reservedDir(teamDirectory, recipient)))
@@ -437,7 +415,7 @@ export async function releaseStaleReservations(
 ): Promise<void> {
     return withLock(mailboxLockPath(teamDirectory, recipient), async () => {
         const dir = reservedDir(teamDirectory, recipient)
-        // C-1: reservedDir is <team>/mailbox/reserved/<recipient>; the lock
+        // reservedDir is <team>/mailbox/reserved/<recipient>; the lock
         // walks ancestors of <team>/mailbox/<recipient>.lock only, so the
         // reserved/ subdir chain needs its own guard before readdir.
         try {
@@ -460,9 +438,9 @@ export async function releaseStaleReservations(
         // reaped and re-appended to the inbox → duplicate delivery.
         const processedIds = new Set<string>()
         try {
-            // H2: cap file size and reject non-regular files before reading.
+            // Cap file size and reject non-regular files before reading.
             const procPath = processedPath(teamDirectory, recipient)
-            // C-1: guard the processed.jsonl leaf path before lstat/readFile.
+            // Guard the processed.jsonl leaf path before lstat/readFile.
             await assertNoSymlinkTraversal(teamDirectory, procPath)
             const procStat = await fs.lstat(procPath)
             if (procStat.isFile() && procStat.size <= PROCESSED_MAX_BYTES) {
@@ -483,7 +461,7 @@ export async function releaseStaleReservations(
         }
         for (const f of files) {
             const p = path.join(dir, f)
-            // C-6: refuse to follow a symlinked entry inside reserved/. A
+            // Refuse to follow a symlinked entry inside reserved/. A
             // hostile .octeam/ writer can drop a symlink here to make the
             // reaper read/stat/unlink an arbitrary file outside the team
             // root. Skip and log; do NOT process the entry. (The reserved/
@@ -501,7 +479,7 @@ export async function releaseStaleReservations(
             let reservedAt: number | undefined
             let parsed: Message & { reservedAt?: number } | undefined
             try {
-                // H2: cap reservation file size and reject non-regular files.
+                // Cap reservation file size and reject non-regular files.
                 const rstat = await fs.lstat(p)
                 if (!rstat.isFile() || rstat.size > 65_536) {
                     logger.warn("releaseStaleReservations: skipping non-regular/oversized reservation", { path: p, size: rstat.size })
@@ -509,13 +487,13 @@ export async function releaseStaleReservations(
                 }
                 parsed = JSON.parse(await fs.readFile(p, "utf8")) as Message & { reservedAt?: number }
                 const raw = (parsed as { reservedAt?: unknown }).reservedAt
-                // H15: reservedAt MUST be a finite number. A tampered or corrupt
+                // reservedAt MUST be a finite number. A tampered or corrupt
                 // reservation file could carry reservedAt: "invalid" (string),
                 // which would make age = Date.now() - "invalid" = NaN, and
                 // NaN > TTL is always false → the message is stranded in
                 // reserved/ forever (permanent message loss). Coerce non-finite
                 // values to undefined so the mtime fallback below applies.
-                // M5: reject future timestamps (clock skew, tampering). A
+                // Reject future timestamps from clock skew or tampering. A
                 // reservedAt far in the future produces negative age, so
                 // age > TTL is always false → message stranded forever.
                 // Allow a small tolerance (30s) for clock drift.
@@ -523,7 +501,7 @@ export async function releaseStaleReservations(
                 reservedAt = typeof raw === "number" && Number.isFinite(raw) && raw <= now + 30_000
                     ? raw : undefined
             } catch (err) {
-                // H15: log instead of silently skipping, so unreadable/corrupt
+                // Log instead of silently skipping so unreadable or corrupt
                 // reservation files are observable. The skip itself is correct
                 // (we cannot parse the message to requeue it).
                 logger.warn("releaseStaleReservations: unreadable reservation file; skipping", {
@@ -545,7 +523,7 @@ export async function releaseStaleReservations(
                 // orphan). Just clean up the stale reservation file.
                 if (typeof parsed.id === "string" && processedIds.has(parsed.id)) {
                     await fs.unlink(p).catch((err: unknown) => {
-                        // H15: ENOENT is benign. Non-ENOENT leaves the orphaned
+                        // ENOENT is benign. Non-ENOENT leaves the orphaned
                         // reservation (processedIds dedup prevents re-delivery,
                         // so it's harmless but observable).
                         if (!isEnoent(err)) {
@@ -557,15 +535,10 @@ export async function releaseStaleReservations(
                     })
                     continue
                 }
-                // Requeue: APPEND to inbox FIRST, then unlink the reserved file.
-                // The order matters for crash safety — if append fails (ENOSPC,
-                // EACCES, EROFS, or process crash mid-operation), the reserved
-                // file is still there for the next sweep to retry. Pre-fix code
-                // did unlink-then-append, which on append failure permanently
-                // lost the only copy of the message. The duplicate risk from
-                // append-then-unlink (requeue succeeds but unlink fails → next
-                // sweep re-appends) is bounded by pollMailbox's read-reserve-
-                // truncate exactly-once protocol and by the processedIds dedup.
+                // Requeue by appending to the inbox before unlinking the reserved
+                // file. An append failure leaves the reserved copy for the next
+                // sweep. If the append succeeds but unlink fails, pollMailbox and
+                // processedIds dedup bound the duplicate risk.
                 try {
                     await appendJsonl(inboxPath(teamDirectory, recipient), {
                         ...parsed,
@@ -614,10 +587,9 @@ export async function countUnreadMessages(
 }
 
 /**
- * Total on-disk byte size of a recipient's unread inbox (NOT reserved).
- * Used for backpressure checks (messageUnreadMaxBytes) — measures ACTUAL bytes
- * rather than the old `count * 1024` line-proxy, which under-counted by up to
- * 32x for max-size (32KB) message bodies. Returns 0 when the inbox is absent.
+ * Total on-disk byte size of a recipient's inbox and reserved messages.
+ * Used for backpressure checks (messageUnreadMaxBytes) and measures actual
+ * bytes, including max-size message bodies. Returns 0 when both are absent.
  * Cheaper than countUnreadMessages (one stat, no JSON parse).
  */
 export async function unreadInboxBytes(
@@ -626,7 +598,7 @@ export async function unreadInboxBytes(
 ): Promise<number> {
     let total = 0
     try {
-        // C-1: unreadInboxBytes runs OUTSIDE the mailbox lock; guard the
+        // unreadInboxBytes runs outside the mailbox lock; guard the
         // inbox path's ancestor chain so a symlinked <team>/mailbox (or the
         // inbox file itself) cannot redirect the stat to an external file.
         const inboxP = inboxPath(teamDirectory, recipient)
@@ -636,10 +608,8 @@ export async function unreadInboxBytes(
     } catch (err: unknown) {
         if (!isEnoent(err)) throw err
     }
-    // H29: also count reserved directory size so backpressure accounts for
-    // reserved messages. Pre-fix code only measured inbox, allowing reserved
-    // messages to accumulate beyond the limit and flood the inbox when their
-    // TTL expires.
+    // Include reserved directory size so in-flight messages count against
+    // backpressure before their TTL expires.
     try {
         const reservedDirectory = reservedDir(teamDirectory, recipient)
         const entries = await fs.readdir(reservedDirectory)

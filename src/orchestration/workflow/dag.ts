@@ -139,7 +139,7 @@ export function readyWorkflowStepIndices(
     const ready: number[] = []
 
     for (const index of getActiveWorkflowStepIndices(task)) {
-        // H53: visited set guards against corrupted branch metadata forming
+        // A visited set guards against corrupted branch metadata forming
         // a cycle. collectReadyWorkflowStepIndices and collectWorkflowSuccessors
         // recurse into each other; without this guard a tampered joinIndex or
         // branch range that loops back could cause a stack overflow.
@@ -203,8 +203,8 @@ function collectReadyWorkflowStepIndices(
     ready: number[],
     visited: Set<number>,
 ): void {
-    // H53: cycle guard. If this index was already visited in this traversal,
-    // corrupted metadata is making us loop — stop recursing.
+    // Stop recursing if corrupted metadata returns to an index already visited
+    // during this traversal.
     if (visited.has(index)) return
     visited.add(index)
     const step = steps[index]
@@ -310,17 +310,12 @@ function isJoinMetadataSatisfied(
     const survivorBranchIds: string[] = []
     let errors = 0
 
-    // H-6: any_success fast path. Scan branches once; if at least one has
-    // reached terminal+successful state, mark every remaining non-terminal
-    // branch as skipped+completed and short-circuit. Pre-fix code waited for
-    // ALL branches to be terminal, defeating the policy's purpose.
+    // For any_success, scan branches once and open the join as soon as one
+    // reaches a terminal successful state. Mark every remaining non-terminal
+    // branch as skipped and completed.
     //
-    // H55: use_survivors MUST NOT enable the any_success fast path.
-    // use_survivors means "tolerate errored branches and join the survivors",
-    // NOT "cancel remaining branches on first success". Pre-fix code had
-    // `join.joinPolicy === "any_success" || join.useSurvivors === true`,
-    // which made all/reduce/select + use_survivors cancel healthy branches
-    // the moment the first one succeeded — losing their outputs.
+    // use_survivors only tolerates errored branches and joins the survivors;
+    // it does not cancel healthy branches on the first success.
     if (join.joinPolicy === "any_success") {
         let successFound = false
         for (const tailIndex of join.branchTailIndices) {
@@ -337,15 +332,8 @@ function isJoinMetadataSatisfied(
             // Mark every non-terminal, non-errored branch as skipped so the
             // join opens immediately and late results are ignored.
             //
-            // H-6: pre-fix code marked ONLY the tail step of each cancelling
-            // branch, leaving intermediate steps in the branch range still
-            // dispatchable. The engine would then concurrently open the join
-            // AND continue dispatching the losing branch's in-flight steps;
-            // those steps' outputs would also leak into the joined output via
-            // buildJoinedOutput (which collects any completed+output task step
-            // without checking the skipped flag). Fix: walk the full branch
-            // range from the fanout metadata and mark every non-terminal step
-            // skipped+completed.
+            // Walk each losing branch's full range so intermediate steps cannot
+            // remain dispatchable after the join opens.
             const fanoutStep = steps[join.fanoutIndex]
             const branchRanges = fanoutStep?.kind === "fanout" && fanoutStep.fanout !== undefined
                 ? fanoutStep.fanout.branchRanges
@@ -370,12 +358,9 @@ function isJoinMetadataSatisfied(
                         for (let r = rangeEntry.startIndex; r <= rangeEntry.endIndex; r++) {
                             const rs = steps[r]
                             if (rs === undefined) continue
-                            // H-W5: mark ALL non-winning branch steps as skipped,
-                            // INCLUDING completed intermediate steps. Pre-fix
-                            // code only skipped non-terminal steps, leaving
-                            // completed intermediate steps' outputs visible to
-                            // buildBranchWorkflowOutput, which leaks losing-
-                            // branch content into the joined output.
+                            // Mark the whole losing branch as skipped, including
+                            // completed intermediate steps, so its content cannot
+                            // enter the joined output.
                             rs.completed = true
                             rs.skipped = true
                         }

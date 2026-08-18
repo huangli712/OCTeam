@@ -109,12 +109,8 @@ async function createApprovalPause(
     // leave the leader notified of a pause that is not on disk (mirrors
     // completion.ts's persist-then-notify ordering).
     //
-    // H-30: rollback the in-memory pause on save failure. Pre-fix code set
-    // approvalStage/approvalRequest in memory and then called saveTeamState;
-    // a save throw left the team with a paused in-memory state that no
-    // caller could clear — the orchestrator idled indefinitely because the
-    // activeTask looked paused but the disk never recorded the pause, so
-    // team_resume had nothing to resume.
+    // Roll back the in-memory pause on save failure so activeTask cannot remain
+    // paused when disk has no approval state for team_resume to recover.
     try {
         await saveTeamState(team)
     } catch (err) {
@@ -129,11 +125,9 @@ async function createApprovalPause(
         round: request.round,
         detail: request.kind,
     })
-    // H-30/G: notification failure must not strand the run in a silent
-    // paused state. Pre-fix code relied on a sweep-timer re-notify path that
-    // DOES NOT EXIST — the sweep never calls notifyLeader or resumeApprovalStage.
-    // Use bounded retry inline so transient failures (session unavailable,
-    // network error) don't permanently strand the paused run.
+    // Retry notification inline because the sweep does not notify the leader or
+    // resume approval stages. Bounded retries prevent transient session or
+    // network failures from silently stranding a paused run.
     const NOTIFY_MAX_ATTEMPTS = 3
     let notifyOk = false
     for (let attempt = 1; attempt <= NOTIFY_MAX_ATTEMPTS; attempt++) {

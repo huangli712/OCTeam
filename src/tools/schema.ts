@@ -1,9 +1,7 @@
 /**
- * H42: optional parse-failure threshold fields for modes with bounded
+ * Optional parse-failure threshold fields for modes with bounded
  * decision/verdict parse recovery. Each mode tool selects only its matching
  * field (loop, arbitrate, route, recurse).
- * Pre-fix code: handlers supported overrides but the tool schemas never
- * exposed them, so callers could not actually configure them.
  */
 export const parseThresholdFields = {
     max_decision_parse_failures: tool.schema
@@ -51,13 +49,12 @@ export const parseThresholdFields = {
 /**
  * Shared tool-schema field builders used by the workflow tools.
  *
- * Extracted from orchestration/lifecycle/startup.ts so that the orchestration
- * runtime layer no longer depends on the @opencode-ai/plugin tool-framework
- * value API (it still imports the ToolContext *type*, which is erased at
- * runtime and therefore not a behavioral coupling).
+ * These builders keep the orchestration runtime independent of the
+ * @opencode-ai/plugin tool-framework value API. Its ToolContext type import
+ * is erased at runtime and creates no behavioral coupling.
  *
  * The matching ActiveTask field builders (signoffTaskFields /
- * humanApprovalTaskFields) remain in orchestration/lifecycle/startup.ts
+ * humanApprovalTaskFields) live in orchestration/lifecycle/startup.ts
  * because they depend on runtime types (SignoffPolicy, Team).
  */
 

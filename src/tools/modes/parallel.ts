@@ -88,10 +88,9 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                 args.team_id, context, ctx, "team_parallel",
                 // validate
                 (team) => {
-                    // H40: isolated mode must not carry `tasks` — the task
-                    // tool uses !activeTask.tasks to detect isolation, so an
-                    // extraneous tasks object would silently bypass the
-                    // create/claim isolation boundary.
+                    // Isolated mode must not carry `tasks` because the task tool
+                    // uses !activeTask.tasks to enforce the create/claim
+                    // isolation boundary.
                     if (args.mode === "isolated" && args.tasks) {
                         return "Error: isolated mode does not support `tasks` — use cooperative mode for per-member tasks"
                     }
@@ -101,10 +100,8 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                     if (args.mode === "cooperative" && !args.tasks) {
                         return "Error: cooperative mode requires `tasks`"
                     }
-                    // M-14: reject an empty tasks object — it has no member
-                    // assignments, so every member would get the default
-                    // "No task assigned" placeholder. Pre-fix code only checked
-                    // for !args.tasks (truthy), so {} passed.
+                    // An empty tasks object has no member assignments, so every
+                    // member would get the default "No task assigned" placeholder.
                     if (args.mode === "cooperative" && args.tasks && Object.keys(args.tasks).length === 0) {
                         return "Error: cooperative mode `tasks` must contain at least one member assignment"
                     }

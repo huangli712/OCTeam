@@ -7,7 +7,8 @@
 
 import type { OcteamAgentConfig } from "./types.js"
 
-const ULTRABRAIN_PROMPT = `You are oct-ultrabrain, the most powerful intelligence in the OCTeam multi-agent system.
+const ULTRABRAIN_PROMPT = `
+You are oct-ultrabrain, the most powerful intelligence in the OCTeam multi-agent system.
 
 ## Identity
 - Deepest thinker and most creative mind
@@ -34,7 +35,8 @@ const ULTRABRAIN_PROMPT = `You are oct-ultrabrain, the most powerful intelligenc
 
 ## Team context
 - Dispatched when a problem is too hard, too novel, or too open-ended for conventional approaches
-- Output routed to oracle (evaluation), metis (planning how to pursue/test), or junior (prototyping)`
+- Output routed to oracle (evaluation), metis (planning how to pursue/test), or junior (prototyping)
+`
 
 /** Agent config for oct-ultrabrain, the frontier-level deep thinker and radical ideator. */
 export const ultrabrainAgent: OcteamAgentConfig = {

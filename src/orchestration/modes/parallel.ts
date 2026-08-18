@@ -43,12 +43,9 @@ export async function handleParallelIdle(ctx: PluginContext, team: Team): Promis
                 && !task.responses[name]
         })
         if (missingResponse) {
-            // N16+R2: escalate missing-response members to errored, then
-            // re-evaluate tolerance. Pre-fix (N16-only) code escalated and
-            // returned, leaving the barrier permanently stuck — no future
-            // event re-triggered maybeAdvanceBarrier because all participants
-            // were already idle. Now we update the errored array in-place and
-            // fall through to the survivor delivery path below.
+            // Escalate missing-response members to errored, then re-evaluate
+            // tolerance in the same barrier pass. Updating the errored array
+            // in place allows survivor delivery when all participants are idle.
             for (const name of participants) {
                 const member = team.members.find(m => m.name === name)
                 if (!member) continue
@@ -68,11 +65,8 @@ export async function handleParallelIdle(ctx: PluginContext, team: Team): Promis
                 return
             }
         }
-        // HIGH-D: clear stale responses from errored members BEFORE reduce / signoff.
-        // Pre-fix code cleared them only just before final delivery, AFTER
-        // reduce / signoff had already read them. A reducer or signoff
-        // reviewer then received errored members' (possibly stale) outputs as
-        // legitimate inputs, corrupting the reduced artifact or the verdict.
+        // Clear stale responses from errored members before reduce or signoff so
+        // reducers and reviewers cannot treat those outputs as legitimate input.
         for (const name of errored) {
             delete task.responses[name]
         }

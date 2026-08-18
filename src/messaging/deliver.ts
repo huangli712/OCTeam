@@ -25,43 +25,35 @@ export async function deliverToRecipients(
     backpressureMaxBytes?: number,
     onDelivered?: (recipient: string) => void,
 ): Promise<void> {
-    // S2 fix: check team.deleted before delivery. team_delete holds
-    // team.mutex during deletion, so if we pass this check without the
-    // mutex, a concurrent delete could still race — but this catches the
-    // common case (delete completed before delivery started). A full
-    // fix would wrap the entire loop in team.mutex.runExclusive.
+    // Check team.deleted before delivery. team_delete holds team.mutex during
+    // deletion, so this catches deletion completed before delivery starts.
+    // A concurrent delete can still race because this loop does not hold the mutex.
     if (team.deleted) {
         throw new Error("deliverToRecipients: team is deleted, refusing to deliver")
     }
-    // C2 fix: use base.runId (captured at dispatch time under the team
-    // mutex) instead of team.activeTask?.runId (re-read here, which may
-    // have changed if a run completed and a new run started between
-    // capture and delivery). Pre-fix code allowed a directive from run A
-    // to be authenticated against run B's context if the run switched.
+    // Use base.runId, captured at dispatch time under the team mutex. Re-reading
+    // team.activeTask here could bind a directive to another run if the active
+    // run changes between capture and delivery.
     const authContext = base.kind === "directive"
         ? { teamName: team.directory, runId: base.runId }
         : undefined
     const failures: string[] = []
     const backpressureFailures: string[] = []
     for (const r of recipients) {
-        // H-G3: re-check tombstone per-recipient to narrow the race window
-        // where team_delete completes after the initial check but before
-        // this write. A full fix requires wrapping in team.mutex, which
-        // risks deadlock if the caller already holds it.
+        // Re-check the tombstone per recipient to narrow the window where
+        // team_delete completes after the initial check but before this write.
+        // Acquiring team.mutex here could deadlock when the caller already holds it.
         if (team.deleted) {
             throw new Error("deliverToRecipients: team was deleted during delivery")
         }
         try {
             await writeMailboxMessage(team.directory, r, { ...base, to: r }, backpressureMaxBytes, authContext)
         } catch (err) {
-            // H11: BackpressureError is a per-recipient rejection (that one
-            // mailbox is full), NOT a global failure. Pre-fix code threw
-            // immediately, aborting all remaining recipients — already-
-            // successful recipients kept the message, and a retry would
-            // duplicate it. Now collect backpressure failures and continue
-            // so remaining recipients still receive the message, then throw
-            // a single BackpressureError at the end (preserving the caller's
-            // catch behavior).
+            // BackpressureError rejects only the full recipient mailbox, not the
+            // entire broadcast. Collect these failures so remaining recipients
+            // still receive the message, then throw one BackpressureError after
+            // the loop to preserve the caller's catch behavior without causing
+            // duplicates on retry.
             if (err instanceof BackpressureError) {
                 backpressureFailures.push(r)
                 continue
@@ -78,7 +70,7 @@ export async function deliverToRecipients(
         // failure does NOT count as a delivery failure — the message is
         // already in the mailbox and will be polled on the next turn.
         //
-        // H12: fire-and-forget (NOT awaited). The message is already in the
+        // Fire and forget without awaiting. The message is already in the
         // mailbox (writeMailboxMessage completed above). Awaiting the wake
         // hint blocks the delivery loop — if one recipient's host API is
         // slow, all subsequent recipients' mailbox writes are delayed.
@@ -99,7 +91,7 @@ export async function deliverToRecipients(
     if (backpressureFailures.length > 0) {
         // Throw BackpressureError for the first backpressured recipient so the
         // caller (intervene.ts / send_message) can return its specific message.
-        // The remaining recipients were still delivered (H11 fix).
+        // The remaining recipients were still delivered.
         throw new BackpressureError(backpressureFailures[0], `recipient "${backpressureFailures[0]}" mailbox is full (backpressure)${backpressureFailures.length > 1 ? ` (also: ${backpressureFailures.slice(1).join(", ")})` : ""}`)
     }
     if (failures.length > 0) {

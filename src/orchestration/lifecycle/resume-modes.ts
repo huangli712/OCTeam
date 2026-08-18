@@ -1,8 +1,7 @@
 /**
- * Per-mode resume dispatch handlers. Extracted from resume.ts to keep each
- * file focused: resume.ts owns the Phase 1/2/3 entry point + rollback, while
- * this module owns the 12 mode-specific re-dispatch functions and their shared
- * helpers.
+ * Per-mode resume dispatch handlers. resume.ts owns the Phase 1/2/3 entry point
+ * and rollback, while this module owns the 12 mode-specific re-dispatch
+ * functions and their shared helpers.
  */
 
 import type { PluginContext } from "../../core/context.js";
@@ -43,6 +42,7 @@ import {
     workflowStepActor,
 } from "../workflow/dag.js";
 
+/** A persisted member entry from a team roster. */
 export type TeamMember = Team["members"][number];
 
 
@@ -85,12 +85,9 @@ export async function resetInterruptedClaims(team: Team): Promise<void> {
     await reapStaleClaims(team.directory);
     for (const t of await listAllTasks(team.directory)) {
         if (t.status === "claimed" || t.status === "in_progress") {
-            // #15: do NOT reset a task whose owner is still running. Pre-fix
-            // code reset ALL claimed/in_progress tasks unconditionally — if
-            // the owner's session was still alive (e.g. cross-process resume
-            // where the member was dispatched by another process), the reset
-            // would orphan the in-flight work and the task would be re-claimed
-            // by another member, producing duplicate output.
+            // Do not reset a task whose owner is still running. A cross-process
+            // resume must preserve in-flight work so another member cannot claim
+            // the same task and produce duplicate output.
             if (t.owner) {
                 const ownerMember = team.members.find(m => m.name === t.owner);
                 if (ownerMember?.sessionId && ownerMember.status === "running") {
@@ -128,7 +125,7 @@ export async function resumeSignoffReduceStage(
             return true;
         }
         if (task.responses[reducer.name] === undefined) {
-            // H33: skip dispatch if reducer is already running (crash resume
+            // Skip dispatch if reducer is already running (crash resume
             // may find the host turn still in flight).
             if (reducer.status === "running") return true
             const body = await buildSummary(team, task, "pending_reduce");
@@ -167,12 +164,11 @@ export async function resumeSignoffReduceStage(
         for (const m of reviewers) {
             // Skip reviewers who already have a recorded approval.
             if (task.signoffApprovals?.[m.name] !== undefined) continue;
-            // H33: skip running reviewers (crash resume may find turn in flight).
+            // Skip running reviewers because crash resume may find a turn in flight.
             if (m.status === "running") continue;
-            // HIGH: only use signoffRawOutputs for resume — task.responses
-            // holds the reviewer's PRIMARY task output, not their signoff
-            // verdict. Pre-fix code treated primary output as signoff output,
-            // which could contain a <signoff> example that was miscounted.
+            // Use only signoffRawOutputs for resume because task.responses holds
+            // the reviewer's primary task output, which may contain a <signoff>
+            // example rather than an actual review verdict.
             if (task.signoffRawOutputs?.[m.name] !== undefined) {
                 await handleSignoffIdle(ctx, team, m);
                 if (!team.activeTask) return true; // run terminated
@@ -286,7 +282,7 @@ export async function resumeSequentialMode(
         return;
     }
     // No response yet: re-dispatch the stage normally.
-    // H33: skip if the stage member is already running (crash resume may
+    // Skip if the stage member is already running (crash resume may
     // find the host turn still in flight).
     if (stageMember?.status === "running") return
     await advanceToStage(ctx, team, stage);
@@ -340,7 +336,7 @@ export async function resumeRouteMode(
                 await finishRun(ctx, team, "route_resume_missing_router", "failed");
                 return;
             }
-            // H33: skip if router is already running.
+            // Skip if the router is already running.
             if (router.status === "running") return
             const prompt = buildRouterPrompt(
                 team.teamName,
@@ -401,7 +397,7 @@ export async function resumeArbitrateMode(
             await finishRun(ctx, team, "arbitrate_resume_missing_arbiter", "failed");
             return;
         }
-        // H33: skip if arbiter is already running.
+        // Skip if the arbiter is already running.
         if (arbiter.status === "running") return
         await dispatchToMember(
             ctx,
@@ -449,9 +445,8 @@ export async function resumeTollgateMode(
 ): Promise<void> {
     const stage = task.gatedStages?.[task.currentStageIndex];
     if (!stage) {
-        // H-7: missing required stage means the checkpoint is corrupt or
-        // incomplete. Pre-fix code returned silently, leaving the team busy
-        // with no members dispatched. Now: fail the run explicitly.
+        // A missing required stage means the checkpoint is corrupt or
+        // incomplete, so fail instead of leaving the team busy with no dispatch.
         await finishRun(ctx, team, "tollgate_resume_missing_stage: checkpoint has no stage at currentStageIndex", "failed");
         return;
     }
@@ -478,8 +473,8 @@ export async function resumeTollgateMode(
             await finishRun(ctx, team, "tollgate_resume_missing_escalation_actor", "failed");
             return;
         }
-        // MEDIUM: if the escalation handler's output was already captured
-        // pre-crash, replay it instead of re-dispatching.
+        // Replay an escalation handler output captured before the crash instead
+        // of re-dispatching it.
         if (task.responses[handler.name]) {
             await handleTollgateIdle(ctx, team, handler);
         } else {
@@ -534,9 +529,9 @@ export async function resumeWorkflowMode(
             // member-response shortcut; the redispatch loop below clears and
             // re-dispatches them.
             if (activeStep?.kind === "join") continue;
-            // HIGH #7: for ensemble gates, replay each verifier that has a
-            // pending response. workflowStepActor returns null for ensemble
-            // gates (no single verifier field), so pre-fix code skipped them.
+            // For ensemble gates, replay each verifier with a pending response.
+            // workflowStepActor returns null because these gates have no single
+            // verifier field.
             if (activeStep?.kind === "gate" && activeStep.verifiers !== undefined) {
                 let replayedAny = false;
                 for (const vName of activeStep.verifiers) {
@@ -643,7 +638,7 @@ export async function resumeArenaMode(
     team: Team,
     task: Extract<ActiveTask, { type: "arena" }>,
 ): Promise<void> {
-    // M-1: validate required arena fields before resuming.
+    // Validate required arena fields before resuming.
     if (!task.evaluatorMember) {
         await finishRun(ctx, team, "arena_resume_missing_evaluator", "failed");
         return;

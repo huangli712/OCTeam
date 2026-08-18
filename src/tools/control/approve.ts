@@ -43,7 +43,7 @@ function validateApproval(team: Team, approvalId: string): ApprovalRequest | str
 }
 
 /**
- * H4: validate that an ApprovalRequest carries the payload its kind requires.
+ * Validate that an ApprovalRequest carries the payload its kind requires.
  * Returns null when valid, or an error message string describing the gap.
  * Prevents malformed/tampered requests from reaching the resume handler and
  * silently no-oping, leaving the run stuck in approval limbo.
@@ -85,7 +85,6 @@ export async function applyApprovalDecision(
         return `Error: team "${team.teamName}" has no pending human approval.`
     }
     const request = task.approvalRequest
-    // H4: validate that the request carries the payload its kind requires.
     // ApprovalRequest is a flat type — kind is an enum but the payload fields
     // are all optional, so a malformed/tampered request (e.g. recurse_decompose
     // with no subtasks) would reach the resume handler and silently no-op,
@@ -161,13 +160,9 @@ export async function applyApprovalDecision(
                 }
             } else if (task.type === "tollgate" && task.tollgatePhase === "verify"
                        && task.gatedStages?.[task.currentStageIndex]?.completed !== true) {
-                // H44: INVALID-retry pause (no escalateTo handler). The stage
-                // is NOT completed (INVALID never completes), and the approval
-                // summary said "Approve to retry verification" — re-dispatch
-                // the verifier for the current gate, NOT advance to the next.
-                // Pre-fix code fell through to advanceTollgateAfterPass.
-                // Discriminator: PASS approvals also pause in verify phase,
-                // but stage.completed === true there, so they advance.
+                // An INVALID retry pause leaves the stage incomplete and asks the
+                // leader to retry verification. Re-dispatch the current verifier;
+                // completed PASS stages take the between-gates path and advance.
                 const stage = task.gatedStages?.[task.currentStageIndex]
                 if (stage) {
                     await startVerification(ctx, team, stage)
@@ -199,7 +194,7 @@ export async function applyApprovalDecision(
                 }
             } else {
                 // Post-ruling pause approved: deliver the ruling.
-                // H-M1: honor signoff before finishRun, matching the
+                // Honor signoff before finishRun, matching the
                 // non-HITL path in handleArbitrateIdle (line 191).
                 if (await maybeTriggerSignoff(ctx, team)) {
                     return `Approved ${request.kind} for team "${team.teamName}"; signoff in progress.`

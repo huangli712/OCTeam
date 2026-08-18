@@ -2,8 +2,8 @@
  * Workflow gate helpers: verifier prompt construction, gate target resolution,
  * goto index resolution, ensemble verdict aggregation, and condition matching.
  *
- * Extracted from workflow.ts + conditions.ts. All functions are pure (no side
- * effects, no workflow state mutation) so they can be unit-tested independently.
+ * All functions are pure, with no side effects or workflow state mutation, so
+ * they can be unit-tested independently.
  */
 
 import type {
@@ -18,7 +18,7 @@ import { isWorkflowIssueSeverity } from "../protocol/decisions.js";
 import { truncateOutput } from "../protocol/output.js";
 import { isSameWorkflowBranch } from "./dag.js";
 import { MAX_UPSTREAM_OUTPUT_BYTES } from "./upstream.js";
-// M22: gate target resolution functions moved to gate-targets.ts to
+// Gate target resolution lives in gate-targets.ts to
 // break the dag→invariants→gate→dag import cycle. Re-export to preserve
 // the public API for existing consumers (engine.ts, verdict.ts, etc.).
 export { precedingTaskIndex, gateTargetIndex, gateTargetIndices } from "./gate-targets.js";
@@ -150,17 +150,14 @@ export function workflowTargetLabel(indices: number[]): string {
     return `workflow ${stepIndicesLabel(indices)}`;
 }
 
-/** Concatenate truncated outputs of all target producer steps for a gate.
- * M30 fix: apply a total byte budget (MAX_UPSTREAM_OUTPUT_BYTES) across
- * all targets, not just per-target truncation. Pre-fix code could produce
- * arbitrarily large concatenated output when there were many targets. */
+/** Concatenate target producer outputs within one shared byte budget. */
 export function buildGateProducerOutput(
     steps: WorkflowStep[],
     targetIndices: number[],
 ): string {
     const blocks: string[] = [];
     let used = 0;
-    // HIGH: fair per-target budget so later targets aren't entirely dropped.
+    // Split the budget evenly so later targets are not entirely dropped.
     const perTargetBudget = Math.floor(MAX_UPSTREAM_OUTPUT_BYTES / targetIndices.length);
     for (const targetIndex of targetIndices) {
         const producerStep = steps[targetIndex];
@@ -290,10 +287,8 @@ export function aggregateEnsembleVerdict(step: WorkflowGateStep): {
     const results = resultEntries.map(([, result]) => result);
     const resultFromVerdict = (finalVerdict: Verdict, summary: string) => {
         const supporters = resultEntries.filter(([, result]) => result.verdict === finalVerdict)
-        // HIGH: only include scores/confidences if ALL supporters have them.
-        // Pre-fix code took max of available, silently dropping missing
-        // values. A single high-score verifier + others missing score
-        // would pass a where:score_gte condition that should be unevaluable.
+        // Include scores and confidence only when every supporting verifier
+        // supplied them. Missing values must keep threshold conditions unevaluable.
         const allHaveScore = supporters.every(([, r]) => typeof r.score === "number")
         const allHaveConfidence = supporters.every(([, r]) => typeof r.confidence === "number")
         const scores = allHaveScore
@@ -302,9 +297,8 @@ export function aggregateEnsembleVerdict(step: WorkflowGateStep): {
         const confidences = allHaveConfidence
             ? supporters.map(([, r]) => r.confidence as number)
             : []
-        // MEDIUM: only aggregate issues if ALL supporters provide them.
-        // Pre-fix code aggregated from any subset, treating a single
-        // empty issues:[] as definitive when others omitted the field.
+        // Aggregate issues only when every supporting verifier supplied them;
+        // an omitted field cannot be treated as a definitive empty list.
         const allHaveIssues = supporters.every(([, r]) => r.issues !== undefined)
         const allIssues = allHaveIssues
             ? supporters.flatMap(([, result]) => result.issues ?? [])
@@ -344,11 +338,8 @@ export function aggregateEnsembleVerdict(step: WorkflowGateStep): {
     if (total === 0) {
         return ensembleResult("INVALID", "No verifier results");
     }
-    // H-5/L1: aggregate metadata and feedback from ONLY the verifier results
-    // that SUPPORT the final aggregated verdict. A minority verifier voting
-    // INVALID with score=10 (or FAIL when the majority is PASS) must not
-    // contaminate the aggregate and trigger an incorrect `where` jump.
-    // Pre-fix code used Math.max across ALL results including dissenting votes.
+    // Aggregate metadata and feedback only from results that support the final
+    // verdict. Dissenting scores or issues must not trigger an incorrect `where` jump.
     const ensemblePolicy = step.ensemblePolicy;
     if (ensemblePolicy === undefined) {
         throw new Error("Missing workflow ensemble policy");
@@ -394,7 +385,7 @@ export function aggregateEnsembleVerdict(step: WorkflowGateStep): {
     }
 }
 
-// --- condition matching (merged from conditions.ts) ---
+// --- condition matching ---
 
 /** Map a severity string to its numeric rank for comparison. */
 function severityRank(severity: WorkflowIssueSeverity): number {
@@ -475,7 +466,7 @@ export type WorkflowConditionEvaluation = "matches" | "does_not_match" | "uneval
  * mis-routes the gate to the default successor.
  */
 export function evaluateWorkflowCondition(condition: WorkflowCondition, input: ConditionInput): WorkflowConditionEvaluation {
-    // LOW: validate threshold ranges match the verifier prompt contract.
+    // Validate threshold ranges against the verifier prompt contract.
     // score: 0-10, confidence: 0-1. Out-of-range configs produce
     // tautological or impossible conditions — treat as unevaluable.
     switch (condition.kind) {
@@ -492,7 +483,7 @@ export function evaluateWorkflowCondition(condition: WorkflowCondition, input: C
             if (input.confidence === undefined) return "unevaluable"
             return input.confidence >= condition.value ? "matches" : "does_not_match"
         case "has_issue_severity":
-            // H54: when the verifier omits the issues field entirely, the
+            // When the verifier omits the issues field entirely, the
             // condition is unevaluable — the verifier may have neglected to
             // report issues (a contract violation), not confirmed their
             // absence. Returning does_not_match here would fail-open,

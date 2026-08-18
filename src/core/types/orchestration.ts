@@ -110,8 +110,9 @@ export type DecisionRecord = {
 /**
  * A tollgate stage with an associated verification gate and verdict state.
  *
- * The gate's verifier (distinct from the producer) emits a <verdict> (or
- * <判定>) block; downstream starts only on PASS. FAIL returns the producer
+ * The gate's verifier (distinct from the producer) emits a <verdict> block or
+ * its supported Chinese-language alias. Downstream starts only on PASS. FAIL
+ * returns the producer
  * with a diff; INVALID isolates the stage and escalates the verifier side
  * (not the producer). Structurally satisfies Stage so it can be fed to
  * buildUpstreamContext.
@@ -126,7 +127,7 @@ export type GatedStage = {
     verdict?: Verdict                  // last verdict rendered by this gate
     attempts: number                   // FAIL retry count against maxGateRetries
     invalidAttempts: number            // INVALID/escalate cycle count against maxInvalidCycles
-    producerEmptyAttempts?: number     // S7: empty producer output count (distinct from FAIL retries)
+    producerEmptyAttempts?: number     // empty producer output count (distinct from FAIL retries)
 }
 
 /** Pending human-in-the-loop approval request. */
@@ -191,9 +192,6 @@ export type ActiveTask =
  *     compiling without per-site narrowing).
  *   - used by exactly 1 type AND only ever read inside a narrowed context
  *     -> the variant.
- *
- * No field was removed relative to the prior single-record shape; fields were
- * only reorganized between Base and variants.
  */
 export interface ActiveTaskBase {
     type: OrchestrationType                  // discriminant (narrowed to a literal per variant)
@@ -220,10 +218,10 @@ export interface ActiveTaskBase {
     // round-bearing types (loop / arbitrate / consensus)
     maxRounds?: number                       // round limit
     currentRound?: number
-    // #15: immutable round prompt snapshot so late/retry dispatches use the
+    // Immutable round prompt snapshot so late or retry dispatches use the
     // same text as the initial dispatch, not mutable task.responses.
     roundPrompt?: string
-    // #4: track which participants were successfully dispatched this round.
+    // Track which participants were successfully dispatched this round.
     // Barrier checks this to avoid treating a failed-dispatch member as
     // "already responded" — the member is idle but never received the prompt.
     dispatchedParticipants?: string[]
@@ -243,15 +241,14 @@ export interface ActiveTaskBase {
     reducePolicy?: ReducePolicy
     reduceRubric?: string                    // when reducePolicy === "rubric"
     reduceSelect?: string                    // when reducePolicy === "select": what "best" means (method-neutral)
-    // #4 real map-reduce: when reducePolicy != summarize AND reducerMember names
-    // a live member AND there are >1 candidates, a dedicated reducer member is
-    // dispatched post-barrier to combine outputs into one. Otherwise (undefined
-    // reducerMember) the reduce guidance is delivered to master (legacy behavior).
+    // When reducePolicy != summarize, reducerMember names a live member, and
+    // there are >1 candidates, dispatch that member after the barrier to combine
+    // outputs. Without reducerMember, deliver the reduce guidance to master.
     reducerMember?: string
     reduceStage?: boolean                    // true while the reducer stage is in flight
     reducedResult?: string                   // reducer's combined output; delivered verbatim once set
-    // J-4: snapshot of the reducer's own mapper-stage response, captured
-    // before deletion (line 45 of reduce.ts) so empty-output retries can
+    // Snapshot of the reducer's mapper-stage response before response cleanup
+    // so empty-output retries can
     // rebuild the same input set as the first attempt.
     _reducerMapperSnapshot?: string
 
@@ -264,7 +261,7 @@ export interface ActiveTaskBase {
     signoffReviewers?: string[]              // reviewers that successfully received the signoff prompt
     signoffParseFailures?: Record<string, number> // consecutive malformed responses by reviewer
     signoffStage?: boolean                   // true when in signoff phase
-    signoffFailed?: boolean                  // HIGH #9: signoff configured but no reviewers available; caller must fail run
+    signoffFailed?: boolean                  // signoff configured but no reviewers available; caller must fail run
     signoffRawOutputs?: Record<string, string>  // per-reviewer signoff turn output (side-channel so task.responses preserves work output)
 
     // human approval policy (mid-run HITL pause; distinct from post-completion signoff)
@@ -305,7 +302,7 @@ export interface PipelineTask extends ActiveTaskBase {
 export interface LoopTask extends ActiveTaskBase {
     type: "loop"
     deciderMember?: string                   // member name of decider (NOT "master")
-    maxDecisionParseFailures?: number       // H42: override default parse-failure threshold (default 3)
+    maxDecisionParseFailures?: number       // override default parse-failure threshold (default 3)
 }
 
 // delegate: shared tasklist, members self-claim.
@@ -331,7 +328,7 @@ export interface RouteTask extends ActiveTaskBase {
     routeTargets?: string[]                  // resolved target member names after the router's decision
     routeStage: boolean                      // false = router phase; true = target fan-out phase
     routeDecisionRationale?: string          // router's stated rationale (observability)
-    maxRouteParseFailures?: number           // H42: override default parse-failure threshold (default 2)
+    maxRouteParseFailures?: number           // override default parse-failure threshold (default 2)
 }
 
 // arbitrate: debate then authoritative ruling.
@@ -344,7 +341,7 @@ export interface ArbitrateTask extends ActiveTaskBase {
     arbitrationRuling?: string               // arbiter's binding ruling (set at ruling)
     arbitrationRationale?: string            // arbiter's stated rationale for the ruling
     hitlPhase?: "pre" | "post" | "both"      // HITL pause point(s); default "pre" when humanApproval is true
-    maxRulingParseFailures?: number          // H42: override default ruling parse-failure threshold (default 2)
+    maxRulingParseFailures?: number          // override default ruling parse-failure threshold (default 2)
 }
 
 // recurse: hierarchical recursive decomposition.
@@ -356,8 +353,8 @@ export interface RecurseTask extends ActiveTaskBase {
     maxSubtasks?: number                     // per-decomposition subtask upper bound (default 5)
     rootTaskId?: string                      // the root task id; its result is the final deliverable
     aggregationDispatchCount?: number        // decomposer dispatches that failed to produce a root claim (stall detection; recurse mode)
-    maxAggregationDispatches?: number        // H42: override default aggregation stall threshold (default 3)
-    // M-20: dedicated counter for malformed <decompose> parse failures so
+    maxAggregationDispatches?: number        // override default aggregation stall threshold (default 3)
+    // Dedicated counter for malformed <decompose> parse failures so
     // continuous format errors don't burn unlimited tokens.
     decomposeParseFailures?: number
     maxDecomposeParseFailures?: number       // override default (3)

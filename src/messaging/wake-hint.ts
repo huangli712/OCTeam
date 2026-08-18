@@ -12,7 +12,7 @@ import { logger } from "../core/log.js"
 // Minimum gap between wake hints sent to the same session. Prevents wake loops
 // where a long unread backlog keeps re-triggering promptAsync on every sweep.
 const WAKE_HINT_THROTTLE_MS = 30_000
-// H-G1: bound the promptAsync call so a hanging host API does not leave
+// Bound the promptAsync call so a hanging host API does not leave
 // an unresolved promise indefinitely. Fire-and-forget wake hints should
 // never block the caller.
 const WAKE_HINT_TIMEOUT_MS = 10_000
@@ -50,16 +50,13 @@ export async function sendWakeHint(
     const now = Date.now()
     const last = wakeHintLastSent.get(sessionID) ?? 0
     if (now - last < WAKE_HINT_THROTTLE_MS) return
-    // M2: snapshot the timestamp BEFORE the async send so we can check
-    // afterward whether a newer call overwrote it. Pre-fix code deleted the
-    // entry unconditionally on failure — if a newer call wrote a fresh
-    // timestamp in between, the deletion would clear the legitimate throttle.
+    // Snapshot the timestamp before the async send so failure cleanup clears it
+    // only when no newer call has installed a fresh throttle.
     const snapshot = now
     wakeHintLastSent.set(sessionID, snapshot)
     evictStaleWakeHints()
-    // H-G1: race the promptAsync against a timeout so a hanging host API
-    // does not leave an unresolved promise. Pre-fix code had no timeout,
-    // so a stuck SDK call would permanently occupy the await.
+    // Race promptAsync against a timeout so a hanging host API cannot leave an
+    // unresolved promise occupying this await.
     const promptPromise = ctx.client.session
         .promptAsync({
             path: { id: sessionID },
@@ -84,21 +81,20 @@ export async function sendWakeHint(
     try {
         await Promise.race([promptPromise, timeoutPromise])
     } catch (err) {
-        // M2: only clear the throttle if OUR timestamp is still the one
-        // in the map. Pre-fix code deleted unconditionally, so a newer
-        // call's throttle would be cleared by an older call's failure.
+        // Clear the throttle only if this call's timestamp remains in the map,
+        // preserving any newer call's throttle after an older failure.
         if (wakeHintLastSent.get(sessionID) === snapshot) {
             wakeHintLastSent.delete(sessionID)
         }
         logger.debug("wake-hint promptAsync failed (best-effort)", { sessionID, error: String(err) })
     } finally {
-        // MEDIUM: clear the timeout timer on both success and failure so
+        // Clear the timeout timer on both success and failure so
         // it doesn't linger as an unref'd timer.
         if (timeoutHandle) clearTimeout(timeoutHandle)
     }
 }
 
-/** Drop a session's throttle entry (L1) — called on team_delete to bound the map. */
+/** Drop a session's throttle entry after team deletion to bound the map. */
 export function clearWakeHint(sessionID: string): void {
     wakeHintLastSent.delete(sessionID)
 }

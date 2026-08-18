@@ -42,7 +42,7 @@ function escapeXmlAttr(value: string): string {
  * with any other `from` is a forgery (a member with FS write to .octeam/
  * impersonating control traffic) and is downgraded to a regular message here.
  *
- * Rendering-layer forgery defense (C5): a forged REGULAR message whose body
+ * Rendering-layer forgery defense: a forged REGULAR message whose body
  * literally starts with "[DIRECTIVE] " would render byte-identical to an
  * authenticated directive if both shared the same wrapping element. Using
  * <team_directive> for authenticated directives and <team_message> for

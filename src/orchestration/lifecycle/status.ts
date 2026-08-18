@@ -2,8 +2,8 @@
  * Session status event handler: monitors retry/error/idle/busy transitions
  * and escalates sustained retries to "errored" (otherwise barriers wait forever).
  *
- * Extracted from handlers.ts. This is an independent event-driven entry point
- * (called from hooks.ts), unrelated to the idle state machine.
+ * This independent event-driven entry point is called from hooks.ts and is
+ * unrelated to the idle state machine.
  */
 
 import type { PluginContext } from "../../core/context.js"
@@ -44,17 +44,15 @@ async function escalateMemberToErrored(
 ): Promise<void> {
     const retryingSince = live.retryingSince
     live.status = "errored"
-    // HIGH: clear retryingSince so sweep doesn't re-escalate this member
-    // on every tick. Pre-fix code left it set, causing repeated escalation.
+    // Clear retryingSince so the sweep does not re-escalate this member on
+    // every tick.
     live.retryingSince = undefined
     live.error =
         `sustained retry > ${RETRY_ESCALATION_MS}ms`
         + ((live.retryCount ?? 0) > 0 ? ` after ${live.retryCount} retries` : "")
         + `: ${entry?.message ?? "unknown"}`
-    // H-status: bounded-retry save so a transient I/O error does not leave
-    // memory (errored) and disk (still retrying) diverged. Pre-fix code used
-    // bare saveTeamState whose throw propagated up through the event wrapper,
-    // swallowing the error but leaving the member as errored in memory only.
+    // A bounded-retry save keeps in-memory and on-disk member state aligned
+    // across transient I/O failures.
     try {
         await saveTeamStateBounded(team)
     } catch (err) {
@@ -110,7 +108,7 @@ async function escalateMemberToErrored(
             }
         }
     }
-    // H-status: trailing save also uses bounded retry.
+    // The trailing save also uses bounded retry.
     try {
         await saveTeamStateBounded(team)
     } catch (err) {
@@ -136,10 +134,8 @@ export async function handleStatusEvent(
 
     let team
     try {
-        // M-STATUS: use member.storageRoot (the actual scope the team lives in),
-    // not ctx.storageRoot (the active plugin scope). Pre-fix code used ctx.scope,
-    // which fails for members in the non-active scope (e.g. user-scope member
-    // during a project-scope plugin run).
+        // Use member.storageRoot, the scope where the team lives, rather than
+        // ctx.storageRoot, which may point at the plugin's other active scope.
     team = await loadTeamState(member.storageRoot, member.teamName, member.leadSessionId)
     } catch (err) {
         logger.warn("status handler: failed to load team state", { teamName: member.teamName, error: String(err) })
@@ -147,10 +143,10 @@ export async function handleStatusEvent(
     }
     await team.mutex.runExclusive(async () => {
         if (team.deleted) return
-        // CRIT #4: cross-process ownership guard — don't process status
+        // Cross-process ownership guard: do not process status
         // events for a run owned by another process.
         if (team.runnerPid !== undefined && team.runnerPid !== process.pid) return
-        // HIGH: verify the event's sessionID matches the live member's.
+        // Verify that the event's sessionID matches the live member's.
         const live = team.members.find(m => m.name === member.name)
         if (!live) return
         if (live.sessionId !== undefined && live.sessionId !== sessionID) return
@@ -172,11 +168,8 @@ export async function handleStatusEvent(
             await saveTeamStateBounded(team)
         } else if (entry?.type === "busy") {
             // A previously-idle member is active again: backfill the running state.
-            // H7: also clear retryingSince — the member is now productively
-            // working (not retrying). Pre-fix code only cleared on idle, so a
-            // member that retried then succeeded would keep the retry timer,
-            // and maybeEscalateRetry would later mark it errored after 60s of
-            // normal work.
+            // Also clear retryingSince because the member is productively
+            // working again and must not be escalated during normal work.
             let changed = false
             if (live.status === "idle") {
                 live.status = "running"
@@ -192,11 +185,9 @@ export async function handleStatusEvent(
 }
 
 /**
- * M-8: shared retry-escalation check. Called from BOTH handleStatusEvent (on
- * new session.status events) AND sweepTeamOnce (periodically). Pre-fix code
- * only checked the escalation window inside handleStatusEvent, so a long retry
- * storm with no new status events would never escalate — the member stayed in
- * retry forever, consuming wall-clock until the global timeout.
+ * Shared retry-escalation check called from handleStatusEvent on new status
+ * events and from sweepTeamOnce periodically, so a sustained retry can escalate
+ * even when the host emits no further status events.
  *
  * Must be called inside team.mutex.runExclusive.
  */

@@ -3,7 +3,7 @@
  * step list. Centralizes linear-engine invariants (unique ids, target resolution,
  * no self-verification, cross-kind field separation, retry caps required).
  *
- * Extracted from the workflow tool entry point. Imports lowering + ref resolution from lower.ts.
+ * Imports lowering and reference resolution from lower.ts.
  */
 
 import type { MemberState } from "../../core/types.js"
@@ -134,8 +134,8 @@ export function validatePublicWorkflowShape(steps: readonly WorkflowToolStep[]):
                 if (steps[index - 1]?.kind !== "fanout") {
                     return `Error: join step ${index + 1} has no matching fanout step`
                 }
-                // #17: reject join-policy fields on join steps (they belong
-                // on the companion fanout). Pre-fix code silently dropped them.
+                // Join-policy fields belong on the companion fanout and are
+                // rejected on join markers.
                 if ("join_policy" in step || "quorum" in step || "required_branches" in step
                     || "reducer_member" in step || "use_survivors" in step) {
                     return `Error: join step ${index + 1} has join-policy fields. These belong on the companion fanout step.`
@@ -205,8 +205,8 @@ function validateMatrixForeachShape(step: WorkflowFanoutToolStep, displayStep: n
         if ((step.steps ?? []).length === 0) {
             return `Error: fanout step ${displayStep} with matrix/foreach requires template \`steps\``
         }
-        // MEDIUM #24: validate post-expansion step count to prevent
-        // unbounded fanout. Matrix product or foreach length * steps per branch.
+        // Validate post-expansion step count to bound fanout. The total is the
+        // matrix product or foreach length multiplied by steps per branch.
         const templateSteps = step.steps?.length ?? 0
         const matrixValues = step.matrix ? Object.values(step.matrix) : []
         const foreachValues = step.foreach ?? []
@@ -228,10 +228,8 @@ function validateMatrixForeachShape(step: WorkflowFanoutToolStep, displayStep: n
 function validateFanoutJoinPolicy(step: WorkflowFanoutToolStep, displayStep: number): string | null {
     const policy = step.join_policy
     if (policy === undefined) {
-        // M-VALIDATE: warn when policy-specific fields are set without a
-        // join_policy. Without this, required_branches/quorum/reducer_member
-        // silently pass validation but have no effect at runtime (default
-        // policy is tolerance).
+        // Policy-specific fields require an explicit join_policy because they
+        // have no effect under the default tolerance policy.
         if (step.required_branches !== undefined || step.quorum !== undefined || step.reducer_member !== undefined) {
             return `Error: fanout step ${displayStep} has join_policy-specific fields (required_branches/quorum/reducer_member) but no join_policy is set. Set join_policy explicitly.`
         }
@@ -255,9 +253,8 @@ function validateFanoutJoinPolicy(step: WorkflowFanoutToolStep, displayStep: num
             break
         }
         case "required_branches": {
-            // C-8: required_branches null/non-array guard. Pre-fix code called
-            // .length on the value, throwing TypeError on null/undefined
-            // sent by a malformed workflow_file.
+            // Guard required_branches before reading its length because workflow
+            // files may contain malformed values.
             if (!Array.isArray(step.required_branches) || step.required_branches.length === 0) {
                 return `Error: fanout step ${displayStep}`
                     + ` join_policy='required_branches' requires an array \`required_branches\``
@@ -562,10 +559,7 @@ function validateTaskInputs(
     return null
 }
 
-/** Validate that a retry-count field (max_task_retries, max_retries, etc.) is
- * an integer in [0, MAX_RETRY_COUNT]. Returns null when absent or valid, an
- * error string otherwise. C-8: pre-fix code accepted any number including
- * 1e9, allowing resource exhaustion via workflow_file tampering. */
+/** Maximum retry count accepted from workflow input. */
 const MAX_RETRY_COUNT = 5
 function validateRetryCountField(
     value: number | undefined,
@@ -613,9 +607,8 @@ function validateLoweredTaskStep(
     const inputsError = validateTaskInputs(steps, task, index, displayStep)
     if (inputsError !== null) return inputsError
     if (task.retry_on !== undefined) {
-        // M-6: guard against retry_on being null or non-object (disk tampering
-        // or LLM tool-call oddity). Pre-fix code accessed task.retry_on.empty
-        // directly, which would throw on null.
+        // Require retry_on to be a non-null object before reading its fields
+        // because workflow input may contain malformed values.
         if (typeof task.retry_on !== "object" || task.retry_on === null || Array.isArray(task.retry_on)) {
             return `Error: ${location} retry_on must be an object`
         }
@@ -630,13 +623,8 @@ function validateLoweredTaskStep(
                 + ` output_not_contains, or regex`)
         }
         if (condCount > 1) return `Error: ${location} retry_on must set exactly one condition (found ${condCount})`
-        // C-12: type-check each condition field so non-string regex or
-        // empty:false cannot pass validation and later crash lower/runtime.
-        // Pre-fix code only ran `new RegExp(value)` which coerces numbers/
-        // objects to strings without error, then lower.ts called string
-        // methods on the value → TypeError. Also reject empty:false (counted
-        // as a condition by !==undefined but treated as not-configured at
-        // runtime).
+        // Type-check each condition before compiling regexes or using string
+        // methods. Reject empty:false because it is not an active condition.
         if (task.retry_on.empty !== undefined && task.retry_on.empty !== true) {
             return `Error: ${location} retry_on.empty must be true if present`
         }
@@ -651,9 +639,7 @@ function validateLoweredTaskStep(
         }
         if (task.max_task_retries === undefined) return `Error: ${location} with retry_on requires \`max_task_retries\``
     }
-        // C-8: integer + bounded-range check for max_task_retries. Pre-fix
-        // accepted any number including 1e9, allowing resource exhaustion via
-        // workflow_file tampering.
+        // Bound max_task_retries so workflow input cannot request excessive retries.
         const maxTaskRetriesErr = validateRetryCountField(task.max_task_retries, "max_task_retries", location)
         if (maxTaskRetriesErr !== null) return maxTaskRetriesErr
         if (task.max_task_retries !== undefined && task.retry_on === undefined) {
@@ -678,7 +664,7 @@ function validateLoweredTaskStep(
     if (task.on_timeout === "retry" && task.max_timeout_retries === undefined) {
         return `Error: ${location} with on_timeout='retry' requires \`max_timeout_retries\``
     }
-    // C-8: integer + bounded-range check for max_timeout_retries.
+    // Apply the bounded integer check to max_timeout_retries.
     const maxTimeoutRetriesErr = validateRetryCountField(task.max_timeout_retries, "max_timeout_retries", location)
     if (maxTimeoutRetriesErr !== null) return maxTimeoutRetriesErr
     if (!isTeamMember(team, task.member)) {
@@ -747,7 +733,7 @@ function validateLoweredGateStep(
     if (gate.on_timeout === "retry" && gate.max_timeout_retries === undefined) {
         return `Error: ${location} with on_timeout='retry' requires \`max_timeout_retries\``
     }
-    // C-8: integer + bounded-range checks for all gate retry-count fields.
+    // Apply bounded integer checks to all gate retry-count fields.
     for (const [fieldName, value] of [
         ["max_retries", gate.max_retries],
         ["max_invalid_retries", gate.max_invalid_retries],
@@ -782,9 +768,8 @@ function validateLoweredGateStep(
         return `Error: ${location} max_jumps requires on_pass_goto/on_fail_goto/on_invalid_goto (no goto to bound)`
     }
     if (gate.loop !== undefined) {
-        // C-8: validate loop shape. Pre-fix code accepted loop:{} (empty),
-        // loop:{max_iterations: 1e9}, loop:{on_exhaust: "explode"} silently,
-        // leading to runtime crashes or unbounded retries.
+        // Validate loop shape and bounds before runtime to prevent invalid or
+        // unbounded retries.
         if (typeof gate.loop !== "object" || gate.loop === null || Array.isArray(gate.loop)) {
             return `Error: ${location} loop must be an object`
         }
@@ -817,10 +802,8 @@ function validateLoweredGateStep(
         ["on_invalid_goto", gate.on_invalid_goto],
     ] as const) {
         if (ref === undefined) continue
-        // C-8: goto must not target a fanout marker step. Pre-fix code only
-        // checked that the index existed; resolving to a fanout marker silently
-        // returned -1 at runtime and fell through to sequential advance,
-        // skipping the intended jump target.
+        // Goto refs must not target fanout markers, which cannot be runtime
+        // jump destinations.
         if (resolvesToMarkerStep(steps, index, ref)) {
             return (`Error: ${location} ${field} "${String(ref)}" must not reference a fanout marker step`)
         }
@@ -829,19 +812,14 @@ function validateLoweredGateStep(
             return (`Error: ${location} ${field} "${String(ref)}" must reference an existing step`
                 + `${typeof ref === "string" ? " by id" : ""} and must not self-jump`)
         }
-        // M19: goto targets must be task or gate steps (runtime canGateGotoStep
-        // rejects join/fanout). Pre-fix code only checked that the target exists;
-        // a join or fanout target would pass validation but silently return -1
-        // at runtime and fall through to sequential advance.
+        // Goto targets must be task or gate steps because runtime jump handling
+        // rejects join and fanout steps.
         const targetStep = steps[gotoIdx]
         if (targetStep && targetStep.kind !== "task" && targetStep.kind !== "gate") {
             return `Error: ${location} ${field} "${String(ref)}" must reference a task or gate step, not ${targetStep.kind}`
         }
-        // M18: a top-level gate must not reference a branch-internal target.
-        // Pre-fix code allowed this — validation passed (target exists and is
-        // task/gate), but runtime canGateGotoStep rejects cross-branch jumps
-        // silently (returns -1). The gate then falls through to sequential
-        // advance, skipping the intended goto target.
+        // Top-level gates cannot jump into fanout branches; gotos must stay
+        // within their workflow scope.
         const gateStep = steps[index]
         if (targetStep && gateStep?.kind === "gate" && gateStep.branch === undefined && targetStep.branch !== undefined) {
             return `Error: ${location} ${field} "${String(ref)}" references a branch-internal step from a top-level gate — gotos cannot cross branch boundaries`
@@ -907,9 +885,8 @@ function validateLoweredGateStep(
         return `Error: ${location} fallback_verifier must differ from verifier`
     }
     if (gate.verifiers !== undefined) {
-        // M-6: verify verifiers is an array before iterating. A non-array
-        // value (e.g. verifiers: 5 from a malformed workflow_file) would
-        // crash the for...of loop.
+        // Verify verifiers is an array before iterating because workflow files
+        // may contain malformed values.
         if (!Array.isArray(gate.verifiers)) {
             return `Error: ${location} verifiers must be an array of strings`
         }
@@ -1065,12 +1042,7 @@ export function hasInlineSteps(args: WorkflowToolArgs): boolean {
     return args.steps !== undefined
 }
 
-/**
- * M-7: wrap expandMatrixForeachFanout so its internal throws (matrix/foreach
- * branch-limit exceeded) are converted to user-facing error strings instead
- * of unhandled exceptions. Returns the expanded steps on success, or an error
- * string on failure.
- */
+/** Expand matrix and foreach fanouts, returning a user-facing error for branch-limit failures. */
 function safeExpandMatrixForeach(steps: readonly WorkflowToolStep[]): WorkflowToolStep[] | string {
     try {
         return expandMatrixForeachFanout(steps)
@@ -1092,7 +1064,7 @@ export async function resolveWorkflowArgs(
         if ("error" in validated) return validated.error
         const expanded = safeExpandMatrixForeach(validated.steps)
         if (typeof expanded === "string") return expanded
-        // MEDIUM: enforce global step cap after expansion.
+        // Enforce the global step cap after expansion.
         if (expanded.length > WORKFLOW_MAX_TOTAL_STEPS) {
             return `Error: workflow expands to ${expanded.length} steps, exceeding the ${WORKFLOW_MAX_TOTAL_STEPS} limit`
         }

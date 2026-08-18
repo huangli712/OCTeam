@@ -46,7 +46,7 @@ export function selectArenaWinner(
         else entriesByMember.set(entry.member, [entry])
     }
 
-    // H-28: verify scoreboard COVERS all candidates. A partial scoreboard
+    // Verify the scoreboard covers all candidates. A partial scoreboard
     // (e.g. only 1 of 3 survivors scored) must NOT silently let the sole
     // entry win by default — the evaluator's omission could be a contract
     // violation. Require every candidate to have exactly one entry.
@@ -95,14 +95,12 @@ export async function startArenaEvaluation(ctx: PluginContext, team: Team): Prom
         await finishRun(ctx, team, "arena_failed:evaluator_unavailable", "failed")
         return
     }
-    // HIGH-D: set arenaPhase BEFORE dispatch so the dispatch's immediate
-    // saveTeamState persists the correct phase. Pre-fix order persisted
-    // "evaluator running + phase=implement"; if the subsequent saveTeamState
-    // failed or the process crashed, resume would see phase=implement and
-    // re-trigger the implementation barrier, double-dispatching the evaluator.
+    // Set arenaPhase before dispatch so the immediate state save records the
+    // evaluator as running in the evaluate phase. This prevents resume from
+    // re-entering the implementation barrier and double-dispatching the evaluator.
     task.arenaPhase = "evaluate"
-    // H56: clear the evaluator's stale response before re-dispatch, mirroring
-    // tollgate.ts startVerification (C17). Without this, a reused evaluator
+    // Clear the evaluator's stale response before re-dispatch, mirroring
+    // tollgate.ts startVerification. Without this, a reused evaluator
     // (or one re-dispatched after a stale idle) would have its previous
     // scoreboard read as the new gate's result.
     if (task.evaluatorMember) delete task.responses[task.evaluatorMember]
@@ -140,7 +138,7 @@ export function buildArenaEvaluatorPrompt(task: ArenaTask, team: Team): string {
         + `Candidates (name: absolute worktree path):\n${rows}\n\n`
         + `${basis.join("\n")}\n`
         + `Winner metric: "${task.winnerMetric}", selected by ${task.scoreDirection}.\n\n`
-        // M-30: only instruct "run the eval command" when one is provided.
+        // Only instruct "run the eval command" when one is provided.
         // When only eval_criteria is set, the evaluator scores by reading
         // code against the criteria, not by running a command.
         + (task.evalCommand

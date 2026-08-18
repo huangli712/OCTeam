@@ -37,11 +37,9 @@ export async function checkTermination(
         return
     }
 
-    // #14: HITL approval timeout. When approvalStage is active and
-    // approvalTimeoutMs is set, check if the pause has exceeded the timeout.
-    // Pre-fix code: ApprovalTimeoutAction type was defined but had ZERO
-    // execution path — a leader going offline or missing the notification
-    // could leave the run busy indefinitely (wall-clock was paused).
+    // HITL approval timeout. When approvalStage is active and
+    // approvalTimeoutMs is set, fail a pause that exceeds the timeout so an
+    // unavailable leader cannot leave the run busy indefinitely.
     if (task.approvalStage && task.approvalRequest && task.approvalTimeoutMs !== undefined) {
         const elapsed = now - task.approvalRequest.requestedAt
         if (elapsed > task.approvalTimeoutMs) {
@@ -80,11 +78,10 @@ export async function checkTermination(
     // (pipeline/loop/consensus) get tolerance 0 — one active member, no survivors.
     const erroredMembers = team.members.filter(m => !m.isMaster && m.status === "errored")
     if (erroredMembers.length > 0) {
-        // H7: if signoff is in progress, the signoff handler owns errored-
+        // If signoff is in progress, the signoff handler owns errored-
         // reviewer handling (signoff.ts excludes errored reviewers from
-        // quorum). Pre-fix code let the generic task-type handler fire first
-        // — for non-workflow tasks, a single reviewer error would terminate
-        // the ENTIRE run, bypassing signoff's peer-quorum tolerance.
+        // quorum), so generic member-error handling must not bypass signoff's
+        // peer-quorum tolerance.
         if (task.signoffStage) return
         if (task.type === "workflow") {
             const activeActors = new Set(getActiveWorkflowStepActors(task))
@@ -93,11 +90,8 @@ export async function checkTermination(
                 const result = markWorkflowFanoutBranchErrored(task, member.name)
                 switch (result.kind) {
                     case "within_tolerance":
-                        // I-2: re-drive the workflow barrier so the surviving
-                        // branches can complete. Pre-fix code `continue`d,
-                        // leaving the run stalled until wall-clock timeout
-                        // when the errored member was the last awaited one
-                        // (no more idle events to re-trigger advance).
+                        // Re-drive the workflow barrier so surviving branches can
+                        // complete when the errored member was the last awaited one.
                         await advanceWorkflowStep(ctx, team)
                         continue
                     case "failed":

@@ -88,18 +88,14 @@ function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-/** Read a file as string for backup. Returns null ONLY on ENOENT (file does
- * not exist). Any other error (EACCES, EIO, corruption, ...) is THROWN so
- * the caller knows the file exists but could not be backed up and can abort
- * before overwriting. The previous implementation returned null for both
- * cases, causing the rollback path to unlink an existing-but-unreadable file
- * — permanent data loss. */
+/** Read a file for backup, returning null only when it does not exist.
+ * Other failures are thrown so callers never overwrite a file they cannot restore. */
 async function readFileForBackup(filePath: string, trustedRoot: string): Promise<string | null> {
     const { open } = await import("node:fs/promises")
     await assertNoSymlinkTraversal(trustedRoot, filePath)
     try {
-        // MEDIUM: use O_NOFOLLOW to atomically reject leaf symlinks,
-        // eliminating the lstat→readFile TOCTOU window.
+        // Open with O_NOFOLLOW to reject leaf symlinks atomically and close the
+        // lstat-to-readFile race.
         const O_NOFOLLOW = (await import("node:fs")).constants.O_NOFOLLOW ?? 0x20000
         const fh = await open(filePath, O_NOFOLLOW)
         try {
@@ -185,11 +181,9 @@ function buildCorrectionPrompt(error: string): string {
     )
 }
 
-/** Poll the child session until it yields COMPLETE assistant text, or throw on timeout.
- *  HIGH: pre-fix code returned on the FIRST non-empty text, which could be a
- *  partial streaming response. Evaluating partial text and sending a
- *  correction prompt while the original generation is still running creates
- *  overlapping turns. Now we wait for a closing tag or stable output. */
+/** Poll the child session until it yields complete assistant text, or throw on timeout.
+ * Wait for a closing tag or stable output so partial streams are never evaluated
+ * as complete responses. */
 async function pollForAssistantOutput(ctx: PluginContext, childId: string, poll: PollConfig): Promise<string> {
     const deadline = Date.now() + poll.timeoutMs
     let lastOutput = ""
@@ -198,9 +192,8 @@ async function pollForAssistantOutput(ctx: PluginContext, childId: string, poll:
         const res = await ctx.client.session.messages({ path: { id: childId } })
         const output = extractAssistantText(res.data ?? [])
         if (output.trim().length > 0) {
-            // HIGH: only accept the team_planner closing tag as a completion
-            // signal, not workflow/工作流 (those are inner tags that may
-            // appear before the full response is generated).
+            // Accept only the team_planner closing tag as a completion signal;
+            // inner tags may appear before the full response is generated.
             const hasClosingTag = /<\/(?:team_planner|团队规划师)>/.test(output)
             if (hasClosingTag) return output
             if (output === lastOutput) {
@@ -305,9 +298,7 @@ function validateTeamId(teamId: string): string | null {
     return null
 }
 
-/** Validate team bounds object: numeric fields must be positive integers, maxMembers >= member count.
- *  MEDIUM #14: also validate role/prompt/member name constraints to match
- *  team_create's stricter validation. */
+/** Validate positive integer team bounds and ensure maxMembers covers all members. */
 function validatePlannerBounds(bounds: unknown, memberCount: number): string | null {
     if (bounds === undefined) return null
     if (!isRecord(bounds)) return "Error: team.bounds must be an object"
@@ -386,20 +377,19 @@ function validatePlannerTeam(teamId: string, team: unknown): { memberNames: stri
         if (member.role !== undefined && typeof member.role !== "string") {
             return { error: `Error: team.members[${i}] role must be a string` }
         }
-        // M10 fix: planner-produced members MUST have a role and prompt.
-        // Pre-fix code treated these as optional, producing a team.json that
-        // team_create would later reject or silently use empty prompts.
+        // Require planner-produced members to include a role and prompt so
+        // team_create can accept the generated team.
         if (typeof member.role !== "string" || member.role.length === 0) {
             return { error: `Error: team.members[${i}] is missing a role` }
         }
-        // MEDIUM: validate role matches the preset regex (same as team_create).
+        // Validate roles against the preset pattern used by team_create.
         if (!/^[a-z]+$/.test(member.role)) {
             return { error: `Error: team.members[${i}] role "${member.role}" must be lowercase letters only` }
         }
         if (typeof member.prompt !== "string" || member.prompt.length === 0) {
             return { error: `Error: team.members[${i}] is missing a prompt` }
         }
-        // MEDIUM: enforce prompt/model length caps to match team_create.
+        // Apply team_create's prompt and model length caps.
         if (member.prompt.length > 8192) {
             return { error: `Error: team.members[${i}] prompt exceeds 8192 characters` }
         }
@@ -414,9 +404,7 @@ function validatePlannerTeam(teamId: string, team: unknown): { memberNames: stri
             return { error: `Error: team.members[${i}] worktree must be a boolean` }
         }
     }
-    // M-PLANNER: enforce the same member count limit as team_create (max 12).
-    // Pre-fix code allowed unlimited members, which would produce a team.json
-    // that team_create later rejects.
+    // Enforce team_create's 12-member limit before writing the generated team.
     if (memberNames.length > 12) {
         return { error: `Error: team.members must have at most 12 members (got ${memberNames.length})` }
     }
@@ -648,11 +636,11 @@ async function runWriteOp(ctx: PluginContext, args: TeamPlannerArgs): Promise<st
     if (args.dry_run === true) {
         return `Validation OK for "${args.team_id}". Dry run — nothing written.\n\n${artifact}`
     }
-    // C: hold the state lock across the existsSync check + backup + BOTH writes
-    // + rollback so a concurrent process (another team_planner write, or team
+    // Hold the state lock across the existsSync check, backup, both writes,
+    // and rollback so a concurrent process (another team_planner write, or team
     // lifecycle writer under the same directory) cannot interleave between the
     // no-overwrite check and the writes, producing a torn team/workflow pair.
-    // P9: use a planner-specific lock name to avoid namespace collision
+    // Use a planner-specific lock name to avoid namespace collision
     // with state.json.lock. The stale-lock reaper treats state.json.lock as
     // a team-state lock and may reap it based on PID liveness; a dedicated
     // name avoids accidental cross-domain deletion.
@@ -664,11 +652,8 @@ async function runWriteOp(ctx: PluginContext, args: TeamPlannerArgs): Promise<st
             )
         }
         // Back up existing files so rollback can restore them (overwrite:true case).
-        // C-9: back up BOTH team and workflow files so a failure of the second
-        // write can restore BOTH originals. Backup failures (file exists but
-        // unreadable) MUST abort before overwriting — the previous code returned
-        // null for both "missing" and "unreadable", causing the rollback path to
-        // unlink an existing-but-unreadable file (permanent data loss).
+        // Back up both loader files and abort if either existing file is
+        // unreadable, because rollback must not treat unreadable data as missing.
         let teamBackup: string | null = null
         let workflowBackup: string | null = null
         if (args.overwrite === true) {
@@ -685,10 +670,8 @@ async function runWriteOp(ctx: PluginContext, args: TeamPlannerArgs): Promise<st
         // Use atomicWrite for symlink-safety (refuses to write through symlinks,
         // walks ancestor chain from ctx.directory when trustedRoot is supplied)
         // and crash-safety (tmp + rename, fsync'd).
-        // G: wrap BOTH writes in one rollback try so a failure of the FIRST
-        // write (e.g. fsync after rename) also restores the original team file.
-        // Pre-fix code had only the second write in the try, so a first-write
-        // throw left the team file corrupted with no restore path.
+        // Keep both writes inside one rollback boundary so either failure restores
+        // the original loader pair.
         try {
             await atomicWrite(teamPath, `${JSON.stringify(team, null, 4)}\n`, ctx.directory)
             await atomicWrite(workflowPath, `${JSON.stringify(workflow, null, 4)}\n`, ctx.directory)

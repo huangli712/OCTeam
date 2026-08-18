@@ -45,12 +45,8 @@ async function waitForRoleSetupBarrier(
             ),
         { timeoutMs: ROLE_SETUP_BARRIER_TIMEOUT_MS },
     ).catch(async () => {
-        // HIGH-B: run the entire cleanup under team.mutex so a concurrent idle
-        // event from a spawned-but-not-initialized member cannot race with the
-        // session.delete / unindexSession / status=errored mutations. Pre-fix
-        // code ran cleanup outside the mutex; an idle event firing between the
-        // barrier timeout and the mutex acquisition would see the member as
-        // still having a sessionId and try to process its (non-existent) output.
+        // Run cleanup under team.mutex so an idle event from an uninitialized
+        // member cannot race session deletion, unindexing, or status changes.
         let barrierRecovered = false
         await team.mutex.runExclusive(async () => {
             let persistedMembers: MemberState[] | undefined
@@ -118,9 +114,8 @@ async function waitForRoleSetupBarrier(
                         logSwallowed(ctx, "barrier timeout: session.delete failed", err, {
                             team: team.teamName, member: name, sessionId: sid,
                         })
-                        // H-H4: keep sessionId on failure so the reconciler can
-                        // retry cleanup. Pre-fix code cleared it unconditionally,
-                        // making the orphaned session unrecoverable.
+                        // Keep sessionId on failure so the reconciler can retry
+                        // cleanup of the orphaned session.
                     }
                     if (current.worktreePath) {
                         try {
@@ -247,10 +242,8 @@ async function spawnMemberSafely(
             },
         })
         member.turnCount = 1
-        // H-H3: persist the new session ID immediately so a crash between
-        // session.create and the first role-idle does not orphan the session.
-        // Pre-fix code only saved on the next unrelated idle; a restart would
-        // re-create a second session, leaving the first orphaned.
+        // Persist the new session ID before the first role idle so a crash cannot
+        // make restart create a second session and orphan the first.
         try {
             await team.mutex.runExclusive(() => saveTeamStateBounded(team))
         } catch (persistErr) {
@@ -283,11 +276,8 @@ async function spawnMemberSafely(
                     })
                 }
             }
-            // L-3: keep the sessionId indexed when session.delete fails so the
-            // crash reconciler (reconcile.ts) can retry cleanup on the next
-            // sweep. Pre-fix code always called unindexSession, orphaning the
-            // host session permanently — no index entry means reconcile cannot
-            // find it to retry the delete.
+            // Keep sessionId indexed when deletion fails so the crash reconciler
+            // can find the host session and retry cleanup on the next sweep.
             if (deleted) {
                 unindexSession(sessionId)
                 member.sessionId = undefined
@@ -300,7 +290,7 @@ async function spawnMemberSafely(
                 // Do NOT clear member.sessionId — reconcile needs it.
             }
         }
-        // HIGH: only reset to pending if session was successfully deleted.
+        // Reset to pending only after the session is successfully deleted.
         // If delete failed, keep errored status so reconcile retries.
         if (member.status !== "errored") {
             member.status = "pending"
@@ -346,12 +336,9 @@ export async function ensureMembersReady(
     const { toSpawn, waitNames } = planMemberSpawn(team)
     if (waitNames.size === 0) return
 
-    // H-L10: read config.json from team.directory directly, not via
-    // readTeamSpec(ctx.storageRoot, team.teamName, team.leadSessionId).
-    // Pre-fix code passed team.leadSessionId as the path segment, which is
-    // correct for project scope (<root>/<sid>/teams/<name>) but WRONG for
-    // user scope (<root>/teams/<name> — no session segment). Using
-    // team.directory avoids the scope mismatch entirely.
+    // Read config.json from team.directory because project scope includes a
+    // session path segment while user scope does not. The resolved team path
+    // handles both layouts without a scope mismatch.
     const spec = toSpawn.length > 0
         ? await readTeamSpecFromDir(team.directory)
         : undefined

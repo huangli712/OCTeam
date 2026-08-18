@@ -1,8 +1,8 @@
 /**
  * Orchestration domain helpers: member output extraction, truncation, token
- * accounting, and the role-setup prompt builder. Moved from core/utils.ts —
- * these carry team-orchestration domain knowledge (prompt conventions, work-tool
- * classification, role presets) and are not general-purpose primitives.
+ * accounting, and the role-setup prompt builder. These carry team-orchestration
+ * domain knowledge (prompt conventions, work-tool classification, role presets)
+ * and are not general-purpose primitives.
  */
 
 import type { Message, Part, TextPart } from "@opencode-ai/sdk"
@@ -52,14 +52,10 @@ export function extractOutputFromParts(parts: unknown): string {
             if (p.synthetic) continue
             if (p.text.trim()) segments.push(p.text)
         } else if (p.type === "tool" && WORK_TOOLS.has(p.tool)) {
-            // H8: skip tool calls that did not complete successfully.
-            // Pre-fix code extracted input content regardless of tool status,
-            // so a failed write (status:"error", permission denied) would be
-            // recorded as a successful work product — the broken content would
-            // flow into pipeline/reduce/signoff as if it were real output.
+            // Skip tool calls that did not complete successfully so failed work
+            // cannot flow into pipeline, reduce, or signoff as a deliverable.
             const toolStatus = p.state?.status
-            // MEDIUM: only accept completed tool calls as work output.
-            // Pre-fix code allowed undefined through; now require completed.
+            // Only accept completed tool calls as work output.
             if (toolStatus !== "completed") continue
             const input = (p.state?.input ?? {}) as Record<string, unknown>
             let primaryInput: string | undefined
@@ -94,7 +90,7 @@ export function extractOutputFromParts(parts: unknown): string {
             } else if (typeof input.patchText === "string" && input.patchText.trim()) {
                 segments.push(`[Patch]\n${input.patchText}`)
             } else if (p.tool !== "edit" && p.tool !== "aft_edit") {
-                // MEDIUM: for tool-only turns with no recognized input field,
+                // For tool-only turns with no recognized input field,
                 // produce a non-empty summary so the turn isn't treated as
                 // empty (which would trigger re-dispatch or stalling).
                 const query = typeof input.query === "string" ? input.query.slice(0, 200)
@@ -108,31 +104,28 @@ export function extractOutputFromParts(parts: unknown): string {
                 else segments.push(`[${p.tool}]`)
             }
             if (typeof input.newString === "string" && input.newString.trim()) {
-                // M-OUTPUT: capture edit tool's oldString→newString format.
+                // Capture the edit tool's oldString→newString format.
                 const fp = typeof input.filePath === "string" ? input.filePath : ""
                 const oldStr = typeof input.oldString === "string" ? input.oldString : ""
                 segments.push(fp
                     ? `[Edit: ${fp}]\n- ${oldStr}\n+ ${input.newString}`
                     : `[Edit]\n- ${oldStr}\n+ ${input.newString}`)
             } else if (typeof input.oldString === "string" && input.oldString.trim() && input.newString === "") {
-                // M15: capture deletion-only edits (newString is empty string).
-                // Pre-fix code's newString.trim() check skipped deletions.
+                // Capture deletion-only edits when newString is empty.
                 const fp = typeof input.filePath === "string" ? input.filePath : ""
                 segments.push(fp
                     ? `[Delete: ${fp}]\n- ${input.oldString}`
                     : `[Delete]\n- ${input.oldString}`)
             } else if (Array.isArray(input.edits) && input.edits.length > 0) {
-                // M15: capture batch edits (aft_edit edits[] input shape).
-                // M-13: guard against null/non-object edit entries. Pre-fix
-                // code dereferenced e.oldString directly, so a null entry in
-                // the edits array threw and aborted the entire output capture.
+                // Capture batch edits and guard against null or non-object entries
+                // that would otherwise abort output capture.
                 const fp = typeof input.filePath === "string" ? input.filePath : ""
                 const summary = input.edits.map((e: unknown) => {
                     if (typeof e !== "object" || e === null) return "[invalid edit]"
                     const ed = e as Record<string, unknown>
                     const o = typeof ed.oldString === "string" ? ed.oldString : ""
                     const n = typeof ed.newString === "string" ? ed.newString : ""
-                    // M11: also capture line-range edits (content field).
+                    // Also capture line-range edits from the content field.
                     if (!o && !n && typeof ed.content === "string") {
                         const sl = typeof ed.startLine === "number" ? ed.startLine : "?"
                         const el = typeof ed.endLine === "number" ? ed.endLine : "?"
@@ -142,7 +135,7 @@ export function extractOutputFromParts(parts: unknown): string {
                 }).join("\n")
                 segments.push(fp ? `[Batch Edit: ${fp}]\n${summary}` : `[Batch Edit]\n${summary}`)
             } else if (typeof input.appendContent === "string" && input.appendContent.trim()) {
-                // M11: capture appendContent tool calls. These produce no
+                // Capture appendContent tool calls. These produce no
                 // oldString/newString — just a content append. Without this,
                 // an append-only turn is captured as "no new output".
                 const fp = typeof input.filePath === "string" ? input.filePath : ""
@@ -196,9 +189,7 @@ export function extractSessionStatusEntry(
  */
 export function truncateOutput(text: string, maxBytes: number = 65536): string {
     if (Buffer.byteLength(text, "utf8") <= maxBytes) return text
-    // MEDIUM: for small budgets, return as much text as fits without
-    // the elision marker. Pre-fix code returned empty string for
-    // maxBytes <= 48, silently dropping all output.
+    // For small budgets, return as much text as fits without the elision marker.
     const sepOverhead = 48
     if (maxBytes <= sepOverhead) {
         const buf = Buffer.from(text, "utf8")
@@ -226,7 +217,7 @@ export function truncateOutput(text: string, maxBytes: number = 65536): string {
     let tailStart = buf.length - half
     while (tailStart < buf.length && (buf[tailStart] & 0xc0) === 0x80) tailStart++
 
-    // H23: if the head boundary cuts inside a structured <tag>...</tag>
+    // If the head boundary cuts inside a structured <tag>...</tag>
     // pair, move headEnd backward to before the opening tag so the
     // truncated output doesn't contain a half-open tag that corrupts
     // downstream JSON parsing.
@@ -293,9 +284,7 @@ export function sumMemberTokens(messages: Array<{ info?: Message }> | undefined)
         if (m.info?.role !== "assistant") continue
         const t = m.info.tokens
         if (!t) continue
-        // MEDIUM #8: validate each token field is a finite non-negative
-        // number before summing. Pre-fix code used ?? 0 which silently
-        // coerced strings/NaN/undefined to 0, underestimating usage.
+        // Validate each token field as a finite non-negative integer before summing.
         const input = typeof t.input === "number" && Number.isSafeInteger(t.input) && t.input >= 0 ? t.input : 0
         const output = typeof t.output === "number" && Number.isSafeInteger(t.output) && t.output >= 0 ? t.output : 0
         const reasoning = typeof t.reasoning === "number" && Number.isSafeInteger(t.reasoning) && t.reasoning >= 0 ? t.reasoning : 0
@@ -329,14 +318,9 @@ export function buildRolePrompt(
     // Preset role guidance (by role label), injected before the user's task
     // instruction. Every role resolves to an instruction (reviewer fallback).
     lines.push("", "<role-instruction>", rolePreset(spec.role), "</role-instruction>")
-    // NOTE: spec.prompt (the member's standing task) is intentionally NOT embedded
-    // here. It is delivered as <member-instruction> on the member's FIRST real
-    // task dispatch (see prependStandingInstruction in dispatch.ts). Embedding it
-    // in role-setup caused members to execute the full task during the role-setup
-    // barrier window, blowing the 120s timeout for any task heavier than ~2 min
-    // (and producing the capture-gotcha where the deliverable lands in
-    // the role-setup turn and the later redundant task turn overwrites it with an
-    // ack). Role-setup is now identity-only: members ack and idle in seconds.
+    // NOTE: spec.prompt is intentionally delivered as <member-instruction> on
+    // the first real task dispatch (see prependStandingInstruction in dispatch.ts).
+    // Role setup stays identity-only so members acknowledge and idle promptly.
     lines.push(
         "",
         "<tools-instruction>",
@@ -360,9 +344,8 @@ export function buildRolePrompt(
  */
 export function asSdkMessages(data: unknown): import("../../core/types.js").SdkMessage[] {
     if (!Array.isArray(data)) return []
-    // LOW: validate each element is at least a non-null object so a malformed
-    // SDK response doesn't propagate as a wrongly-typed reference. Pre-fix
-    // code cast the entire array without element-level checks.
+    // Validate each element as a non-null object so malformed SDK data cannot
+    // propagate as a wrongly typed reference.
     return data.filter((m): m is import("../../core/types.js").SdkMessage =>
         typeof m === "object" && m !== null && !Array.isArray(m),
     )
@@ -375,6 +358,7 @@ export function asSdkMessages(data: unknown): import("../../core/types.js").SdkM
  */
 const SEVERITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
 
+/** Minimal issue shape accepted by workflow record formatters. */
 export interface WorkflowIssueLike {
     severity?: string
     message?: string

@@ -121,18 +121,16 @@ function restoreSnapshot(team: Team, snapshot: RepairSnapshot): void {
  */
 function workflowRepairTarget(team: Team): WorkflowRepairTarget | null {
     if (team.status === "busy" && isWorkflowTask(team.activeTask)) {
-        // H7: refuse fixflow when an approval is pending. Pre-fix code allowed
-        // redispatch/skip/advance/reassign while a HITL gate was paused,
-        // bypassing the leader's review. The old approval request would remain
-        // and could later approve/reject a step that has already been replaced.
+        // Reject repair while an approval is pending so workflow changes cannot
+        // bypass leader review or leave an approval targeting a replaced step.
         if (team.activeTask.approvalStage !== undefined) return null
         return { task: team.activeTask }
     }
     if (team.status === "failed" && isWorkflowTask(team.lastInterruptedTask)) {
         team.activeTask = team.lastInterruptedTask
         team.status = "busy"
-        // H38#2: update runnerPid so reconciler knows this process owns the
-        // resumed workflow. Pre-fix code left the old crashed PID.
+        // Update runnerPid so the reconciler recognizes this process as the
+        // resumed workflow owner.
         team.runnerPid = process.pid
         team.lastInterruptedTask = undefined
         for (const member of team.members) {
@@ -171,7 +169,7 @@ async function applyRedispatch(
     const invariantError = validateWorkflowAfterFix(task)
     if (invariantError !== null) return invariantError
     workflowStep.dispatchedAt = undefined
-    // HIGH #21: abort the currently dispatched actor before redispatching
+    // Abort the currently dispatched actor before redispatching
     // so the old prompt's late idle doesn't race with the new dispatch.
     const oldActorName = workflowStep.dispatchedActor
     if (oldActorName) {
@@ -184,9 +182,8 @@ async function applyRedispatch(
                 })
             } catch (err) {
                 const abortError = err instanceof Error ? err : new Error(String(err))
-                // H19: pre-fix code logged and continued, leaving the old
-                // turn running alongside the new dispatch. Now we return an
-                // error so the caller knows abort failed and can retry.
+                // Return an error if abort fails so the previous turn cannot run
+                // alongside the new dispatch and the caller can retry.
                 return `Error: cannot abort previous turn for member "${oldActor.name}" before redispatch. ${abortError.message}`
             }
         }
@@ -301,11 +298,8 @@ async function applyReassign(
         return `Error: step ${index + 1} marker steps cannot be reassigned`
     }
 
-    // M-11: for ensemble gates the actor is in `verifiers` (array), not
-    // `verifier` (scalar). Pre-fix code read workflowStep.verifier for the
-    // current-actor check and wrote workflowStep.verifier on reassign, which
-    // silently no-op'd for ensemble gates (verifier is undefined when
-    // verifiers is set) and left the verifiers array unchanged.
+    // Ensemble gates store the actor in `verifiers`, not the scalar `verifier`.
+    // Read the primary verifier from the correct field for actor checks.
     let currentActor: string | undefined
     if (workflowStep.kind === "task") {
         currentActor = workflowStep.member
@@ -326,23 +320,19 @@ async function applyReassign(
         if (conflict !== null) return `Error: "${toMember}" is already active in branch "${conflict}"`
     }
 
-    // M-11: update the correct field based on step kind. For ensemble gates,
+    // Update the correct field based on step kind. For ensemble gates,
     // replace the first entry in the verifiers array (the primary verifier).
     if (workflowStep.kind === "task") {
         workflowStep.member = toMember
     } else if (workflowStep.kind === "gate") {
         if (workflowStep.verifiers !== undefined && workflowStep.verifiers.length > 0) {
-            // M-FIXFLOW: check for duplicate verifier after reassignment.
-            // Pre-fix code blindly replaced verifiers[0] with toMember,
-            // producing [bob, bob] if bob was already at index 1.
+            // Reject a duplicate verifier before replacing the primary entry.
             const remaining = workflowStep.verifiers.slice(1)
             if (remaining.includes(toMember)) {
                 return `Error: "${toMember}" is already a verifier in this ensemble gate — reassignment would create a duplicate`
             }
-            // H6: clear the OLD verifier's ensemble result so its stale verdict
-            // is not counted in the next aggregation. Pre-fix code kept the old
-            // result, causing a re-assigned gate to count the replaced verifier's
-            // vote alongside the new one.
+            // Clear the old verifier's ensemble result so the next aggregation
+            // does not count its stale vote alongside the new verifier.
             const oldVerifier = workflowStep.verifiers[0]
             if (oldVerifier && workflowStep.ensembleResults) {
                 delete workflowStep.ensembleResults[oldVerifier]
@@ -378,11 +368,9 @@ function activeBranchActorConflict(task: WorkflowTask, candidateMember: string, 
     for (const activeIndex of getActiveWorkflowStepIndices(task)) {
         if (activeIndex === excludeIndex) continue
         const step = task.steps?.[activeIndex]
-        // HIGH-B: check both single-verifier and ensemble verifiers[].
-        // Pre-fix code only read step.verifier, missing ensemble gates whose
-        // verifier list could contain the candidate — reassign would then put
-        // the same member in two roles in the same ensemble, breaking vote
-        // weight and response attribution.
+        // Check both single-verifier and ensemble fields so a candidate already
+        // in an ensemble cannot take a second active role and distort vote weight
+        // or response attribution.
         let actorMatches = false
         if (step?.kind === "task") {
             actorMatches = step.member === candidateMember

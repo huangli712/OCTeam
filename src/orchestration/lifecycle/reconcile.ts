@@ -1,7 +1,7 @@
 /**
- * Crash recovery + session-lifecycle cleanup. Extracted from hooks.ts so the
- * hook factories file owns only adapter logic; state-consistency recovery lives
- * here. Called from server() init (reconcileActivation + reconcileCrashedTeams)
+ * Crash recovery and session-lifecycle cleanup. Hook factories own adapter
+ * logic, while state-consistency recovery lives here. Called from server() init
+ * (reconcileActivation + reconcileCrashedTeams)
  * and from the event handler (handleSessionDeleted on session.deleted).
  *
  * reconcileOne releases stale resources for teams left in a non-terminal state:
@@ -18,11 +18,8 @@
  * runs concurrently. Iterates BOTH scopes: project (session-segmented) + user
  * (flat).
  *
- * Layer note: lives in orchestration/lifecycle/ (not state/) for historical reasons —
- * the original implementation persisted terminated run records here, which a
- * state/ placement would have inverted the layer dependency. That run-record
- * persistence was removed (see reconcileOne), but the module stays in
- * orchestration/lifecycle/ to avoid a wide import churn.
+ * Layer note: this module lives in orchestration/lifecycle/ because its lifecycle
+ * dependencies would invert the state layer dependency if placed under state/.
  */
 
 import fs from "node:fs/promises"
@@ -40,10 +37,8 @@ import { logSwallowed } from "../../core/log.js"
 async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx: PluginContext): Promise<unknown[]> {
     const failures: unknown[] = []
     if (team.status !== "busy" && team.status !== "idle") return failures
-    // H8: for busy teams, check if the runner process is alive BEFORE
-    // releasing reservations. Pre-fix code released stale reservations
-    // unconditionally, which could re-queue and re-execute deliveries that
-    // a live sibling process is still processing (over TTL).
+    // Check whether a busy team's runner is alive before releasing reservations;
+    // re-queuing deliveries owned by a live sibling process could execute them twice.
     let processAlive = false
     if (team.status === "busy" && team.runnerPid !== undefined) {
         try {
@@ -55,7 +50,7 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
         }
     }
     await team.mutex.runExclusive(async () => {
-        // H8: skip reservation release for busy teams with a live process.
+        // Skip reservation release for busy teams with a live process.
         if (team.status === "busy" && processAlive) return
         try {
             await releaseStaleReservations(team.directory, "master")
@@ -64,7 +59,7 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
             failures.push(err)
         }
         for (const m of team.members) {
-            // H-L8: skip running members, matching H13 in sweepTeamOnce. This
+            // Skip running members. This
             // team may belong to a live sibling process (see comment below);
             // reclaiming a running member's reservations mid-processing would
             // cause duplicate delivery on the next poll. If the process truly
@@ -79,7 +74,7 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
             }
         }
         let didBranchSave = false
-        // CRIT #2: if spawning=true but the runner PID is dead, the
+        // If spawning=true but the runner PID is dead, the
         // previous process crashed during spawn. Clear the stale flag.
         // Only clear if we can confirm the owner is dead (PID check).
         if (team.spawning && team.runnerPid !== undefined) {
@@ -92,11 +87,9 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
                 }
             }
         } else if (team.spawning && team.runnerPid === undefined) {
-            // H9: spawning without runnerPid is the normal Phase 2 state.
-            // R6: a crash during Phase 2 leaves spawning=true permanently.
-            // Fix: if the state file hasn't been modified for >2× LOCK_TTL_MS,
-            // the spawning process is certainly dead. Use _diskMtime as
-            // the last-write timestamp.
+            // Spawning without runnerPid is the normal Phase 2 state. A state
+            // file unchanged for more than 2× LOCK_TTL_MS indicates that the
+            // spawning process died, with _diskMtime as the last-write timestamp.
             if (team._diskMtime !== undefined) {
                 const age = Date.now() - team._diskMtime
                 if (age > LOCK_TTL_MS * 2) {
@@ -109,18 +102,15 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
             }
         }
         if (team.status === "busy") {
-            // H38: PID-based fencing. If runnerPid is set and the process is
-            // dead, the team IS crashed → safe to fail (enables team_resume).
-            // Pre-fix code never auto-failed busy teams because without PID
-            // tracking there was no safe way to tell crashed from live sibling.
+            // PID-based fencing marks a busy team failed only when its recorded
+            // runner is confirmed dead, which keeps live sibling processes safe.
             let isCrashed = false
             if (team.runnerPid !== undefined) {
                 try {
                     process.kill(team.runnerPid, 0)  // signal 0 checks liveness only
                 } catch (err) {
-                    // M#2: only treat ESRCH as "process dead". Pre-fix code
-                    // considered ANY error (including EPERM) as crashed, so a
-                    // process owned by another user would be falsely failed.
+                    // Only ESRCH means "process dead"; EPERM indicates a live
+                    // process owned by another user.
                     if ((err as NodeJS.ErrnoException).code === "ESRCH") {
                         isCrashed = true
                     }
@@ -129,13 +119,9 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
             if (isCrashed) {
                 team.status = "failed"
                 if (team.activeTask) team.lastInterruptedTask = team.activeTask
-                // H-1: clear activeTask so the team is in a consistent
-                // `failed` state (NOT `failed + activeTask`). Pre-fix code
-                // preserved activeTask, but team_resume and team_cancel both
-                // refuse this combination — the crashed run could never be
-                // recovered or cancelled, stuck until manual state.json edit.
-                // activeTeams() filters on activeTask presence, so leaving it
-                // would also keep the failed team in the sweep loop forever.
+                // Clear activeTask so the team has a consistent `failed` state.
+                // team_resume and team_cancel reject `failed + activeTask`, and
+                // activeTeams() would otherwise keep it in the sweep loop.
                 team.activeTask = undefined
                 try {
                     await saveTeamState(team)
@@ -157,7 +143,7 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
                 }
             }
         }
-        // M-H1/M3: the crash/interrupt branches above already saved when
+        // The crash and interrupt branches above already saved when
         // applicable. Only save here if no branch saved (e.g. team was idle
         // but we still released reservations and want to persist that).
         if (!didBranchSave) {
@@ -228,7 +214,7 @@ export async function reconcileActivation(ctx: PluginContext): Promise<void> {
             try {
                 const team = await loadTeamState(scope.root, teamName, leadSessionId)
                 if (team.activatedAt === undefined) continue
-                // MEDIUM: only clear activatedAt for teams in the CURRENT
+                // Only clear activatedAt for teams in the CURRENT
                 // project scope. User-scope teams may be active in sibling
                 // processes — clearing them would deactivate a live team.
                 // In project scope, clearing is safe because only the current
@@ -322,7 +308,7 @@ export async function handleSessionDeleted(ctx: PluginContext, sessionID: string
         const dirsToInvalidate: string[] = []
         for (const team of ownedTeams) {
             team.deleted = true  // tombstone: prevent racing handlers from resurrecting
-            // HIGH: write a DURABLE deletion marker BEFORE fs.rm.
+            // Write a durable deletion marker before fs.rm.
             // saveTeamState skips deleted teams, so the in-memory tombstone
             // alone is not crash-safe. Write a marker file so the next
             // startup detects the deletion.
@@ -340,15 +326,10 @@ export async function handleSessionDeleted(ctx: PluginContext, sessionID: string
             invalidateTeam(dir)
         }
     } catch (err) {
-        // M-7: best-effort — never block the event handler on cleanup, but log
-        // so orphaned session directories are diagnosable. Pre-fix code set
-        // team.deleted=true (tombstone) BEFORE fs.rm, then invalidated the
-        // cache AFTER fs.rm. On fs.rm failure, the tombstoned teams stayed
-        // deleted=true in the cache (invisible to all handlers) even though
-        // the directory still existed on disk. The fix reverts the tombstone
-        // on fs.rm failure so the team remains usable until the next retry.
-        // We cannot easily revert tombstones here because the team objects
-        // were already captured; instead, reload and clear.
+        // Cleanup is best-effort so it never blocks the event handler, but
+        // failures are logged so orphaned session directories remain diagnosable.
+        // Evict cached tombstones after an fs.rm failure so the next access
+        // reloads the still-present team state from disk.
         logSwallowed(ctx, "session deletion cleanup failed", err, { sessionID })
         // Clear tombstones by evicting from cache — the next access reloads
         // from disk, which still has the non-deleted state.

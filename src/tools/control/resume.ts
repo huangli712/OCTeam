@@ -80,18 +80,12 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
 
             let restored: ActiveTask | undefined
             let resumeRaced = false
-            // Snapshot of errored members reset in Phase 1, for rollback if Phase 2/3 fails.
-            // H-31: contains EVERY member (errored and idle), so the catch-block
-            // rollback can find Phase-2-dispatched idle members too.
             const memberSnapshot: Array<{ name: string; error?: string; declaredDone?: boolean; retryingSince?: number; turnCount?: number; status?: string }> = []
 
             try {
                 // --- Phase 1 (mutex): snapshot + reset, DO NOT commit activeTask. ---
-                // H-4: set spawning=true inside the mutex so a concurrent resume
-                // cannot pass Phase 1 and duplicate Phase 2's session spawns.
-                // Pre-fix code had no lease between Phase 1 and Phase 3 — two
-                // concurrent resumes could both reset errored→idle and both run
-                // ensureMembersReady, creating duplicate sessions.
+                // Set spawning=true inside the mutex as a resume lease, preventing
+                // concurrent resumes from running Phase 2 and creating duplicate sessions.
                 await team.mutex.runExclusive(async () => {
                     if (team.status !== "failed" || !team.lastInterruptedTask || team.spawning) {
                         resumeRaced = true
@@ -114,12 +108,9 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                     const arenaTask = team.lastInterruptedTask.type === "arena"
                         ? team.lastInterruptedTask
                         : undefined
-                    // H-31: snapshot EVERY member (not just errored ones). Phase 2
-                    // dispatches idle members to running; if Phase 2/3 then throws,
-                    // those running members are not in the pre-fix snapshot (which
-                    // only contained errored→idle resets), so the catch-block
-                    // rollback loop skipped them — they kept running with no
-                    // activeTask to process their idle, silently dropping output.
+                    // Snapshot every member because Phase 2 may dispatch idle members
+                    // before a later failure. Rollback uses this list to abort those
+                    // members and restore their status.
                     for (const m of team.members) {
                         memberSnapshot.push({ name: m.name, error: m.error, declaredDone: m.declaredDone, retryingSince: m.retryingSince, turnCount: m.turnCount, status: m.status })
                         if (m.status === "errored") {
@@ -183,7 +174,7 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                     // of reference equality.
                     if (team.status !== "failed" || !team.lastInterruptedTask) {
                         resumeRaced = true
-                        // MEDIUM: clear spawning lease on raced path so the
+                        // Clear the spawning lease on the raced path so the
                         // team isn't permanently wedged.
                         team.spawning = false
                         try { await saveTeamState(team) } catch { /* best-effort */ }
@@ -192,13 +183,11 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                     // Commit atomically with dispatch.
                     team.activeTask = task
                     team.status = "busy"
-                    // H38#2: update runnerPid so the reconciler knows THIS
-                    // process now owns the resumed task. Pre-fix code left
-                    // the old crashed PID, causing reconcile to re-fail it.
+                    // Update runnerPid so the reconciler recognizes this process
+                    // as the resumed task owner.
                     team.runnerPid = process.pid
                     task.startedAt = Date.now() // full timeout re-granted
                     if (timeout_ms) {
-                        // MEDIUM: clamp override to team's wall-clock max.
                         const maxMs = (team.bounds.maxWallClockMinutes ?? Infinity) * 60_000
                         task.wallClockTimeoutMs = Math.min(timeout_ms, maxMs)
                     }
@@ -210,7 +199,6 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                     // handleXxxIdle already cleared activeTask + set status; this only
                     // clears lastInterruptedTask, which is idempotent-safe.)
                     team.lastInterruptedTask = undefined
-                    // H-4: clear the resume lease set in Phase 1.
                     team.spawning = false
                     await saveTeamState(team)
                 })
@@ -223,31 +211,22 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                 // --- Rollback (ACTIVE reset, not passive). ---
                 // A post-commit throw (e.g. dispatchToMember rejecting on a dead
                 // session) leaves activeTask set + status busy. Actively reset.
-                // H-31: mark already-dispatched members (status="running",
-                // turnCount>0) as errored. Pre-fix code restored them to their
-                // pre-resume errored/idle state but did NOT account for members
-                // that were successfully dispatched during the partial resume —
-                // those kept running with no activeTask to process their idle,
-                // silently dropping their output.
+                // Mark members dispatched during the partial resume as errored
+                // because activeTask is cleared below and cannot process their results.
                 await team.mutex.runExclusive(async () => {
                     team.activeTask = undefined
                     team.status = "failed"
-                    // H-4: clear the resume lease so a retry can proceed.
+                    // Clear the resume lease so a retry can proceed.
                     team.spawning = false
                     if (restored) team.lastInterruptedTask = restored
                     // Restore member states that were reset in Phase 1 (errored→idle).
                     for (const saved of memberSnapshot) {
                         const m = team.members.find(mm => mm.name === saved.name)
                         if (m) {
-                            // H-31: if this member was dispatched during the
-                            // partial resume (status is now "running" or
-                            // turnCount increased), abort its session and mark
-                            // it errored. H21 fix: pre-fix code only marked it
-                            // errored without aborting — the session kept running,
-                            // consuming tokens and producing output that would be
-                            // dropped (activeTask was cleared).
+                            // If this member was dispatched during the partial resume,
+                            // abort its session and mark it errored so it cannot consume
+                            // tokens or produce output after activeTask is cleared.
                             if (m.status === "running" || (m.turnCount ?? 0) > (saved.turnCount ?? 0)) {
-                                // H21: best-effort abort the still-running session.
                                 if (m.sessionId) {
                                     try {
                                         await ctx.client.session.abort({
@@ -261,11 +240,8 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                                 m.status = "errored"
                                 m.error = `resume dispatch failed: ${e instanceof Error ? e.message : String(e)}`
                             } else {
-                                // M16: restore the member's original status. Pre-fix
-                                // code unconditionally set errored — even for
-                                // members that were NOT dispatched during the
-                                // partial resume. Those members should go back to
-                                // their pre-resume state (typically idle).
+                                // Restore the original status for members not dispatched
+                                // during the partial resume, typically back to idle.
                                 m.status = saved.status as MemberStatus
                                 m.error = saved.error
                             }

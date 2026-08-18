@@ -23,7 +23,7 @@ import {
     teamsDir,
     worktreesDir,
 } from "./paths.js"
-// C9: indexMasterTeam is called from initTeamState so the in-memory master
+// indexMasterTeam is called from initTeamState so the in-memory master
 // index is populated for ALL init paths (not just team_create). This forms
 // a module cycle (resolve.ts imports listAllTeams/loadTeamState from store.ts,
 // store.ts imports indexMasterTeam from resolve.ts), which is safe in ESM
@@ -80,7 +80,7 @@ const inflightLoads = new Map<string, Promise<Team>>()
  * tokens after completion without an extra file read per refresh.
  */
 export function clearActiveTask(team: Team): void {
-    team.runnerPid = undefined  // H38: clear fencing token when run ends
+    team.runnerPid = undefined  // Clear the fencing token when the run ends
     if (team.activeTask) {
         team.lastMode = {
             type: team.activeTask.type,
@@ -107,7 +107,7 @@ function stripRuntimeFields(team: Team): TeamState {
         _stateUnreadable: _stateUnreadable,
         ...state
     } = team
-    // H3: proactively strip isMaster from every member before serialization.
+    // Proactively strip isMaster from every member before serialization.
     // isMaster is a RUNTIME-ONLY flag on the synthetic master pseudo-member
     // (resolve.ts syntheticMaster), never on regular team.members. If a bug
     // or future code change accidentally sets it on a regular member,
@@ -151,51 +151,44 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
     ) {
         return false
     }
-    // M12/H13: verify teamName matches the directory's last path segment.
+    // Verify teamName matches the directory's last path segment.
     // A tampered state.json moved to another team's directory would otherwise
     // load and bind the session to the wrong team.
-    // H13: use path.basename (cross-platform) instead of split(/[\/]/) which
-    // only matches forward slashes and rejects all teams on Windows.
+    // path.basename handles platform-specific separators when deriving the name.
     const expectedName = path.basename(teamDirectory)
     if (expectedName && s.teamName !== expectedName) return false
-    // M-8: validate status is a known enum value. Pre-fix code accepted any
-    // string, so a tampered state.json with status:"HACKED" would load and
-    // propagate to handlers that switch on status.
+    // Validate status as a known enum value so tampered values cannot reach
+    // handlers that switch on status.
     const VALID_STATUSES = new Set(["idle", "busy", "failed", "live"])
     if (!VALID_STATUSES.has(s.status)) return false
-    // M-5/M-8: version must be EXACTLY 1 (the only defined schema).
-    // Pre-fix code accepted any positive integer, so a future version 2
-    // state.json would silently load with version-1 semantics, producing
-    // undefined behavior. Fail closed on unknown versions so future
-    // migrations can detect old code reading new state.
+    // Version must be exactly 1, the only defined schema. Reject unknown
+    // versions so callers never apply version-1 semantics to another schema.
     if (s.version !== 1) return false
     // leadSessionId is a directory locator (used to construct the team path),
     // NOT an authorization credential. Authorization is derived from the
     // session index (rebuilt from disk structure at startup). When present,
     // validate it is a non-empty string so a tampered state.json cannot inject
     // a non-string value that could break path operations. Absent is allowed
-    // for legacy fixtures/tests that predate the field.
+    // for fixtures and tests that omit the field.
     if (s.leadSessionId !== undefined && (typeof s.leadSessionId !== "string" || s.leadSessionId.length === 0)) return false
-    // HIGH #14: validate key fields that participate in concurrency control.
-    // S8: teamRunId must be a non-empty string when present (empty string
+    // Validate key fields that participate in concurrency control.
+    // teamRunId must be a non-empty string when present (empty string
     // would fail runId comparisons and bypass deletion marker checks).
     if (s.teamRunId !== undefined && (typeof s.teamRunId !== "string" || s.teamRunId.length === 0)) return false
     if (s.spawning !== undefined && typeof s.spawning !== "boolean") return false
     if (s.spawningOwner !== undefined && typeof s.spawningOwner !== "string") return false
     if (s.runnerPid !== undefined && (typeof s.runnerPid !== "number" || !Number.isFinite(s.runnerPid) || s.runnerPid <= 0)) return false
-    // S8: validate timestamp fields are finite numbers when present.
+    // Validate timestamp fields as finite numbers when present.
     // Note: createdAt/activatedAt use 0 as a sentinel for "not yet set"
     // (e.g. inactive teams). Only reject negative or non-finite values.
     if (s.createdAt !== undefined && (typeof s.createdAt !== "number" || !Number.isFinite(s.createdAt) || s.createdAt < 0)) return false
     if (s.activatedAt !== undefined && (typeof s.activatedAt !== "number" || !Number.isFinite(s.activatedAt) || s.activatedAt < 0)) return false
-    // H57: PID 0 and negative PIDs are never valid process IDs. A tampered
+    // PID 0 and negative PIDs are never valid process IDs. A tampered
     // state.json with runnerPid:0 would bypass the cross-process ownership
     // guard (process.pid is always > 0).
     if (s.bounds !== undefined) {
         if (typeof s.bounds !== "object" || s.bounds === null) return false
-        // C12: all bounds values must be non-negative finite numbers.
-        // Pre-fix only checked that bounds was an object, so tampered state
-        // could set maxMembers: "unlimited" or maxWallClockMinutes: -1.
+        // All bounds values must be non-negative finite numbers.
         for (const v of Object.values(s.bounds as Record<string, unknown>)) {
             if (v !== undefined && (typeof v !== "number" || !Number.isFinite(v) || v < 0)) return false
         }
@@ -219,22 +212,22 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
         // path operations (reservedDir → assertSafeSegment in the sweep loop).
         const name = (m as { name?: unknown }).name
         if (typeof name !== "string" || !isSafePathSegment(name)) return false
-        // H58: reject the reserved name "master" — it would collide with the
+        // Reject the reserved name "master" because it would collide with the
         // synthetic master pseudo-member and let a tampered state.json inject
         // a member that polls and ACKs the master mailbox.
         if (name === "master") return false
-        // HIGH #14: reject duplicate member names.
+        // Reject duplicate member names.
         if (memberNames.has(name)) return false
         memberNames.add(name)
         const status = (m as { status?: unknown }).status
         if (typeof status !== "string") return false
-              // M-5: reject out-of-enum member statuses. The state machine only
+              // Reject out-of-enum member statuses. The state machine only
               // allows pending/running/idle/errored (MemberStatus union). A
               // tampered state.json with status:"paused" or status:"retrying"
-              // (legacy value not in MemberStatus) would pass the string check
+              // would pass the string check
               // but be permanently skipped by the sweep (which only handles
-              // "running"). M4 fix: removed "retrying" from the valid set — it
-              // is not a valid MemberStatus and no code path writes it.
+              // "running"). "retrying" is not a valid MemberStatus and no code
+              // path writes it.
               const VALID_MEMBER_STATUSES = new Set(["pending", "running", "idle", "errored"])
         if (!VALID_MEMBER_STATUSES.has(status)) return false
         const agent = (m as { agent?: unknown }).agent
@@ -244,7 +237,7 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
             const wt = (m as { worktreePath?: unknown }).worktreePath
             if (wt !== undefined) {
                 if (typeof wt !== "string") return false
-                // C-3: path.resolve is lexical — it does not follow symlinks.
+                // path.resolve is lexical and does not follow symlinks.
                 // A worktreePath that is a symlink pointing outside the worktrees/
                 // dir would pass the lexical containment check but actually
                 // redirect member operations to an external directory.
@@ -265,7 +258,7 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
                         return false
                     }
                 } catch (err: unknown) {
-                    // C-7: only ENOENT (worktree not yet created) is a safe
+                    // Only ENOENT (worktree not yet created) is a safe
                     // fallback to the lexical check above. Other realpath
                     // errors (EACCES, EIO, ELOOP) mean an attacker may have
                     // made an external symlink temporarily unresolvable to
@@ -286,7 +279,7 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
  * @param validate    optional schema guard; null returned on mismatch
  */
 
-// #9: O_NOFOLLOW closes the TOCTOU window. Use fs.constants if available,
+// O_NOFOLLOW closes the TOCTOU window. Use fs.constants if available,
 // falling back to the Linux numeric value for platforms where constants
 // doesn't expose it.
 const O_NOFOLLOW = (fsSyncConstants as Record<string, number>).O_NOFOLLOW ?? 0x20000
@@ -297,7 +290,7 @@ async function readJsonOrNull<T>(
 ): Promise<T | null> {
     let fh: fs.FileHandle | undefined
     try {
-        // #9: open with O_NOFOLLOW so a leaf symlink is rejected atomically
+        // Open with O_NOFOLLOW so a leaf symlink is rejected atomically
         // (ELOOP), closing the lstat→readFile TOCTOU window.
         fh = await fs.open(filePath, fs.constants.O_RDONLY | O_NOFOLLOW)
         const stat = await fh.stat()
@@ -396,7 +389,7 @@ export async function loadTeamState(
     const dir = teamDir(storageRoot, teamName, leadSessionId)
     const cached = teamRegistry.get(dir)
     if (cached) {
-        // MEDIUM: throttle disk stat to once per second per team to avoid
+        // Throttle disk stat to once per second per team to avoid
         // an fs.stat on every cached lookup (which happens very frequently
         // during orchestration).
         const now = Date.now()
@@ -405,7 +398,7 @@ export async function loadTeamState(
         }
         cached._lastCacheCheck = now
         const startingDiskSnapshot = cached._diskSnapshot
-        // MEDIUM: refresh from disk when mtime is equal/newer, or when the
+        // Refresh from disk when mtime is equal/newer, or when the
         // filesystem clock moved backwards. Update the cached Team in-place
         // so its mutex and live object references retain their identity.
         try {
@@ -493,7 +486,7 @@ async function loadTeamFromDisk(dir: string, teamName: string): Promise<Team> {
             throw err
         }
         const team: Team = { ...state, mutex: new AsyncMutex(), directory: dir, _diskSnapshot: deepClone(state) }
-        // MEDIUM: record the disk mtime so loadTeamState can detect
+        // Record the disk mtime so loadTeamState can detect
         // cross-process modifications on subsequent cached lookups.
         try {
             const st = await fs.stat(statePath(dir))
@@ -527,7 +520,7 @@ function mergeTeamState(disk: TeamState, ancestor: TeamState, current: TeamState
     for (const key of Object.keys(current) as (keyof TeamState)[]) {
         if (key === "members" || key === "activeTask") continue
         if (!jsonEqual(current[key], ancestor[key])) {
-            // H#5: runnerPid is a fencing token set by whichever process
+            // runnerPid is a fencing token set by whichever process
             // starts/resumes a run. If current cleared it (undefined) but
             // disk changed it from ancestor (another process set it), clearing
             // would falsely mark the run as ownerless. Only protect disk when
@@ -543,7 +536,7 @@ function mergeTeamState(disk: TeamState, ancestor: TeamState, current: TeamState
     // process's change to any sub-field clobber another's concurrent sub-field
     // update. Field-level three-way merge preserves both processes' changes.
     if (current.activeTask !== undefined || ancestor.activeTask !== undefined || disk.activeTask !== undefined) {
-        // C1 fix: activeTask runId fencing. If disk has a different runId
+        // Fence activeTask by runId. If disk has a different runId
         // than current (or current is undefined while disk started a new run
         // not in ancestor), disk belongs to a NEW run. Merging would mix
         // fields from two different runs or clear the new run. Keep disk.
@@ -561,27 +554,23 @@ function mergeTeamState(disk: TeamState, ancestor: TeamState, current: TeamState
             merged.activeTask = mergeObjects(
                 disk.activeTask, ancestor.activeTask, current.activeTask,
             ) as TeamState["activeTask"]
-            // H-3: merge each writer's messagesSent delta onto the latest disk
+            // Merge each writer's messagesSent delta onto the latest disk
             // value so concurrent increments from the same ancestor all survive.
             if (merged.activeTask && current.activeTask && disk.activeTask) {
                 const da = disk.activeTask as unknown as Record<string, unknown>
                 const ca = current.activeTask as unknown as Record<string, unknown>
                 const ma = merged.activeTask as unknown as Record<string, unknown>
                 if (typeof da.messagesSent === "number" && typeof ca.messagesSent === "number") {
-                    // H-F1: use signed delta (delivery failures can refund
-                    // quota via negative delta), then clamp the final result
-                    // to non-negative. Pre-fix Math.max(0, delta) discarded
-                    // legitimate refunds, causing disk quota to never decrease.
+                    // Use a signed delta because delivery failures can refund
+                    // quota, then clamp the final result to non-negative.
                     ma.messagesSent = Math.max(
                         0,
                         da.messagesSent + (ca.messagesSent - (ancestor.activeTask?.messagesSent ?? 0)),
                     )
                 }
                 if (typeof da.tokensUsed === "number" && typeof ca.tokensUsed === "number") {
-                    // MEDIUM: recompute from the merged tokensByMember map,
-                    // not Math.max of two writers' totals. Pre-fix code
-                    // took the larger writer's sum, undercounting when
-                    // concurrent writers tracked different members.
+                    // Recompute from the merged tokensByMember map so concurrent
+                    // writers tracking different members are all included.
                     if (ma.tokensByMember) {
                         ma.tokensUsed = Math.max(0, Object.values(ma.tokensByMember)
                             .reduce((a, b) => a + b, 0))
@@ -705,15 +694,12 @@ function mergeMembers(
     return result
 }
 
-/**
- * C-15/G: saveTeamState with bounded retry for transient disk failures.
- * Used by orchestration control modules (completion, dispatch, etc.) that
- * previously swallowed save errors via `.catch(logSwallowed)`, leaving disk
- * inconsistent with memory. The retry reduces the window of disk inconsistency;
- * on final failure the error is thrown so the caller can handle it.
- */
 const SAVE_RETRY_ATTEMPTS = 3
 const SAVE_RETRY_BACKOFF_MS = 50
+/**
+ * Save team state with bounded retries for transient disk failures.
+ * Throws the final error so orchestration control code can handle it.
+ */
 export async function saveTeamStateBounded(team: Team): Promise<void> {
     let lastErr: unknown
     for (let attempt = 1; attempt <= SAVE_RETRY_ATTEMPTS; attempt++) {
@@ -750,7 +736,7 @@ export async function saveTeamState(team: Team): Promise<void> {
     const dir = team.directory
     const currentState = stripRuntimeFields(team)
     await withLock(stateLockPath(dir), async () => {
-        // C-16: check for cross-process deletion marker. Only a marker for this
+        // Check for a cross-process deletion marker. Only a marker for this
         // team run is a tombstone; a replacement team removes the stale marker.
         const marker = deletedMarkerPath(dir)
         try {
@@ -765,7 +751,7 @@ export async function saveTeamState(team: Team): Promise<void> {
         }
         const ancestor = team._diskSnapshot
         let toWrite: TeamState
-        // C-15: track whether disk changed since our last save (i.e. another
+        // Track whether disk changed since our last save (i.e. another
         // process wrote). Used to guard the activeTask sync — only sync when
         // concurrent changes exist, to avoid breaking nested references in
         // the single-process no-op-merge case.
@@ -773,15 +759,13 @@ export async function saveTeamState(team: Team): Promise<void> {
         if (ancestor) {
             const diskState = await readJsonOrNull<TeamState>(statePath(dir))
             if (diskState && !isValidTeamState(diskState, dir)) {
-                // C10: disk state is corrupt/tampered. Back it up for forensic
+                // Disk state is corrupt or tampered. Back it up for forensic
                 // recovery before overwriting with the known-good in-memory
                 // state, so the corrupt-but-potentially-recoverable data is
                 // not silently destroyed.
                 try {
-                    // N3: use exclusive-create with random suffix to prevent
-                    // collision and symlink following. Pre-fix code used
-                    // Date.now() which can collide and fs.writeFile which
-                    // follows symlinks.
+                    // Use exclusive-create with a random suffix to prevent
+                    // collisions and symlink following.
                     const backupPath = `${statePath(dir)}.corrupt-${randomUUID()}.json`
                     const backupFh = await fs.open(backupPath, "wx")
                     try {
@@ -796,14 +780,14 @@ export async function saveTeamState(team: Team): Promise<void> {
                 toWrite = currentState
             } else {
                 diskChanged = diskState !== null && !jsonEqual(diskState, ancestor)
-                // H-F2: cross-generation fence. If disk teamRunId differs
+                // Fence across generations. If disk teamRunId differs
                 // from the live team, the team was deleted and recreated.
                 // Merging would mix old-generation members/tasks into the
                 // new team. Refuse to merge stale state.
                 if (diskState && diskState.teamRunId !== currentState.teamRunId) {
                     throw new Error(`saveTeamState: disk teamRunId (${diskState.teamRunId}) differs from live (${currentState.teamRunId}) — team was recreated; refusing to merge stale state`)
                 }
-                // C11: disk file vanished since last save but cache still has
+                // The disk file vanished since the last save but cache still has
                 // an ancestor snapshot. Another process may have deleted or
                 // renamed the team. Log prominently so operators can detect
                 // potential stale-state resurrection.
@@ -815,10 +799,10 @@ export async function saveTeamState(team: Team): Promise<void> {
                     : currentState
             }
         } else {
-            // No ancestor snapshot (first save / legacy) — blind write.
+            // No ancestor snapshot on the first save, so write current state directly.
             toWrite = currentState
         }
-        // M35 fix: enforce the same 1 MiB size cap on writes that the reader
+        // Enforce the same 1 MiB size cap on writes that the reader
         // enforces. Without this, a legitimate run with large workflow steps,
         // responses, and histories could write a state.json that the loader
         // then refuses to read (>1 MiB cap), making the team appear to vanish
@@ -826,9 +810,8 @@ export async function saveTeamState(team: Team): Promise<void> {
         const serialized = JSON.stringify(toWrite, null, 2)
         const serializedBytes = Buffer.byteLength(serialized, "utf8")
         if (serializedBytes > 1_048_576) {
-            // HIGH #13: writer must not produce a state that reader rejects.
-            // Pre-fix code wrote anyway, making the team vanish on restart.
-            // Now: truncate large response fields to fit under the cap.
+            // The writer must not produce a state that the reader rejects, so
+            // truncate large response fields to fit under the cap.
             const trimmed = JSON.parse(serialized) as Record<string, unknown>
             if (trimmed.activeTask && typeof trimmed.activeTask === "object") {
                 const at = trimmed.activeTask as Record<string, unknown>
@@ -851,19 +834,16 @@ export async function saveTeamState(team: Team): Promise<void> {
                 await atomicWrite(statePath(dir), reSerialized, dir)
                 toWrite = trimmed as unknown as TeamState
             } else {
-                // HIGH: do NOT write a state that the reader will reject.
-                // Pre-fix code wrote anyway, making the team vanish on restart.
+                // Do NOT write a state that the reader will reject.
                 logger.error("saveTeamState: state exceeds 1 MiB even after truncation, refusing to save", { dir, size: Buffer.byteLength(reSerialized, "utf8") })
-                // H27: throw so callers know the save failed. Pre-fix code
-                // returned silently, causing tools to report success and
-                // proceed with irreversible side-effects while disk stayed
-                // at the old state.
+                // Throw so callers know the save failed and cannot report
+                // success while disk remains at the old state.
                 throw new Error(`saveTeamState: state for team in ${dir} exceeds 1 MiB even after truncation (${Buffer.byteLength(reSerialized, "utf8")} bytes); refusing to save stale state`)
             }
         } else {
             await atomicWrite(statePath(dir), serialized, dir)
         }
-        // MEDIUM: only set _diskSnapshot after a successful write so it
+        // Only set _diskSnapshot after a successful write so it
         // matches what's actually on disk.
         team._diskSnapshot = deepClone(toWrite)
         // Update mtime so our own writes don't trigger a stale-cache reload.
@@ -891,7 +871,7 @@ export async function saveTeamState(team: Team): Promise<void> {
             else liveState[key] = deepClone(merged)
         }
         // Synchronize membership in place to preserve the array reference.
-        // H-F3: update EXISTING members' fields from disk (e.g. concurrent
+        // Update existing members' fields from disk (e.g. concurrent
         // status/session changes by another process), not just add/remove.
         if (team.members) {
             const mergedMembers = toWrite.members ?? []
@@ -909,7 +889,7 @@ export async function saveTeamState(team: Team): Promise<void> {
                     // but are absent in `merged`. This can resurrect revoked
                     // fields (e.g. sessionId cleared on disk but retained in
                     // the stale live object).
-                    // #6: explicit deletion of fields absent from the merged
+                    // Explicitly delete fields absent from the merged
                     // member but present in the live one.
                     const mergedKeys = new Set(Object.keys(m))
                     for (const key of Object.keys(live)) {
@@ -921,13 +901,13 @@ export async function saveTeamState(team: Team): Promise<void> {
                 }
             }
         }
-        // C-15: sync activeTask from the merged result into the live team.
+        // Sync activeTask from the merged result into the live team.
         // Only sync when disk changed since our last save (i.e. another process
         // wrote). In the single-process no-op case (disk == ancestor), the
         // merge produces a semantically-identical result that may differ in
         // JSON key order — syncing it would break nested object references
         // (engine holds step.fanout etc.) for no benefit.
-        // C-15: sync activeTask only when disk changed (another process wrote).
+        // Sync activeTask only when disk changed (another process wrote).
         if (diskChanged && toWrite.activeTask && team.activeTask
             && !jsonEqual(toWrite.activeTask, currentState.activeTask)) {
             const live = team.activeTask as unknown as Record<string, unknown>
@@ -985,7 +965,7 @@ export async function readTeamSpec(
     return spec
 }
 
-/** M14: structural validation for TeamSpec. */
+/** Structural validation for TeamSpec. */
 function isValidTeamSpec(value: unknown): value is TeamSpec {
     if (typeof value !== "object" || value === null) return false
     const s = value as Record<string, unknown>
@@ -998,7 +978,7 @@ function isValidTeamSpec(value: unknown): value is TeamSpec {
         if (typeof m !== "object" || m === null) return false
         const mb = m as Record<string, unknown>
         if (typeof mb.name !== "string" || !mb.name) return false
-        // MEDIUM: reject duplicate member names.
+        // Reject duplicate member names.
         if (seenNames.has(mb.name)) return false
         seenNames.add(mb.name)
         if (typeof mb.role !== "string" || !mb.role) return false
@@ -1008,11 +988,8 @@ function isValidTeamSpec(value: unknown): value is TeamSpec {
 }
 
 /** Read TeamSpec from a known team directory (scope-independent).
- * M-14: validate via isValidTeamSpec so a corrupt/tampered config.json
- * does not propagate to callers that expect a well-formed spec. Pre-fix
- * code called readJsonOrNull without a validator, so a malformed config
- * could crash downstream callers (ensureMembersReady dereferences
- * spec.members.map without guards).
+ * Validate via isValidTeamSpec so a corrupt or tampered config.json does not
+ * reach callers that expect a well-formed spec.
  */
 export async function readTeamSpecFromDir(teamDirectory: string): Promise<TeamSpec | null> {
     return readJsonOrNull<TeamSpec>(configPath(teamDirectory), isValidTeamSpec)
@@ -1060,7 +1037,7 @@ export async function initTeamState(
     await atomicWrite(statePath(dir), JSON.stringify(state, null, 2), trustedRoot)
     // Register a fresh Team entry; loadTeamState will read what we just wrote.
     const team = await loadTeamState(storageRoot, state.teamName, leadSessionId)
-    // C9: register the master session in the in-memory index so tools that
+    // Register the master session in the in-memory index so tools that
     // verify master authorization via isIndexedMasterOf find the team.
     // Production callers (team_create) already call indexMasterTeam after
     // initTeamState, and startup calls rebuildSessionIndex; doing it here
@@ -1078,6 +1055,7 @@ export async function initTeamState(
     return team
 }
 
+/** Fence writes, mark a team deleted, and move its directory into quarantine. */
 export async function quarantineTeamStorage(
     storageRoot: string,
     teamName: string,
@@ -1085,11 +1063,11 @@ export async function quarantineTeamStorage(
     resolvedDir: string | undefined,
     teamRunId: string,
 ): Promise<string> {
-    // S7 fix: prefer resolvedDir (from the loaded Team object) over
+    // Prefer resolvedDir (from the loaded Team object) over
     // reconstructing from teamName, which may be stale after a rename.
     const dir = resolvedDir ?? teamDir(storageRoot, teamName, leadSessionId)
     await assertNoSymlinkTraversal(storageRoot, dir)
-    // #6: perform marker write + rename INSIDE the state lock so a concurrent
+    // Perform marker write and rename inside the state lock so a concurrent
     // saveTeamState cannot pass its lock check (no marker) and then atomicWrite
     // back into the renamed-away directory (resurrection race).
     const quarantineDirectory = await withLock(stateLockPath(dir), async () => {
@@ -1108,6 +1086,7 @@ export async function quarantineTeamStorage(
     return quarantineDirectory
 }
 
+/** Permanently remove a quarantined team directory after validating its path. */
 export async function deleteQuarantinedTeamStorage(
     storageRoot: string,
     quarantineDirectory: string,
@@ -1178,6 +1157,7 @@ export function invalidateTeam(teamDirectory: string): void {
     teamRegistry.delete(teamDirectory)
 }
 
+/** Move a runtime team entry to a new directory key after a rename. */
 export function rekeyTeamRegistry(oldDirectory: string, newDirectory: string, team: Team): void {
     teamRegistry.delete(oldDirectory)
     teamRegistry.set(newDirectory, team)

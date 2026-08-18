@@ -159,18 +159,15 @@ function checkGateStep(context: WorkflowInvariantContext, index: number, step: W
     if (step.verifier !== undefined && step.verifiers !== undefined) {
         context.violations.push(`step ${index}: verifier and verifiers are mutually exclusive`)
     }
-    // I-H7: validate goto edges. Pre-fix invariant checker did NOT validate
-    // onPassGoto/onFailGoto/onInvalidGoto — out-of-bounds, cross-branch, or
-    // self-referencing goto targets passed invariant checks, and the runtime
-    // gatedGotoIndex returned -1, silently treating "invalid goto" as "no
-    // goto" and continuing sequential execution.
+    // Validate goto edges so out-of-bounds, cross-branch, and self-referencing
+    // targets cannot be treated as an absent goto during sequential execution.
     for (const [field, gotoIdx] of [
         ["onPassGoto", step.onPassGoto],
         ["onFailGoto", step.onFailGoto],
         ["onInvalidGoto", step.onInvalidGoto],
     ] as const) {
         if (gotoIdx === undefined) continue
-        // MEDIUM: reject non-integer indices before bounds check to avoid
+        // Reject non-integer indices before bounds checks to avoid
         // accessing steps[1.5] === undefined and crashing on .kind access.
         if (!Number.isInteger(gotoIdx)) {
             context.violations.push(`step ${index}: ${field} ${gotoIdx} is not an integer`)
@@ -295,9 +292,8 @@ function checkFanoutStep(context: WorkflowInvariantContext, index: number, step:
                 context.violations.push(`step ${index}: branch range ${rangeIndex} overlaps ${previousIndex}`)
             }
         }
-        // MEDIUM #13: verify every step in the branch range has the correct
-        // branch metadata. Pre-fix code only checked that steps WITH metadata
-        // are in a valid range — not that all steps IN a range have metadata.
+        // Verify that every step in the branch range carries matching branch
+        // metadata, not only that existing metadata points to a valid range.
         const expectedBranchId = fanout.branchIds[rangeIndex]
         for (let si = range.startIndex; si <= range.endIndex; si += 1) {
             const rangeStep = context.steps[si]
@@ -338,7 +334,7 @@ function checkJoinStep(context: WorkflowInvariantContext, index: number, step: W
         } else if (tail.branch?.fanoutIndex !== join.fanoutIndex) {
             context.violations.push(`step ${index}: branch tail ${tailIndex} is not in fanout ${join.fanoutIndex}`)
         } else {
-            // MEDIUM: verify tail matches the branch range's endIndex.
+            // Verify that the tail matches the branch range's endIndex.
             const fanout = context.steps[join.fanoutIndex]
             if (fanout?.kind === "fanout" && fanout.fanout) {
                 const range = fanout.fanout.branchRanges[fanout.fanout.branchIds.indexOf(tail.branch!.branchId)]

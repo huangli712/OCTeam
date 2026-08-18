@@ -19,8 +19,8 @@ type Join = WorkflowJoinMetadata
 /**
  * Apply the join policy to decide whether a fully-terminal fanout survives.
  * Every policy waits until all branches are terminal (completed or errored);
- * the policy only changes the success criterion. Default (no joinPolicy) keeps
- * the legacy max_errored tolerance semantics.
+ * the policy only changes the success criterion. The default policy uses
+ * max_errored tolerance semantics.
  */
 export function joinPolicySatisfied(
     join: Join,

@@ -5,8 +5,8 @@
  * corrupt JSON (skipped). Unknown keys are stripped (zod default); required
  * fields match the types.
  *
- * Extracted from runs.ts so the persistence/query logic and the (larger)
- * validation schema tree stay in focused modules.
+ * Persistence and query logic remain separate from the larger validation
+ * schema tree in this module.
  */
 
 import { z } from "zod"
@@ -102,11 +102,11 @@ const WorkflowFanoutMetadataSchema = z.object({
     fanout => fanout.branchIds.length === fanout.branchRanges.length,
     "fanout branchIds and branchRanges length mismatch",
 ).refine(
-    // MEDIUM: reject empty fanout (zero branches).
+    // Reject an empty fanout with zero branches.
     fanout => fanout.branchIds.length > 0,
     "fanout must have at least one branch",
 ).refine(
-    // M-33: cross-field constraints — joinPolicy requires its companion field.
+    // Cross-field constraints require each joinPolicy companion field.
     fanout => fanout.joinPolicy !== "reduce" && fanout.joinPolicy !== "select" || fanout.reducerMember !== undefined,
     "joinPolicy 'reduce'/'select' requires reducerMember",
 ).refine(
@@ -116,7 +116,7 @@ const WorkflowFanoutMetadataSchema = z.object({
     fanout => fanout.joinPolicy !== "required_branches" || (fanout.requiredBranchIds ?? []).length > 0,
     "joinPolicy 'required_branches' requires non-empty requiredBranchIds",
 ).refine(
-    // C-14: required_branches must reference existing branchIds. A tampered or
+    // required_branches must reference existing branchIds. A tampered or
     // corrupt record with requiredBranchIds referencing non-existent branches
     // would pass the persistence boundary and produce misleading audit data.
     fanout => fanout.joinPolicy !== "required_branches"
@@ -168,9 +168,8 @@ const WorkflowRunStepSchema = z.object({
     id: z.string().optional(),
     member: z.string().optional(),
     verifier: z.string().optional(),
-    // M-3: ensemble gate fields — pre-fix schema omitted these, so Zod
-    // parsing would STRIP them from the parsed record, losing the verifier
-    // list, ensemble policy, and quorum from the persisted run record.
+    // Preserve ensemble gate fields so parsing retains the verifier list,
+    // ensemble policy, and quorum from the persisted run record.
     verifiers: z.array(z.string()).optional(),
     fallbackVerifier: z.string().optional(),
     ensemblePolicy: z.enum(["majority", "quorum", "unanimous"]).optional(),
@@ -186,7 +185,7 @@ const WorkflowRunStepSchema = z.object({
     attempts: z.number().int().nonnegative().optional(),
     onInvalid: WorkflowOnInvalidSchema.optional(),
     invalidAttempts: z.number().int().nonnegative().optional(),
-    // M-3: on_malformed + max_malformed_retries — pre-fix schema omitted these.
+    // Preserve malformed-verdict policy and retry fields for audit output.
     onMalformed: z.enum(["fail", "retry_verifier", "skip", "escalate"]).optional(),
     maxMalformedRetries: z.number().int().nonnegative().optional(),
     malformedAttempts: z.number().int().nonnegative().optional(),
@@ -198,11 +197,10 @@ const WorkflowRunStepSchema = z.object({
     onInvalidGoto: z.number().int().positive().optional(),
     maxJumps: z.number().int().nonnegative().optional(),
     criteria: z.string().optional(),
-    // M-3: where condition — pre-fix schema omitted it. Stored as a raw
-    // object (the condition shape is validated at validate-time; the record
-    // reader just needs to preserve it for display/audit).
+    // Store the where condition as a raw object. Its shape is validated when
+    // declared; the record reader only preserves it for display and audit.
     where: z.record(z.string(), z.any()).optional(),
-    // M-3: loop config — pre-fix schema omitted it.
+    // Preserve loop configuration for display and audit.
     loop: z.object({
         maxIterations: z.number().int().positive(),
         onExhaust: z.enum(["fail", "continue"]).optional(),
@@ -211,9 +209,8 @@ const WorkflowRunStepSchema = z.object({
     timeoutMs: z.number().optional(),
     onTimeout: WorkflowOnTimeoutSchema.optional(),
     maxTimeoutRetries: z.number().int().nonnegative().optional(),
-    // M-9: retry audit fields persisted by persistRun but previously stripped
-    // by Zod on read. Without these, result/audit tools lose the retry
-    // configuration and consumed-attempt history that persistence records.
+    // Preserve retry configuration and consumed-attempt history for result and
+    // audit tools.
     fallbackMember: z.string().optional(),
     retryOn: z.unknown().optional(),
     maxTaskRetries: z.number().int().nonnegative().optional(),
@@ -240,8 +237,7 @@ const WorkflowRunStepSchema = z.object({
     approvalBefore: z.boolean().optional(),
     approvalAfter: z.boolean().optional(),
     maxOutputBytes: z.number().optional(),
-    // humanApproval removed from per-step schema (MEDIUM: persistRun never
-    // writes it here; it's a per-run field on ActiveTaskBase).
+    // humanApproval is a per-run ActiveTaskBase field, not per-step metadata.
 })
 
 /**
@@ -464,9 +460,7 @@ export const RunRecordSchema = z.object({
     mode: ParallelModeSchema.optional(),
     reason: z.string(),
     status: RunStatusSchema,
-    // M-26: metric fields must be non-negative (pre-fix code used bare
-    // z.number(), allowing negative tokens/messages/bytes from corrupt
-    // or tampered run records).
+    // Metric fields must be non-negative to reject corrupt or tampered counts.
     startedAt: z.number().nonnegative(),
     finishedAt: z.number().nonnegative(),
     tokensUsed: z.number().nonnegative(),
@@ -480,7 +474,7 @@ export const RunRecordSchema = z.object({
     signoffApprovals: z.record(z.string(), z.boolean()).optional(),
     memberOutputs: z.record(z.string(), z.object({
         bytes: z.number().nonnegative(),
-        // MEDIUM: restrict file names to safe segments (member.md, reduce.md,
+        // Restrict file names to safe segments (member.md, reduce.md,
         // signoff-*.md, join-*.md) so a tampered record can't inject path
         // traversal into consumer path helpers.
         file: z.string().regex(/^[a-zA-Z0-9._-]+\.md$/),
@@ -488,7 +482,7 @@ export const RunRecordSchema = z.object({
     artifacts: z.object({
         reduce: z.string().optional(),
         signoff: z.record(z.string(), z.string()).optional(),
-        // HIGH: join artifacts were written but stripped by Zod on read.
+        // Preserve join artifact references when reading run records.
         join: z.record(z.string(), z.string()).optional(),
     }).optional(),
     tasks: z.array(z.object({
@@ -507,7 +501,7 @@ export const RunRecordSchema = z.object({
         winnerMetric: z.string(),
         scoreboard: ArenaScoreboardSchema.optional(),
     }).superRefine((arena, ctx) => {
-        // MEDIUM: reject duplicate scoreboard entries for the same member.
+        // Reject duplicate scoreboard entries for the same member.
         if (arena.scoreboard) {
             const seen = new Set<string>()
             for (const s of arena.scoreboard.scores) {

@@ -131,11 +131,9 @@ export async function handleArbitrateIdle(
                     await finishRun(ctx, team, "arbitrate_complete:arbiter_unavailable", "failed")
                     return
                 }
-                // H56: clear the arbiter's stale response before dispatch,
-                // mirroring tollgate.ts startVerification (C17). The comment
-                // below about "Arbiter's response preserved" was correct for
-                // the round-re-dispatch path (line 124 clears disputants only),
-                // but the FIRST dispatch into phase B must start clean.
+                // Clear the arbiter's stale response before entering phase B.
+                // Debate-round re-dispatch preserves arbiter responses, but the
+                // first ruling dispatch must start clean.
                 delete task.responses[task.arbiterMember ?? ""]
                 await dispatchToMember(
                     ctx,
@@ -151,30 +149,25 @@ export async function handleArbitrateIdle(
             // Increment round AFTER the dispatch loop (not before) so a partial
             // dispatch failure followed by a barrier re-fire does not skip a round.
             const nextRound = (task.currentRound ?? 1) + 1
-            // H-M7: build the debate prompt BEFORE clearing responses. The prompt
-            // for round > 1 includes prior-round positions via buildRoundSummary,
-            // which reads task.responses. Pre-fix code deleted responses first,
-            // so every round after 1 received an empty summary — debaters could
-            // not see or rebut each other's positions.
+            // Build the debate prompt before clearing responses because later
+            // rounds include prior positions from task.responses. Clearing first
+            // would give debaters an empty summary and prevent rebuttals.
             const prompts = new Map<string, string>()
             for (const name of disputants) {
                 const m = team.members.find(x => x.name === name)
                 if (!m?.sessionId) continue
                 prompts.set(name, buildDebatePrompt({ ...task, currentRound: nextRound }))
             }
-            // HIGH-D: clear prior-round disputant responses before re-dispatch.
-            // Pre-fix code left them populated, so a disputant whose new round
-            // produced no output (or crashed mid-turn) would have its stale
-            // position counted toward the barrier AND read by the arbiter as
-            // the disputant's final stance. Arbiter's response (if any from
-            // a prior phase B retry) is preserved — phase B reads it directly.
+            // Clear prior-round disputant responses before re-dispatch so stale
+            // positions cannot satisfy the barrier or become final stances when
+            // a disputant produces no fresh output. Preserve the arbiter's
+            // response because phase B reads it directly.
             for (const name of disputants) {
                 delete task.responses[name]
             }
-            // H6: persist currentRound BEFORE dispatching. dispatchToMember
-            // saves state internally; setting round first ensures disk state
-            // is consistent with dispatched prompts. Pre-fix code set it
-            // after dispatch — a crash would resume with wrong round.
+            // Persist currentRound before dispatching because dispatchToMember
+            // saves state internally. This keeps disk state consistent with the
+            // dispatched prompts if the process crashes.
             task.currentRound = nextRound
             task.dispatchedParticipants = []
             recordEvent(team, { timestamp: Date.now(), kind: "round", round: task.currentRound })
@@ -185,11 +178,9 @@ export async function handleArbitrateIdle(
                     await dispatchToMember(ctx, m, prompts.get(name)!, m.worktreePath ?? ctx.directory, team)
                     task.dispatchedParticipants.push(name)
                 } catch (err) {
-                    // H24: mark errored so maybeAdvanceBarrier counts this
-                    // member as ready (line 32: errored returns true).
-                    // Pre-fix code only logged, leaving the member in idle
-                    // status but never re-dispatched — the barrier waited
-                    // forever for a response that never comes.
+                    // Mark the member errored so maybeAdvanceBarrier treats it as
+                    // ready. Leaving it idle after a failed dispatch would make
+                    // the barrier wait forever for a response.
                     m.status = "errored"
                     m.error = "debate dispatch failed"
                     task.dispatchedParticipants.push(name)
@@ -209,7 +200,7 @@ export async function handleArbitrateIdle(
         // it would discard all prior debate-round tokens. Uses the shared
         // decisionParseFailures counter (ActiveTask base field).
         task.decisionParseFailures++
-        // H42: allow task-level override of the ruling parse-failure threshold.
+        // Allow a task-level override of the ruling parse-failure threshold.
         const maxFailures = task.maxRulingParseFailures ?? MAX_RULING_PARSE_FAILURES
         if (task.decisionParseFailures >= maxFailures) {
             await finishRun(ctx, team, "arbitrate_complete:decision_parse_failure", "failed")

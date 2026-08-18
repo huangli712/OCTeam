@@ -2,8 +2,7 @@
  * Member output capture: persists each turn's deliverable to runs/<runId>/<member>.md
  * (accumulative, not overwrite) and truncates for state.json / prompt injection.
  *
- * Extracted from handlers.ts so capture IO lives independently from the idle
- * state machine.
+ * Capture IO lives independently from the idle state machine.
  */
 
 import crypto from "node:crypto"
@@ -23,14 +22,15 @@ const ACCUMULATED_OUTPUT_CAP = 262_144 // 256 KiB
  * Build the accumulated run-member output by appending the current turn's
  * output to whatever was captured previously.
  *
- * Extracted from captureMemberOutput so the accumulation logic is unit-testable
- * independent of ctx/team plumbing. Pure: no IO, no side effects.
+ * The pure accumulation logic is unit-testable without ctx/team plumbing and
+ * has no IO or side effects.
  */
 export function appendTurnBlock(prev: string, turnOutput: string, capturedIso: string): string {
     const block = `--- captured ${capturedIso} (${Buffer.byteLength(turnOutput, "utf8")} bytes) ---\n\n${turnOutput}`
     return prev === "" ? block : `${prev}\n\n${block}`
 }
 
+/** Indicates whether a member turn produced fresh output or why it did not. */
 export type CaptureMemberOutputResult =
     | { fresh: true; output: string }
     | { fresh: false; reason: "stale" | "empty" }
@@ -60,7 +60,7 @@ export async function captureMemberOutput(
 ): Promise<CaptureMemberOutputResult> {
     const task = team.activeTask
     if (!task) return { fresh: false, reason: "empty" }
-    // #18: do not capture output for a member whose workflow step has been
+    // Do not capture output for a member whose workflow step has been
     // skipped (e.g. any_success cancelled their branch). Late idle events
     // from such members would pollute task.responses with output from a
     // cancelled branch. Check both workflow step status and member status.
@@ -135,7 +135,7 @@ export async function captureMemberOutput(
         !!task.signoffStage
         && !member.isMaster
         && (
-            // MEDIUM: for peer-quorum, only accept output from dispatched
+            // For peer-quorum, only accept output from dispatched
             // reviewers. If signoffReviewers is unset (not yet dispatched),
             // accept any non-master member (first-idle fallback).
             (task.signoffPolicy === "peer-quorum"
@@ -166,15 +166,14 @@ export async function captureMemberOutput(
 
     // Accumulate: read whatever was previously captured for this target, append
     // the current turn with a separator, and write back atomically.
-    // C-2: assert no symlink traversal before readFile. atomicWrite already
+    // Assert no symlink traversal before readFile. atomicWrite already
     // refuses a leaf symlink via refuseSymlink, but a symlinked intermediate
     // ancestor (e.g. <team>/runs/<runId> redirected) would silently follow
     // without a trustedRoot-bearing check. Reading attacker-controlled content
     // into the accumulator is itself the leak (it gets mixed into the next
     // atomicWrite payload), so guard the read as well as the write.
-    // C1: use fd-based safe read with size cap to shrink TOCTOU window and
-    // prevent OOM from a crafted oversized file. Pre-fix code called
-    // assertNoSymlinkTraversal then readFile separately.
+    // Use an fd-based safe read with a size cap to narrow the TOCTOU window and
+    // prevent OOM from a crafted oversized file.
     let prev = ""
     try {
         const prevContent = await safeReadFile(team.directory, outPath, { maxBytes: ACCUMULATED_OUTPUT_CAP })

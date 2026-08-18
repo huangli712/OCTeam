@@ -49,7 +49,7 @@ export type PluginContext = {
  * everything portable and per-repo). Pass "user" to store teams under ~/.octeam
  * instead (shared across projects).
  *
- * C-11 threat-model note: project scope places control state under
+ * Threat-model note: project scope places control state under
  * <input.directory>/.octeam/ — the same project directory that member agents
  * (oct-junior, oct-deep) can write to via their edit/bash tools. A malicious
  * member can tamper with mailbox JSONL, state.json, workflow_file, etc. The
@@ -84,7 +84,7 @@ export function createPluginContext(
  * lives inside the project directory that member agents can write to, points
  * to the available mitigations (switch to user scope, or restrict member
  * write paths at the host level), and notes that the plugin's in-process
- * defenses (C-1 through C-10) raise the bar but are not a substitute for
+ * defenses raise the bar but are not a substitute for
  * filesystem-level isolation.
  *
  * No-op for user scope (control state is already outside the project dir).

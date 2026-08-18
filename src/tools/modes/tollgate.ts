@@ -101,7 +101,7 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
                             return `Error: stage verifier "${s.verifier}" must not equal its producer "${s.member}"`
                         }
                     }
-                    // H-M5: escalate_to must not be any stage's producer.
+                    // The escalation target must not be any stage's producer.
                     if (args.escalate_to) {
                         for (const s of args.stages) {
                             if (args.escalate_to === s.member) {
@@ -109,7 +109,7 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
                             }
                         }
                     }
-                    // H-M8: a member who is a producer in one gate must not be a
+                    // A member who is a producer in one gate must not be a
                     // verifier in another gate (and vice versa). The shared
                     // task.responses[member] slot means a verifier's verdict
                     // would overwrite the producer's artifact, causing upstream
@@ -120,7 +120,7 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
                     if (overlap.length > 0) {
                         return `Error: member "${overlap[0]}" appears as both producer and verifier across different gates — shared response slots would cause artifact overwrite. Use distinct members for each role.`
                     }
-                    // H3: prohibit the same producer across multiple stages.
+                    // Prohibit the same producer across multiple stages.
                     // task.responses[member] is a single slot; a second stage
                     // with the same producer would overwrite the first stage's
                     // artifact, corrupting upstream context and summary.

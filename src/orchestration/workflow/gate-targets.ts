@@ -1,14 +1,13 @@
 /**
- * Gate target resolution — extracted from gate.ts to break an import cycle
- * (dag.ts → invariants.ts → gate.ts → dag.ts). These are pure functions
- * with no dependency on other workflow modules; the branch check is
- * inlined to avoid importing dag.ts (which would re-create the cycle).
+ * Gate target resolution lives separately to avoid a cycle among dag.ts,
+ * invariants.ts, and gate.ts. These pure functions have no dependency on other
+ * workflow modules; the branch check is local to keep the graph acyclic.
  */
 
 import type { WorkflowStep } from "../../core/types.js"
 
 /** Check whether a step belongs to the same fanout branch as the given metadata.
- * Inlined from dag.ts to avoid the dag→invariants→gate-targets→dag cycle. */
+ * Defined locally to avoid a cycle through dag.ts and invariants.ts. */
 function isSameWorkflowBranch(
     step: WorkflowStep,
     branch: NonNullable<WorkflowStep["branch"]>,

@@ -60,10 +60,9 @@ export function shouldRetryTask(step: WorkflowTaskStep, output: string): boolean
     }
 }
 
-/** Max input size passed to a retry_on regex. Reduced from 100KB to 10KB to
- * limit the worst-case wall time of a polynomial-time backtracking pattern
- * that slips through the nested-quantifier heuristic below. 10KB is still
- * far more than any legitimate output-content check needs. */
+/** Max input size passed to a retry_on regex. The 10KB cap limits the worst-case
+ * wall time of a backtracking pattern that slips through the heuristic below
+ * while leaving ample room for legitimate output-content checks. */
 const REDOS_INPUT_CAP = 10_000
 
 /** Max regex pattern length. A pattern longer than this is almost certainly
@@ -81,24 +80,21 @@ function hasNestedQuantifier(pattern: string): boolean {
     // Strip escaped metacharacters so they do not confuse the heuristic.
     // (e.g. `\+` is a literal +, not a quantifier.)
     const stripped = pattern.replace(/\\[+*?{}()[\].\\|]/g, "")
-    // C4: a group containing a quantifier ANYWHERE inside it, followed by
-    // an outer quantifier, is the canonical nested-quantifier signature.
-    // Pre-fix regex `[^)]*[+*?}]` only matched when the quantifier was the
-    // LAST char before `)`, missing patterns like `(a+.)+` which have
-    // exponential backtracking on adversarial input.
+    // A group containing a quantifier anywhere inside it, followed by an outer
+    // quantifier, is the canonical nested-quantifier signature. This includes
+    // patterns such as `(a+.)+` with exponential backtracking on adversarial input.
     if (/\([^)]*[+*?{}][^)]*\)[+*?{]/.test(stripped)) return true
-    // C-18: consecutive identical-quantified items at top level. Patterns
-    // like ^a*a*a*a*a*a*a*a*b$ have NO groups or alternation, so the checks
+    // Catch consecutive identical quantified items at top level. Patterns
+    // like ^a*a*a*a*a*a*a*a*b$ have no groups or alternation, so the checks
     // above miss them, yet V8 exhibits polynomial backtracking when the
     // trailing literal (b) does not match.
-    // MEDIUM: also catch repeated quantified character CLASSES like
-    // [a]*[a]*[a]* which the original regex misses.
+    // Also catch repeated quantified character classes such as [a]*[a]*[a]*.
     if (/([a-zA-Z0-9])([*+])(?:\1\2){2,}/.test(stripped)) return true
     if (/((?:\[[^\]]{1,3}\])[*+])(?:\1){2,}/.test(stripped)) return true
     // Also catch the character-class variant: [a][a][a]+ or similar via
     // repeated single-char classes under quantifiers — rare but possible.
     // Skip: too rare and complex for a heuristic; the input cap mitigates.
-    // C-6: alternation-overlap under quantifier. Patterns like (a|aa)+$,
+    // Detect overlapping alternation under a quantifier. Patterns like (a|aa)+$,
     // (a|ab)+ have exponential backtracking when two alternation branches
     // share a string-prefix overlap (one is a prefix of the other). For each
     // group `(...)` followed by a quantifier that contains `|`, check pairwise
@@ -106,8 +102,8 @@ function hasNestedQuantifier(pattern: string): boolean {
     // quantifiers are skipped (the prefix check is unreliable on them, and the
     // nested-quantifier check above handles them).
     //
-    // Real attack: (a|aa)+$ on 45 a's + X blocked ~500ms with V8's backtracking
-    // engine before this guard was added.
+    // For example, (a|aa)+$ on 45 a's plus X can block V8's backtracking
+    // engine for about 500ms.
     let i = 0
     while (i < stripped.length) {
         if (stripped[i] !== "(") { i++; continue }
@@ -123,15 +119,10 @@ function hasNestedQuantifier(pattern: string): boolean {
         const nextChar = stripped[j]
         if (nextChar !== undefined && "+*?{".includes(nextChar) && body.includes("|")) {
             const branches = body.split("|").filter(b => b.length > 0)
-            // H3: branches containing quantifiers/group metacharacters under
-            // an outer quantifier are inherently susceptible to exponential
-            // backtracking (e.g. (a|a*a)+$). Pre-fix code filtered these
-            // branches out for the prefix-overlap check but did not flag
-            // them as risky. A branch like `a*a` under `(...)+` can silently
-            // bypass both the nested-quantifier heuristic (the group ends with
-            // `a`, not a quantifier) and the overlap check (the branch is
-            // excluded). Now, any branch with quantifier metacharacters
-            // inside an alternation under a quantifier is a red flag.
+            // Branches containing quantifiers or group metacharacters under an
+            // outer quantifier are susceptible to exponential backtracking.
+            // Flag them because forms such as `(a|a*a)+$` can bypass both the
+            // nested-quantifier and literal prefix-overlap checks.
             const simpleBranches = branches.filter(b => !/[][{}()*+?]/.test(b))
             if (simpleBranches.length < branches.length) return true
             for (let a = 0; a < simpleBranches.length; a++) {
@@ -171,7 +162,7 @@ function testRegexSafely(pattern: string, output: string): boolean {
         })
         return false
     }
-    // #1: reject patterns with 3+ consecutive wildcard quantifiers.
+    // Reject patterns with three or more consecutive wildcard quantifiers.
     // ^.*.*.*.*X$ on 1000 chars blocks 5s+ in V8.
     if (/(?:\.[*+]){3,}/.test(pattern.replace(/\\[+*?]/g, ""))) {
         logger.warn("shouldRetryTask: regex pattern has 3+ consecutive wildcard quantifiers (ReDoS risk)", { pattern })
@@ -223,12 +214,8 @@ async function handleTaskIdle(
                     + ` retry_on condition matched`,
             });
             delete task.responses[member.name];
-            // K-1: re-request approval_before on retry re-dispatch. Pre-fix
-            // code called dispatchTaskStep directly, bypassing the approval
-            // gate (engine.ts:131 clears approvalBeforeGranted so the next
-            // dispatch would re-request it, but dispatchTaskStep itself never
-            // calls maybePauseBeforeWorkflowStep). This contradicted the
-            // engine.ts:131 comment "retry/goto re-requests approval".
+            // Re-request approval_before before retry dispatch because
+            // dispatchTaskStep does not perform the approval pause itself.
             if (step.approvalBefore && !step.approvalBeforeGranted) {
                 if (await maybePauseBeforeWorkflowStep(ctx, team, activeStepIndex)) {
                     return; // paused for approval
@@ -365,38 +352,31 @@ export async function handleWorkflowIdle(
     const step = steps[activeStepIndex];
     if (!step) return;
 
-    // H-8: stale idle guard for task AND gate actor steps.
+    // Ignore stale idle events from task, gate, and join actors.
     //
-    // task step: skip when capturedNew is false AND step.output is already
-    // set — re-reading consumed output would double-complete. We do NOT skip
+    // Task step: when capturedNew is false, skip if step.output is already
+    // set because re-reading consumed output would double-complete. Do not skip
     // when step.output is unset because retry_on='empty' relies on processing
     // a turn that produced no assistant content (capturedNew=false but the
     // turn genuinely fired). The empty-output retry path is exercised by the
     // workflow-task-retry suite.
     //
-    // gate step (H-8 regression extension): skip when capturedNew is false
-    // AND step.output is already set — ensemble gates accumulate verifier
+    // Gate step: when capturedNew is false, skip if step.output is already set.
+    // Ensemble gates accumulate verifier
     // outputs into step.output, and a stale idle from a later verifier could
-    // reuse the prior verifier's output, double-counting the verdict. Gate
+    // reuse the prior verifier's output and double-count the verdict. Gate
     // attempt counters protect against double-processing of the same response
     // but do not protect against an empty-response stale idle routing to
     // on_malformed/parse_failure.
     //
-    // join step (H49): skip when capturedNew is false — a stale reducer idle
+    // Join step: skip when capturedNew is false because a stale reducer idle
     // would read task.responses[member.name] ?? "" and complete the join with
     // an empty string, producing a fake reduced result. Unlike task/gate,
     // join has no retry_on='empty' path — a reducer that produced no output
     // has nothing to reduce.
     if (capturedNew === false) {
-        // H-W1/H49: stale idle (no new output) guard.
-        // task: skip when output already set (double-complete). Do NOT skip
-        // when output is undefined — retry_on='empty' relies on processing
-        // a turn that produced no extractable text (capturedNew=false but
-        // the turn genuinely fired).
-        // gate: skip when output already set (double-count ensemble verdict).
-        // join: always skip (no retry_on='empty' path for reducers).
         if ((step.kind === "task" || step.kind === "gate") && step.output !== undefined) {
-            // K-3/H23: ensemble verifiers must contribute an independent
+            // Ensemble verifiers must contribute an independent
             // response. A stale idle without one remains pending and must not
             // reuse another verifier's shared step output.
             if (step.kind === "gate" && step.verifiers !== undefined) {

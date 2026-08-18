@@ -40,7 +40,7 @@ export function teamRootDirTool(ctx: PluginContext): ToolDefinition {
             )
             if (!caller) return "Error: caller is not a member of this team"
 
-            // HIGH: restrict to master only — the control root contains
+            // Restrict access to the master because the control root contains
             // state.json, sentinel, mailbox, tasks, and locks that must
             // not be exposed to regular members.
             try {
@@ -49,7 +49,7 @@ export function teamRootDirTool(ctx: PluginContext): ToolDefinition {
                 logSwallowed(ctx, "team_root_dir: team state unreadable", err, { team: args.team_id })
                 return "Error: team could not be loaded (state file unreadable)"
             }
-            // C15: use caller.isMaster (from session index) instead of
+            // Use caller.isMaster (from session index) instead of
             // the tamperable team.leadSessionId from state.json.
             const isMaster = caller.isMaster === true
             if (!isMaster) {

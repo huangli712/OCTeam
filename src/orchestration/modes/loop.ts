@@ -48,12 +48,9 @@ async function continueLoopRound(
     recordEvent(team, { timestamp: Date.now(), kind: "round", round: task.currentRound })
     task.currentStageIndex = 0
     for (const s of task.stages) s.completed = false
-    // HIGH-D: clear stale per-member responses from the prior round. Pre-fix
-    // code reset only stages, leaving task.responses populated. On the new
-    // round, if a member's dispatch landed but the member produced no output
-    // (or crashed), resume treated the OLD round's response as the new one,
-    // either falsely advancing the stage or letting a stale <no_issues/>
-    // skip the entire round.
+    // Clear stale per-member responses from the prior round. Otherwise a member
+    // that produces no fresh output could have an old response advance the stage
+    // or let a stale <no_issues/> skip the entire round after resume.
     for (const name of Object.keys(task.responses)) {
         delete task.responses[name]
     }
@@ -73,7 +70,7 @@ export async function approveLoopDone(ctx: PluginContext, team: Team): Promise<v
     const decision = parseDecision(deciderOutput ?? "")
     // Record the final decision BEFORE delivering so summarizeLoop reads it as
     // the last history entry (final: done + rationale), not after (final: n/a).
-    // M6: dedup — HITL trigger in handleLoopIdle already recorded this decision,
+    // The HITL trigger in handleLoopIdle already records this decision,
     // so skip if the last entry is identical (same round + decision verb).
     const history = task.decisionHistory ?? []
     const prev = history[history.length - 1]
@@ -89,7 +86,7 @@ export async function rejectLoopDone(ctx: PluginContext, team: Team, feedback?: 
     if (!task || task.type !== "loop") return
     const deciderOutput = task.responses[task.deciderMember ?? ""]
     const decision = parseDecision(deciderOutput ?? "")
-    // M6: dedup — HITL trigger already recorded this decision.
+    // The HITL trigger already records this decision.
     const history = task.decisionHistory ?? []
     const prev = history[history.length - 1]
     if (!prev || prev.round !== (task.currentRound ?? 0) || prev.decision !== decision.decision) {
@@ -122,7 +119,7 @@ export async function handleLoopIdle(
     const currentStage = stages[task.currentStageIndex]
     if (!currentStage || currentStage.member !== member.name) return // stray idle
 
-    // HIGH: empty turn on non-decider stage should not advance. Only the
+    // An empty turn on a non-decider stage must not advance. Only the
     // decider stage uses parseDecision which has its own retry path.
     const isDeciderStage = currentStage.member === task.deciderMember
     if (!isDeciderStage && task.responses[member.name] === undefined) {
@@ -149,7 +146,7 @@ export async function handleLoopIdle(
     if (decision.parseFailed) {
         logEvent(ctx, "warn", "decision parse failed", { team: team.teamName, member: member.name })
         task.decisionParseFailures++
-        // H42: allow task-level override of the parse-failure threshold.
+        // Allow a task-level override of the parse-failure threshold.
         const maxFailures = task.maxDecisionParseFailures ?? MAX_DECISION_PARSE_FAILURES
         if (task.decisionParseFailures >= maxFailures) {
             await finishRun(ctx, team, "loop_complete:decision_parse_failure", "failed")
@@ -200,9 +197,8 @@ export async function handleLoopIdle(
     // succeed -- even on the final round. Checking max_rounds first would
     // misreport a clean final round as a max_rounds failure.
     if (allReadOnlyStagesReportNoIssues(task)) {
-        // M-LOOP: record the decision so the summary shows the final state.
-        // Pre-fix code skipped this, so the loop summary displayed the
-        // previous round's decision (or "n/a" on round 1).
+        // Record the decision so the summary shows the current final state
+        // instead of a previous round or "n/a" on round 1.
         recordLoopDecision(task, {
             round: 0,
             decision: "done",

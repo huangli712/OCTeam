@@ -42,7 +42,7 @@ function narrowSdkEvent(event: unknown): { type?: string; properties?: Record<st
 }
 
 /** Safely extract a string sessionID from an SDK event's properties or top-level id.
- * HIGH-G: SDK events come in multiple shapes across versions:
+ * SDK events come in multiple shapes across versions:
  *   - v1 / common: properties.sessionID
  *   - session.deleted (current SDK): properties.info.id
  *   - top-level id (fallback)
@@ -53,7 +53,7 @@ function sdkEventSessionID(event: unknown): string | undefined {
     if (!narrowed) return undefined
     const fromProps = narrowed.properties?.sessionID
     if (typeof fromProps === "string" && fromProps) return fromProps
-    // HIGH-G: current SDK's session.deleted event places the id at
+    // The current SDK's session.deleted event places the id at
     // properties.info.id (not properties.sessionID). Without this branch the
     // deletion handler never fires and team directories + master authorization
     // leak across plugin restarts.
@@ -94,7 +94,7 @@ const compacting = new Map<string, number>() // sessionID -> expiresAt
 const COMPACTING_FLAG_TTL_MS = 15_000
 const COMPACTING_MAP_CAP = 256
 
-// P7 mitigation: ACK happens before the downstream LLM turn. Retain enough
+// ACK happens before the downstream LLM turn. Retain enough
 // in-process state to count explicit session.error turns that can no longer
 // redeliver their injected mailbox messages.
 const earlyAckedMessageCountBySession = new Map<string, number>()
@@ -146,7 +146,7 @@ export function createCompactingHook(): NonNullable<Hooks["experimental.session.
             ? (input as Record<string, unknown>).sessionID
             : undefined
         if (typeof sid === "string" && sid) {
-            // LOW: enforce COMPACTING_MAP_CAP on insert by evicting the
+            // Enforce COMPACTING_MAP_CAP on insert by evicting the
             // oldest expired entry before adding a new one.
             if (compacting.size >= COMPACTING_MAP_CAP) {
                 const now = Date.now()
@@ -154,13 +154,9 @@ export function createCompactingHook(): NonNullable<Hooks["experimental.session.
                     if (now >= exp) compacting.delete(k)
                     if (compacting.size < COMPACTING_MAP_CAP) break
                 }
-                // If still at cap after evicting expired, remove the oldest.
-                // P6: pre-fix code silently evicted STILL-VALID flags, causing
-                // the evicted session's transform to execute real
-                // pollMailbox+ackMessages on a compaction-clone turn,
-                // permanently losing messages. Now we log at error level so
-                // operators notice the capacity pressure. CAP raised to 256
-                // to make this a rare event.
+                // If the map remains at capacity, evict the oldest entry. A
+                // still-valid eviction can cause message loss, so log it at
+                // error level. The 256-entry cap keeps this path rare.
                 if (compacting.size >= COMPACTING_MAP_CAP) {
                     const oldest = [...compacting.entries()].sort((a, b) => a[1] - b[1])[0]
                     if (oldest) {
@@ -214,7 +210,7 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
             return
         }
 
-        // H24: session.error fires on abort, auth failure, or unrecoverable
+        // session.error fires on abort, auth failure, or unrecoverable
         // provider error. Without handling it the member stays "running" in
         // the in-memory index, blocking barrier completion until wall-clock
         // timeout. Map the error to a member escalation so checkTermination
@@ -241,24 +237,21 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
                 const team = await loadTeamState(member.storageRoot, member.teamName, member.leadSessionId)
                 await team.mutex.runExclusive(async () => {
                     const live = team.members.find(m => m.name === member.name)
-                    // HIGH #11: verify the error event's sessionID matches
+                    // Verify the error event's sessionID matches
                     // the live member's current session. A stale error from
                     // a replaced session must not affect the current run.
                     if (live?.sessionId !== undefined && live.sessionId !== sessionID) return
-                    // H-SD: gate session.error on status === "running" + active
-                    // task + not deleted. Without this, a stale session.error
-                    // from an aborted turn (team_cancel/finishRun already reset
-                    // the member to idle) would re-escalate the member to
-                    // errored and potentially fail the next run via
-                    // checkTermination.
+                    // Process session errors only while the member is running
+                    // with an active task and a live team. This prevents stale
+                    // errors from canceled turns from affecting a later run.
                     if (!live || live.status !== "running") return
                     if (!team.activeTask) return
                     if (team.deleted) return
                     live.status = "errored"
-                    // L5: serialize the full error info instead of relying on
+                    // Serialize the full error info instead of relying on
                     // SDK properties.error being a string (it may be an object).
                     const errProps = narrowed?.properties
-                    // HIGH: JSON.stringify can throw on circular refs or BigInt.
+                    // JSON.stringify can throw on circular refs or BigInt.
                     // Use a safe serializer that never throws.
                     const truncateError = (value: string): string => {
                         const marker = "...[truncated]"
@@ -302,23 +295,16 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
                         reason: live.error,
                     })
                     await checkTermination(ctx, team)
-                    // I-1: re-drive mode-specific barrier handlers after a member
-                    // errors. Pre-fix code only drove signoff; parallel,
-                    // delegate, recurse, quorum, etc. were never notified, so
-                    // if the error was within tolerance the run stalled until
-                    // wall-clock timeout (no more idle events for this member).
-                    // processIdle routes to the correct mode handler which
-                    // checks errored count and advances the barrier if possible.
+                    // Re-drive mode-specific barrier handling after an error so
+                    // a run within tolerance can advance without another idle event.
                     if (team.activeTask?.signoffStage) {
                         await handleSignoffIdle(ctx, team, live)
                     }
                     if (team.activeTask && team.status === "busy") {
                         // Run not terminated — re-drive the barrier so the mode
                         // handler can process the errored member.
-                        // H-M3: processIdle returns early for errored members
-                        // (H6 guard at idle.ts:255). Instead, call the mode
-                        // handler directly so it can advance the barrier past
-                        // the errored member.
+                        // processIdle returns early for errored members. Call the
+                        // mode handler directly so it can advance the barrier.
                         await processErrorRecovery(ctx, team, live)
                     }
                     await persistTeamState(ctx, team, "persist team state failed (session.error)", { team: team.teamName, member: live.name })
@@ -381,7 +367,7 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
                 await persistTeamState(ctx, team, "persist team state failed (member idle)", { team: team.teamName, member: live.name })
             })
         } catch (err) {
-            // H26: processIdle may have partially mutated state (e.g. flipped
+            // processIdle may have partially mutated state (e.g. flipped
             // member to idle in Step 1) before throwing. Without persisting,
             // the in-memory state diverges from disk. The sweep timer only
             // re-checks status === "running" members, so a member stuck in
@@ -422,19 +408,16 @@ function masterPseudoMember(): MemberState & { isMaster: true } {
  * synthetic text part on the last user message. Uses the same reservation
  * protocol as the master drain path.
  *
- * P7 known limitation: ACK commits before the downstream LLM turn runs. If
+ * Known limitation: ACK commits before the downstream LLM turn runs. If
  * that turn fails, injected messages cannot be re-delivered, so this boundary
  * is at-most-once rather than exactly-once. Explicit session.error events emit
  * a cumulative dropped-turn counter; process crashes before an error event are
  * not observable. A full fix requires durable cross-hook pending-ACK state.
  *
- * sessionID source: the SDK types this hook's `input` as `{}` and the
- * runtime passes `{}` at BOTH trigger sites (main loop + compaction), so the old
- * `input.sessionID` read was always undefined → the hook early-returned every
- * time and the mailbox was never drained. Each Message (UserMessage |
- * AssistantMessage) carries a required `info.sessionID`, so we read it from
- * `output.messages` instead — all messages in one transform call belong to the
- * same session.
+ * The SDK types this hook's `input` as `{}` and passes `{}` at both trigger
+ * sites. Each message carries a required `info.sessionID`, so the hook reads
+ * the session ID from `output.messages`; all messages in one transform call
+ * belong to the same session.
  */
 export function createTransformHook(
     ctx: PluginContext,
@@ -471,17 +454,13 @@ export function createTransformHook(
             // belongs to one specific orchestration run; once that run ends the
             // directive is stale and must be dropped (not injected).
             //
-            // C-10: ALWAYS load team state when ANY directive is present
-            // (scoped OR unscoped). Pre-fix code skipped the load when only
-            // unscoped directives were in the batch, leaving activeRunIdForAuth
-            // undefined; isAuthenticatedDirective then interpreted undefined as
-            // "no active run" and accepted unscoped directives registered for
-            // earlier runs (cross-run replay via team_intervene's runId===undefined
-            // path, or via copied JSONL lines).
+            // Load team state whenever any directive is present, scoped or
+            // unscoped. This binds authentication to the active run and blocks
+            // cross-run replay through directives that omit runId.
             let toInject = unread
             let activeRunIdForAuth: string | undefined
             const hasDirective = unread.some(m => m.kind === "directive")
-            // N8: track team state unreadability OUTSIDE the hasDirective
+            // Track team state unreadability outside the hasDirective
             // block so the empty-injection branch can decide whether to
             // retain directives for retry.
             let teamStateUnreadable = false
@@ -529,11 +508,11 @@ export function createTransformHook(
                 const injectedPart = { type: "text" as const, text: injection, synthetic: true }
                 parts.push(injectedPart)
 
-                // H-5/M-hooks: ACK the full reserved set inside the injection
+                // ACK the full reserved set inside the injection
                 // block. If the batch partially commits, retain only messages
                 // whose processed records were written; otherwise roll back the
                 // entire injected part so unacknowledged messages can be retried.
-                // N8-residual: when teamStateUnreadable, only ack injected
+                // When teamStateUnreadable, only acknowledge injected
                 // (non-directive) messages; retain directives for retry.
                 const toAck = teamStateUnreadable
                     ? unread.filter(m => m.kind !== "directive")
@@ -572,8 +551,6 @@ export function createTransformHook(
                 // Empty injection (all filtered) — ack non-directive messages
                 // so they are dropped, but RETAIN directives when team state was
                 // unreadable so they can be retried after state recovers.
-                // N8: pre-fix code acked the FULL set including dropped directives,
-                // permanently consuming them without injection.
                 if (teamStateUnreadable) {
                     const nonDirectives = unread.filter(m => m.kind !== "directive")
                     if (nonDirectives.length > 0) {
@@ -620,15 +597,13 @@ export async function sweepTeamOnce(
         // Mirrors processIdle (idle.ts) and
         // handleStatusEvent (status.ts) tombstone guards.
         if (team.deleted) return
-        // CRIT: cross-process ownership guard. If runnerPid is set and
+        // Cross-process ownership guard. If runnerPid is set and
         // belongs to another process, do NOT mutate this team's state —
         // it is owned by a live sibling process.
         if (team.runnerPid !== undefined && team.runnerPid !== process.pid) return
         if (team._stateUnreadable) {
-            // N1-H32: pre-fix code called loadTeamState() here, but sweepTeamOnce
-            // already holds team.mutex. loadTeamState's cache refresh internally
-            // re-acquires the same non-reentrant mutex → permanent self-deadlock.
-            // Fix: read state.json directly via safeReadFile (same pattern as C1).
+            // Read state.json directly because loadTeamState would re-acquire
+            // this non-reentrant mutex. safeReadFile also bounds the read.
             try {
                 const raw = await safeReadFile(team.directory, statePath(team.directory), { maxBytes: 1024 * 1024 })
                 if (raw !== undefined) {
@@ -651,25 +626,20 @@ export async function sweepTeamOnce(
         }
         if (!team.activeTask) return
         // 1. Reclaim stale resources.
-        // M12: wrap cleanup in try-catch so a single corrupt mailbox/task
-        // doesn't block termination checks for this team. Pre-fix code ran
-        // cleanup sequentially before checkTermination; any thrown error
-        // would skip timeout/budget enforcement entirely.
+        // Isolate cleanup failures so termination checks still run for the team.
         try {
             await releaseStaleReservations(team.directory, "master").catch(err =>
                 logSwallowed(ctx, "sweepTeamOnce: master reservation release failed", err, { team: team.teamName }),
             )
             for (const m of team.members) {
                 if (m.status === "running") continue
-                // H-cleanup: isolate per-member release so one corrupt mailbox
-                // does NOT block subsequent members' reservation reclaim.
-                // Pre-fix code shared one try — the first throw skipped all
-                // remaining members AND reapStaleClaims.
+                // Isolate each member's release so one corrupt mailbox does not
+                // block subsequent members or stale-claim cleanup.
                 await releaseStaleReservations(team.directory, m.name).catch(err =>
                     logSwallowed(ctx, "sweepTeamOnce: member reservation release failed", err, { team: team.teamName, member: m.name }),
                 )
             }
-            // M10: reap stale claims for both delegate and recurse modes.
+            // Reap stale claims for both delegate and recurse modes.
             const taskType = team.activeTask?.type
             if (taskType === "delegate" || taskType === "recurse") {
                 await reapStaleClaims(team.directory).catch(err =>
@@ -681,10 +651,7 @@ export async function sweepTeamOnce(
                 team: team.teamName,
             })
         }
-        // 2. Approval timeout: fail the run if approval has been pending
-        // longer than the configured limit. Pre-fix code had the types defined
-        // but no execution path — a hung approval would deadlock the team
-        // until wall-clock timeout.
+        // 2. Fail runs whose approval request exceeds the configured timeout.
         const task = team.activeTask
         if (task && task.approvalRequest && task.approvalTimeoutMs !== undefined) {
             const elapsed = Date.now() - task.approvalRequest.requestedAt
@@ -696,9 +663,8 @@ export async function sweepTeamOnce(
         // 3. Termination checks run even if no idle arrives.
         await checkTermination(ctx, team)
         if (!team.activeTask) return
-        // M-8: check retry escalation for all members with retryingSince set.
-        // Pre-fix code only checked the escalation window inside handleStatusEvent,
-        // so a long retry storm with no new status events would never escalate.
+        // Check retry escalation for every member with a retry window so a
+        // quiet retry storm cannot bypass escalation.
         for (const member of team.members) {
             if (member.retryingSince !== undefined) {
                 if (member.status === "idle") {
@@ -712,15 +678,13 @@ export async function sweepTeamOnce(
                     continue
                 }
                 await maybeEscalateRetry(ctx, team, member)
-                // M13: after each escalation, check if the run ended. Pre-fix
-                // code only checked after the entire loop — the first member's
-                // escalation could finishRun, but remaining members would still
-                // be processed and marked errored.
+                // Check after each escalation because it may finish the run
+                // before later members are processed.
                 if (!team.activeTask) return
             }
         }
         if (!team.activeTask) return
-        // I-3/H-2: use the sweep-wide snapshot only to identify candidates.
+        // Use the sweep-wide snapshot only to identify candidates.
         // Every candidate carries its turn generation, then gets a fresh SDK
         // status read and a final live-team-state check before processIdle.
         idleCandidates = team.members.flatMap(member => {
@@ -775,10 +739,8 @@ export async function sweepTeamOnce(
 }
 
 /** Start the periodic sweep timer that babysits busy teams for missed-idle reconciliation.
- * M-15: uses a recursive setTimeout pattern (not setInterval) so a slow
- * sweep iteration cannot overlap with the next one. Pre-fix code used
- * setInterval(async ...) which allowed overlapping sweeps when a single
- * iteration took longer than SWEEP_INTERVAL_MS. */
+ * A recursive setTimeout schedules each tick after the prior sweep completes,
+ * preventing overlap when a sweep exceeds SWEEP_INTERVAL_MS. */
 export function startSweepTimer(ctx: PluginContext): { stop: () => void } {
     let stopped = false
     let currentHandle: NodeJS.Timeout | undefined
@@ -791,11 +753,8 @@ export function startSweepTimer(ctx: PluginContext): { stop: () => void } {
             for (const [sid, exp] of compacting) {
                 if (now >= exp) compacting.delete(sid)
             }
-            // H-M1: race the status API against a timeout so a hanging
-            // host API does not block all teams' sweep ticks indefinitely.
-            // Pre-fix code had no timeout — a stuck session.status would
-            // permanently disable timeout detection, retry escalation, and
-            // stale-resource recovery for ALL teams.
+            // Bound the status API call so a hung request does not block timeout
+            // detection, retry escalation, or stale-resource recovery for all teams.
             const SWEEP_STATUS_TIMEOUT_MS = 10_000
             let statusMap: unknown = undefined
             try {
@@ -811,10 +770,8 @@ export function startSweepTimer(ctx: PluginContext): { stop: () => void } {
                 })
             }
             for (const team of activeTeams()) {
-                // M-29: isolate per-team sweep failures so one bad team does
-                // not prevent the sweep from processing the remaining teams.
-                // H-M2: race each team's sweep against a timeout so a
-                // permanently hung team does not block the rest.
+                // Isolate and bound each team's sweep so one bad or hung team
+                // does not block the remaining teams.
                 const SWEEP_PER_TEAM_TIMEOUT_MS = 30_000
                 try {
                     const sweepPromise = sweepTeamOnce(ctx, team, statusMap)
@@ -833,7 +790,7 @@ export function startSweepTimer(ctx: PluginContext): { stop: () => void } {
         } catch (err) {
             logEvent(ctx, "error", "sweep iteration failed", { error: err instanceof Error ? err.message : String(err) })
         }
-        // M-15: schedule the next sweep AFTER this one completes, preventing
+        // Schedule the next sweep after this one completes, preventing
         // overlapping intervals.
         sweepHandle = scheduleSweep()
         sweepHandle.unref()

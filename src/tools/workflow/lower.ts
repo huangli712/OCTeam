@@ -4,8 +4,6 @@
  * Also handles matrix/foreach expansion and validation error label formatting.
  *
  * Dry-run preview formatting lives in format.ts.
- *
- * Extracted from the workflow tool entry point.
  */
 
 import type {
@@ -97,6 +95,7 @@ export function resolveGateTargetRef(
     return idx
 }
 
+/** Resolve a gate's implicit or explicit target to a lowered step index. */
 export function resolveGateTargetIndex(steps: readonly LoweredWorkflowStep[], gateIndex: number): number {
     const gate = steps[gateIndex]
     if (gate?.kind !== "gate") return -1
@@ -653,19 +652,13 @@ function substituteVarsInSteps(steps: readonly WorkflowToolStep[], vars: Record<
     return steps.map(step => substituteVarsInStep(step, vars))
 }
 
-/** Substitute ${var} placeholders in ALL string fields of a single step.
- * M-7: pre-fix code only substituted a hardcoded subset of fields (task,
- * criteria, member, etc.), missing id, on_pass_goto, on_fail_goto,
- * on_invalid_goto, target_step, targets, inputs, verifiers, etc. A
- * matrix/foreach branch using ${var} in those fields would get the literal
- * placeholder, not the expanded value. */
+/** Substitute ${var} placeholders in every string field of a step, including nested objects. */
 function substituteVarsInStep(step: WorkflowToolStep, vars: Record<string, string>): WorkflowToolStep {
     const f = step as Record<string, unknown>
     const out: Record<string, unknown> = { ...step }
     // Substitute EVERY string field on the step object, regardless of kind.
-    // M-10: also recurse into plain objects (e.g. retry_on: { output_contains:
-    // "${item}" } or where: { value: "${threshold}" }) so nested control fields
-    // are expanded alongside top-level strings and arrays.
+    // Recurse into plain objects such as retry_on and where so nested control
+    // fields expand alongside top-level strings and arrays.
     for (const [key, value] of Object.entries(f)) {
         out[key] = substituteVarsDeep(value, vars)
     }

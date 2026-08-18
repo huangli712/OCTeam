@@ -21,11 +21,7 @@ import { OCTEAM_AGENTS, isOCTeamAgent, normalizeRole, roleAgent } from "../../co
 import type { ActiveTask, TeamSpec, WorkflowStep } from "../../core/types.js"
 import { MEMBER_NAME_POOL } from "../../state/naming.js"
 
-/**
- * C-19: migrate all member-name references inside an ActiveTask when a member
- * is renamed. Used for both activeTask and lastInterruptedTask so a rename on
- * a failed team does not break the preserved checkpoint.
- */
+/** Rename an optional record key while preserving its value. */
 function renameRecordKey<T>(record: Record<string, T> | undefined, oldName: string, newName: string): void {
     const value = record?.[oldName]
     if (record === undefined || value === undefined) return
@@ -281,7 +277,7 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                     return
                 }
 
-                // --- H-23: snapshot all fields that will be mutated, for complete rollback ---
+                // Snapshot every field that rollback may need.
                 const savedAgent = liveMember.agent
                 const savedModel = liveMember.model
                 const savedRole = specMember?.role
@@ -301,11 +297,9 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                             caller.leadSessionId, caller.storageRoot,
                         )
                     }
-                    // H-T2/H-T6: worktree destroy deferred to AFTER successful
-                    // persistence (see below). Pre-fix code destroyed here,
-                    // but a subsequent writeTeamState/saveTeamState failure
-                    // left the member with no worktree and no session, and
-                    // rollback couldn't restore them.
+                    // Defer worktree destruction until persistence succeeds so a
+                    // write failure can roll back the member without losing its
+                    // worktree or session.
                     try {
                         await fs.rename(inboxPath(team.directory, oldName), inboxPath(team.directory, newName))
                     } catch (err) {
@@ -313,11 +307,9 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                             changes.push(`warning: mailbox rename failed (${err instanceof Error ? err.message : String(err)})`)
                         }
                     }
-                    // H22: also rename processed log and reserved directory.
-                    // Pre-fix code only moved the inbox (.jsonl), leaving
-                    // .processed.jsonl and .reserved/ bound to the old name.
-                    // This caused dedup log loss and potential re-delivery of
-                    // reserved messages to a future member with the same name.
+                    // Rename the processed log and reserved directory with the inbox
+                    // to preserve deduplication state and prevent delivery to a future
+                    // member with the old name.
                     try {
                         await fs.rename(processedPath(team.directory, oldName), processedPath(team.directory, newName))
                     } catch (err) {
@@ -335,18 +327,14 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                     if (team.activeTask) {
                         migrateActiveTaskMemberRefs(team.activeTask, oldName, newName)
                     }
-                    // C-19: a failed team carries lastInterruptedTask (the
-                    // checkpoint preserved by reconcile.ts for team_resume).
-                    // Pre-fix code only migrated activeTask references, so
-                    // renaming a member on a failed team left the checkpoint
-                    // pointing at the old name → team_resume could not resolve
-                    // the actor/verifier and immediately failed the recovered
-                    // run. Apply the same migration to lastInterruptedTask.
+                    // A failed team keeps lastInterruptedTask as the checkpoint used by
+                    // team_resume. Migrate the same member references as activeTask so
+                    // resume can resolve the renamed actor or verifier.
                     if (team.lastInterruptedTask) {
                         migrateActiveTaskMemberRefs(team.lastInterruptedTask, oldName, newName)
                     }
                     changes.push(`name: ${oldName} → ${newName}`)
-                    // HIGH #19: task migration is transactional — if any
+                    // Task migration is transactional: if any
                     // update fails, roll back all previously migrated tasks.
                     const migrated: Array<{ id: string; oldOwner: string }> = []
                     try {
@@ -385,10 +373,9 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                     changes.push("prompt: updated")
                 }
 
-                // HIGH: if role or prompt changed, defer session deletion
-                // to AFTER successful persistence. Pre-fix code deleted
-                // the session then failed to persist, leaving disk with a
-                // stale sessionId pointing to a deleted session.
+                // Defer session deletion for role or prompt changes until
+                // persistence succeeds so disk cannot point to a deleted session
+                // after a write failure.
                 let needsSessionReset = false
                 if ((args.new_role || args.new_prompt) && liveMember.sessionId && liveMember.initialized) {
                     needsSessionReset = true
@@ -429,10 +416,8 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                 if (writeErr) {
                     // Rollback snapshot — capture ALL mutated fields BEFORE any
                     // write attempt so we can restore them atomically on failure.
-                    // H-23: the pre-fix code restored rename-related fields but
-                    // left agent/role/model mutations in place, so a saveTeamState
-                    // failure left the in-memory object with agent/model changes
-                    // that the next unrelated save would silently persist.
+                    // Restore agent, role, and model fields with rename-related state
+                    // so the in-memory member remains aligned with disk after a save failure.
                     if (renaming) {
                         const newName = args.new_name!
                         const oldName = liveMember.name === newName ? args.member_name : newName
@@ -464,17 +449,10 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                             }
                         }
                     }
-                    // H-23: restore agent/model mutations too. Pre-fix code
-                    // guarded each restore on `savedX !== undefined`, which
-                    // skipped restoration when the original value was absent —
-                    // the new value then silently persisted via the next
-                    // unrelated save. Restore agent/model unconditionally
-                    // (including back to undefined) so the in-memory object
-                    // matches disk. role/prompt are required strings on
-                    // MemberSpec, so we keep the undefined-guard for them
-                    // (when specMember exists, savedRole/savedPrompt are
-                    // always strings, but TS cannot infer that across the
-                    // earlier nullish-coalesce snapshot).
+                    // Restore agent and model unconditionally, including undefined,
+                    // so memory matches disk. Role and prompt stay guarded because
+                    // TypeScript treats their snapshots as optional even though
+                    // MemberSpec requires strings when the member exists.
                     liveMember.agent = savedAgent
                     liveMember.model = savedModel
                     if (specMember) {
@@ -483,12 +461,9 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                         if (savedRole !== undefined) specMember.role = savedRole
                         if (savedPrompt !== undefined) specMember.prompt = savedPrompt
                     }
-                    // H-23: if config.json was already written (specWritten=true)
-                    // but state.json save failed, the spec on disk still holds
-                    // the new values while we just rolled them back in memory.
-                    // Compensate by re-writing config.json with the rolled-back
-                    // spec so disk and memory agree. A failure here is logged
-                    // but does not mask the original writeErr.
+                    // If config.json was written before the state save failed,
+                    // rewrite it with the rolled-back spec. Log compensation
+                    // failures without masking the original writeErr.
                     if (specWritten && spec) {
                         try {
                             await writeTeamSpec(caller.storageRoot, spec, caller.leadSessionId, caller.storageRoot)
@@ -501,9 +476,6 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                     }
                     throw writeErr
                 }
-                // HIGH: deferred session deletion for role/prompt changes.
-                // Only delete AFTER successful persistence so a write failure
-                // doesn't leave disk pointing to a deleted session.
                 if (needsSessionReset && liveMember.sessionId) {
                     const oldSid = liveMember.sessionId
                     try {
@@ -522,13 +494,12 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                     try { await saveTeamStateBounded(team) } catch { /* state already saved above */ }
                     changes.push("session: cleared for re-initialization with new role/prompt")
                 }
-                // H-T6: NOW safe to destroy old worktree after successful
-                // persistence. If this fails, the member still has name/index/
-                // spec correctly updated; the stale worktree is a benign orphan
-                // that cleanWorktree will eventually clear on team_delete.
+                // Destroy the old worktree only after persistence succeeds. A
+                // failure leaves the renamed member consistent, and cleanWorktree
+                // can remove the stale worktree during team_delete.
                 if (renaming && liveMember.worktreePath) {
                     let destroyed = true
-                    // CRIT #6: check for uncommitted changes before force-destroying.
+                    // Check for uncommitted changes before force-destroying.
                     try {
                         const dirty = await hasUncommittedChanges(liveMember.worktreePath)
                         if (dirty) {
@@ -561,23 +532,17 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                         }
                         liveMember.sessionId = undefined
                         liveMember.initialized = false
-                        // H5: unindex the old session and persist the cleared state.
-                        // Pre-fix code cleared fields in memory but didn't save —
-                        // a process restart would reload the old sessionId from
-                        // disk, making the destroyed worktree appear active.
+                        // Unindex the old session and persist the cleared fields so
+                        // a restart cannot reload the destroyed worktree as active.
                         changes.push(`worktree: destroyed old (will re-create on next start)`)
                     } else {
                         changes.push(`worktree: WARNING old worktree destroy failed; stale worktree left in place`)
                     }
                 }
-                // G: teardown-save with bounded retry. Pre-fix code used bare
-                // saveTeamState which swallows save failures silently — if
-                // this save fails, the in-memory worktree/session fields are
-                // already cleared but disk still references the destroyed
-                // worktree, so a restart would fail to spawn the member.
-                // saveTeamStateBounded retries 3x before throwing; on throw
-                // we surface the error so the caller knows the member state
-                // may be inconsistent.
+                // Persist teardown with bounded retries because the in-memory
+                // worktree and session fields are already cleared. Surface a final
+                // failure so the caller knows disk may still reference the destroyed
+                // worktree.
                 try {
                     await saveTeamStateBounded(team)
                 } catch (teardownErr) {

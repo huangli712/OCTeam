@@ -17,12 +17,13 @@ import { assertNoSymlinkTraversal } from "../../state/locks.js"
 // silently mis-parsing fields (e.g. a renamed key, a removed shape).
 const SUPPORTED_WORKFLOW_FILE_VERSIONS = new Set([1])
 
-// C-7 resource caps. Workflow files are caller-supplied JSON (read from the
+// Resource caps protect caller-supplied JSON read from the
 // project workspace, which member agents can write to). Without caps a
 // hostile or buggy file can exhaust memory (giant file, giant branch array)
 // or stack (deeply nested fanout). These limits are generous enough for any
 // realistic workflow and tight enough to fail fast on abuse.
 const WORKFLOW_FILE_MAX_BYTES = 1024 * 1024 // 1 MiB raw file
+/** Maximum number of workflow steps across linear and nested fanout definitions. */
 export const WORKFLOW_MAX_TOTAL_STEPS = 256 // across linear + nested fanouts
 const WORKFLOW_MAX_FANOUT_DEPTH = 8 // nested fanout levels
 const WORKFLOW_MAX_BRANCHES_PER_FANOUT = 64 // raw branch array (matrix/foreach expansion is capped separately in lower.ts)
@@ -84,7 +85,7 @@ async function resolveWorkflowFilePath(baseDir: string, relPath: string): Promis
 }
 
 /** Recursively replace ${name} placeholders in value using the provided vars dictionary.
- * C-1: bounded by max depth and cumulative expansion bytes to prevent stack
+ * Bounded by max depth and cumulative expansion bytes to prevent stack
  * overflow and memory exhaustion from deeply nested or highly repetitive
  * template values in a hostile workflow_file. */
 const TEMPLATE_MAX_DEPTH = 20
@@ -105,16 +106,16 @@ function applyTemplateVarsBounded(
         throw new Error(`applyTemplateVars: exceeded max nesting depth (${TEMPLATE_MAX_DEPTH})`)
     }
     if (typeof value === "string") {
-        // N10: cap individual variable value length before substitution to
+        // Cap each variable value before substitution to
         // prevent OOM from repeated placeholders multiplied by large values.
         const MAX_VAR_VALUE_BYTES = 65_536
         const boundedVars: Record<string, string> = {}
         for (const [k, v] of Object.entries(vars)) {
             const vBytes = Buffer.byteLength(v ?? "", "utf8")
             if (vBytes > MAX_VAR_VALUE_BYTES) {
-                // N10-fix: use Buffer-based truncation for correct UTF-8 byte
-                // count. Pre-fix code used .slice() which counts UTF-16 code
-                // units — CJK/emoji strings would exceed the byte cap by 3x.
+                // Use Buffer-based truncation for correct UTF-8 byte counts;
+                // string slicing counts UTF-16 code units and can exceed the
+                // byte cap for multibyte text.
                 // Back off to the last complete UTF-8 character boundary so
                 // toString doesn't insert U+FFFD replacement chars.
                 const buf = Buffer.from(v ?? "", "utf8")
@@ -144,7 +145,7 @@ function applyTemplateVarsBounded(
     if (isRecord(value)) {
         const out: Record<string, unknown> = {}
         for (const [key, inner] of Object.entries(value)) {
-            // MEDIUM: block prototype pollution — reject keys that target
+            // Block prototype pollution by rejecting keys that target
             // Object.prototype via __proto__ or constructor.
             if (key === "__proto__" || key === "constructor" || key === "prototype") continue
             out[key] = applyTemplateVarsBounded(inner, vars, strict, depth + 1, budget)
@@ -208,7 +209,7 @@ export function validateWorkflowSteps(
 }
 
 /**
- * C-13: bound the number of branches a matrix/foreach fanout would expand to,
+ * Bound the number of branches a matrix/foreach fanout would expand to,
  * so a large matrix cannot bypass the total-step budget at validation time.
  * Returns the product of all matrix array lengths, or foreach length, or 1.
  */
@@ -245,14 +246,12 @@ function validateWorkflowStep(value: unknown, location: StepLocation, budget: Va
         case "join":
             return { step: value as WorkflowToolStep }
         case "fanout": {
-            // M-LOADER: matrix/foreach fanout does not use `branches` — they
+            // Matrix and foreach fanouts do not use `branches`; they
             // define variables that are expanded at runtime. Only validate
             // branches when neither matrix nor foreach is present.
             if (value.matrix !== undefined || value.foreach !== undefined) {
-                // C5: validate matrix/foreach runtime types before accepting.
-                // Pre-fix code cast via `as unknown as WorkflowToolStep`, so
-                // `matrix: null` or `matrix: 5` passed validation and reached
-                // runtime with a broken type contract.
+                // Validate matrix and foreach runtime types so malformed values
+                // cannot reach runtime with a broken type contract.
                 if (value.matrix !== undefined) {
                     if (!isRecord(value.matrix)) {
                         return { error: `Error: workflow_file "${location.filePath}" ${location.prefix}`
@@ -271,13 +270,10 @@ function validateWorkflowStep(value: unknown, location: StepLocation, budget: Va
                             + ` foreach must be a string array` }
                     }
                 }
-                // C-13: validate the template `steps` array recursively so an
+                // Validate the template `steps` array recursively so an
                 // invalid kind inside the template (which would be expanded
                 // into N branches at runtime) is caught at load time, and so
                 // the total step budget accounts for the expanded size.
-                // Pre-fix code returned the step without any validation, so a
-                // malformed template could trigger assertNever in lower or
-                // bypass the 256-step budget via a large matrix × template.
                 if (!Array.isArray(value.steps)) {
                     return { error: `Error: workflow_file "${location.filePath}" ${location.prefix} with matrix/foreach requires a \`steps\` array` }
                 }
@@ -579,9 +575,7 @@ async function loadWorkflowFileUnchecked(
     // resolveWorkflowFilePath checks the resolved string path, but the gap
     // between that check and this read is a TOCTOU window where a symlink
     // could be installed. The helper walks every ancestor with lstat (no
-    // follow), failing closed on any symlink in the chain — replacing the
-    // previous realpath().catch(() => resolved.filePath) pattern which
-    // fail-opened on EPERM/EIO.
+    // follow), failing closed on any symlink or lstat error in the chain.
     try {
         await assertNoSymlinkTraversal(base, resolved.filePath)
     } catch (err) {
@@ -597,7 +591,7 @@ async function loadWorkflowFileUnchecked(
 
     let raw: string
     try {
-        // MEDIUM: O_NOFOLLOW rejects leaf symlinks; O_NONBLOCK prevents a
+        // O_NOFOLLOW rejects leaf symlinks; O_NONBLOCK prevents a
         // FIFO named .json from blocking open() indefinitely.
         const O_NOFOLLOW = fs.constants.O_NOFOLLOW ?? 0
         const O_NONBLOCK = fs.constants.O_NONBLOCK ?? 0
@@ -612,10 +606,8 @@ async function loadWorkflowFileUnchecked(
                     error: `Error: workflow_file "${relPath}" is too large: ${fileStat.size} bytes exceeds the ${WORKFLOW_FILE_MAX_BYTES}-byte limit`,
                 }
             }
-            // N11: read with explicit size cap to prevent concurrent-append
-            // TOCTOU. Pre-fix code checked stat.size then called unbounded
-            // fh.readFile(); a concurrent append could grow the file between
-            // the stat check and the read, bypassing the size limit.
+            // Read with an explicit cap so a concurrent append between the stat
+            // check and read cannot bypass the size limit.
             const maxBytes = Math.min(fileStat.size, WORKFLOW_FILE_MAX_BYTES)
             const buffer = Buffer.alloc(maxBytes)
             const { bytesRead } = await fh.read(buffer, 0, maxBytes, 0)

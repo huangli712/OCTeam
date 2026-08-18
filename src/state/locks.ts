@@ -35,7 +35,7 @@ const LOCK_HEARTBEAT_MS = LOCK_TTL_MS / 3
  * Per-team async mutex. Serializes event-handler state mutations within a
  * single process.
  *
- * CRITICAL: the mutex instance MUST be a process-level singleton keyed by
+ * The mutex instance MUST be a process-level singleton keyed by
  * teamName (see teamRegistry in store.ts). If loadTeamState returned a fresh
  * object with a fresh mutex each call, concurrent idles would grab different
  * mutexes and serialization would silently break, corrupting state.
@@ -98,9 +98,8 @@ export async function withLock<T>(
     fn: () => Promise<T>,
     trustedRoot?: string,
 ): Promise<T> {
-    // C-4: when a trusted root is supplied, walk the ancestor chain before
-    // any fs operation. Pre-fix code called mkdir/open/utimes/readFile/unlink
-    // directly on lockPath — a symlinked ancestor could redirect the lock
+    // When a trusted root is supplied, walk the ancestor chain before any fs
+    // operation. A symlinked ancestor could otherwise redirect the lock
     // file outside the team root, breaking mutual exclusion. ENOENT for a
     // not-yet-created lock dir is tolerated by assertNoSymlinkTraversal.
     if (trustedRoot !== undefined) {
@@ -162,8 +161,8 @@ export function shouldReapStaleLock(
  */
 async function maybeReapStaleLock(lockPath: string): Promise<void> {
     try {
-        // HIGH #12/CRIT #3: if this process previously failed to release
-        // this lock, verify the lock STILL belongs to us before unlinking.
+        // If this process failed to release the lock, verify it STILL belongs
+        // to us before unlinking.
         // Another process may have acquired a new lock in the window between
         // our release failure and this reap attempt.
         if (locallyReleasedLocks.has(lockPath)) {
@@ -184,7 +183,7 @@ async function maybeReapStaleLock(lockPath: string): Promise<void> {
         const pidStr = await fs.readFile(lockPath, "utf8")
         const pid = parseInt(pidStr.trim(), 10)
         if (!Number.isFinite(pid) || pid <= 0) {
-            // N5: a zero-byte lock may be a NEW lock between open("wx") and
+            // A zero-byte lock may be a NEW lock between open("wx") and
             // writeFile(pid). Only unlink if it's been zero-byte for more
     // than 1 second — a freshly created lock should have its PID written
     // within milliseconds. This narrows the race window from "any" to
@@ -201,7 +200,7 @@ async function maybeReapStaleLock(lockPath: string): Promise<void> {
             alive = (e as NodeJS.ErrnoException).code !== "ESRCH"
         }
         if (shouldReapStaleLock(st.mtimeMs, Date.now(), LOCK_TTL_MS, alive)) {
-            // N5: re-read the PID before truncating to verify the lock
+            // Re-read the PID before truncating to verify the lock
     // still belongs to the dead owner. Another process may have
     // unlinked and re-created the lock between our initial read and
     // this truncate, which would erase the new owner's PID.
@@ -222,7 +221,7 @@ async function maybeReapStaleLock(lockPath: string): Promise<void> {
     }
 }
 
-// HIGH #12: track locks that releaseLock failed to delete. The local
+// Track locks that releaseLock failed to delete. The local
 // process knows it has exited the critical section, so re-acquiring
 // is safe even though the PID is still alive.
 const locallyReleasedLocks = new Set<string>()
@@ -251,7 +250,7 @@ async function acquireLock(lockPath: string): Promise<void> {
                 await fs.unlink(lockPath).catch(() => { /* best-effort */ })
                 throw writeErr
             }
-            // M17: close after successful write. If close fails, the lock
+            // Close after a successful write. If close fails, the lock
             // is on disk without a live fd → permanent orphan.
             try {
                 await fh.close()
@@ -263,10 +262,8 @@ async function acquireLock(lockPath: string): Promise<void> {
         } catch (err: unknown) {
             const code = (err as NodeJS.ErrnoException).code
             if (code !== "EEXIST") throw err
-            // H-D3: reap stale locks whose owner PID is dead and TTL expired.
-            // Without this, a failed releaseLock (EPERM, crash) orphans the
-            // lock permanently — the log message "stale-lock reaper will
-            // recover" was referencing a reaper that never existed.
+            // Reap stale locks whose owner PID is dead and TTL expired so a
+            // failed release or crash cannot orphan the lock permanently.
             await maybeReapStaleLock(lockPath)
             if (Date.now() > deadline) {
                 throw new Error(`withLock: timed out acquiring ${lockPath}`)
@@ -280,7 +277,7 @@ async function acquireLock(lockPath: string): Promise<void> {
  * Release a lock previously acquired by this process. Reads the pid recorded in
  * the lock file and unlinks ONLY when it matches the current process: this
  * prevents a slow holder from blindly deleting a lock that another process has
- * already, legitimately, re-acquired (defect 2 fix). A missing or unreadable
+ * already, legitimately, re-acquired. A missing or unreadable
  * lock file is treated as already released.
  */
 async function releaseLock(lockPath: string): Promise<void> {
@@ -288,11 +285,9 @@ async function releaseLock(lockPath: string): Promise<void> {
     try {
         owner = await fs.readFile(lockPath, "utf8")
     } catch (err: unknown) {
-        // L-1: only ENOENT (lock already gone) is a safe no-op. Other errors
-        // (EACCES, EIO) mean the lock is still on disk but unreadable —
-        // pre-fix code silently returned for ALL errors, leaving permanent
-        // locks on permission/I/O failures. Now: re-throw non-ENOENT so the
-        // caller knows the lock wasn't released.
+        // Only ENOENT (lock already gone) is a safe no-op. Other errors
+        // (EACCES, EIO) mean the lock is still on disk but unreadable, so
+        // rethrow them and let the caller handle the failed release.
         if (isEnoent(err)) return
         throw err
     }
@@ -314,8 +309,8 @@ async function releaseLock(lockPath: string): Promise<void> {
  * component of the path between them (or at target itself) is a symbolic link.
  * Catches the ancestor-symlink attack that `refuseSymlink` (target + parent
  * only) misses: when an intermediate directory such as `<team>/mailbox` is
- * replaced with a symlink, the legacy check sees only the immediate parent and
- * follows the redirect outside the team root.
+ * replaced with a symlink, checking only the immediate parent follows the
+ * redirect outside the team root.
  *
  * Walks every ancestor of `target` from leaf up to (but not including)
  * `trustedRoot` with `lstat`, refusing any symlink. The trusted root itself is
@@ -334,9 +329,8 @@ export async function assertNoSymlinkTraversal(trustedRoot: string, target: stri
     if (resolved !== root && !resolved.startsWith(root + path.sep)) {
         throw new Error(`assertNoSymlinkTraversal: target escapes trusted root: target=${target} root=${trustedRoot}`)
     }
-    // H-S2: check the trusted root ITSELF for symlink. Pre-fix code assumed
-    // root was always verified, but callers pass team.directory (mutable) or
-    // worktreesRoot (disk-replaceable). A symlinked root would redirect all
+    // Check the trusted root itself for a symlink because callers may pass
+    // team.directory or a disk-replaceable worktreesRoot. A symlinked root would redirect all
     // writes outside the intended location.
     try {
         const rootStat = await fs.lstat(root)
@@ -365,7 +359,7 @@ export async function assertNoSymlinkTraversal(trustedRoot: string, target: stri
 }
 
 /**
- * C1: Safely read a file after symlink-traversal check, using an fd-based
+ * Safely read a file after symlink-traversal check, using an fd-based
  * approach to shrink the TOCTOU window. assertNoSymlinkTraversal validates
  * the full path chain, then fs.open with O_NOFOLLOW atomically rejects a
  * leaf symlink swap between the check and the open. fstat on the fd then
@@ -384,7 +378,7 @@ export async function safeReadFile(
     // O_NOFOLLOW may be absent on non-Linux platforms (e.g. Windows); degrade
     // gracefully — the path-chain check above still provides protection.
     const O_NOFOLLOW = (fs.constants as { O_NOFOLLOW?: number }).O_NOFOLLOW ?? 0
-    // N4: O_NONBLOCK prevents blocking on FIFOs/special files that would
+    // O_NONBLOCK prevents blocking on FIFOs/special files that would
     // otherwise hang indefinitely in open() before fstat() can reject them.
     const O_NONBLOCK = (fs.constants as { O_NONBLOCK?: number }).O_NONBLOCK ?? 0
     const flags = fs.constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK
@@ -409,11 +403,11 @@ export async function safeReadFile(
  * Prevents partial reads on crash. Ensures the parent directory exists.
  *
  * Hardening:
- * - st-tmpname: tmp name carries a random suffix so concurrent writes from
+ * - The temporary name carries a random suffix so concurrent writes from
  *   the same process (same pid) cannot collide on the same tmp path.
- * - st-fsync: tmp data is fsync'd to disk before the rename lands, so an OS
+ * - Temporary data is fsync'd to disk before the rename lands, so an OS
  *   crash after rename cannot leave a zero-byte or stale state file.
- * - st-symlink: a symlink at the target path is refused, so a local attacker
+ * - A symlink at the target path is refused, so a local attacker
  *   with FS write access cannot silently redirect the write elsewhere. When
  *   `trustedRoot` is supplied, the full ancestor chain is also walked via
  *   {@link assertNoSymlinkTraversal} so an intermediate-directory symlink
@@ -424,18 +418,14 @@ export async function atomicWrite(
     content: string,
     trustedRoot?: string,
 ): Promise<void> {
-    // C-5: ancestor symlink check must run BEFORE mkdir. Pre-fix order ran
-    // recursive mkdir first, so if an intermediate directory was already a
-    // symlink to an external target, mkdir would create/extend the external
-    // directory before the symlink check had a chance to refuse. Both checks
-    // below tolerate ENOENT (target/ancestor not yet created), so running
-    // them first is safe.
-    // st-symlink-ancestor: when a trusted root is supplied, walk the full
+    // Check ancestors before mkdir because an existing symlink could redirect
+    // recursive creation outside the trusted root. Both checks tolerate ENOENT.
+    // When a trusted root is supplied, walk the full
     // ancestor chain so an intermediate-directory symlink cannot redirect.
     if (trustedRoot !== undefined) {
         await assertNoSymlinkTraversal(trustedRoot, filePath)
     }
-    // st-symlink: refuse to overwrite a symlink so the write cannot be
+    // Refuse to overwrite a symlink so the write cannot be
     // redirected to an unexpected location. lstat does not follow links.
     try {
         const stat = await fs.lstat(filePath)
@@ -452,11 +442,11 @@ export async function atomicWrite(
         if (code !== "EEXIST") throw err
     })
 
-    // st-tmpname: random suffix prevents same-process tmp collisions.
+    // A random suffix prevents same-process temporary-file collisions.
     const rand = crypto.randomBytes(4).toString("hex")
     const tmp = `${filePath}.tmp.${process.pid}.${rand}`
 
-    // st-fsync: open the tmp file explicitly so we can fsync its data before
+    // Open the temporary file explicitly so its data can be fsynced before
     // rename, guaranteeing the bytes are on disk when the rename lands. The
     // tmp file is cleaned up on any write/fsync failure.
     const fh = await fs.open(tmp, "w")
@@ -468,9 +458,8 @@ export async function atomicWrite(
         await fs.unlink(tmp).catch(() => {})
         throw err
     }
-    // H-D1: close can report delayed I/O errors (e.g. NFS write-behind).
-    // Pre-fix code ignored close errors in a finally block and proceeded
-    // to rename, potentially committing a corrupt file as success.
+    // Close can report delayed I/O errors (e.g. NFS write-behind). Propagate
+    // them instead of renaming a potentially corrupt file as successful.
     try {
         await fh.close()
     } catch (closeErr) {
@@ -480,7 +469,7 @@ export async function atomicWrite(
 
     try {
         await fs.rename(tmp, filePath)
-        // st-dirfsync: persist the directory-entry change so an OS crash after
+        // Persist the directory-entry change so an OS crash after
         // rename cannot lose the new file (content is already durable above).
         await fsyncDir(path.dirname(filePath))
     } catch (err) {
@@ -502,8 +491,7 @@ export async function atomicWrite(
  * When `trustedRoot` is supplied, the full ancestor chain is also walked via
  * {@link assertNoSymlinkTraversal} so an intermediate-directory symlink cannot
  * redirect the write outside the team root. Without `trustedRoot`, only the
- * legacy target + immediate-parent check runs (backward-compatible behavior
- * for callers that do not have a trusted root handy).
+ * target and immediate-parent checks run.
  */
 export async function refuseSymlink(filePath: string, trustedRoot?: string): Promise<void> {
     // Check both the target file and its immediate parent directory.
@@ -542,7 +530,7 @@ export async function appendJsonl(
     trustedRoot?: string,
 ): Promise<void> {
     await refuseSymlink(filePath, trustedRoot)
-    // H-D2: reject non-regular files (FIFO, device) that could block
+    // Reject non-regular files (FIFO, device) that could block
     // appendFile indefinitely. refuseSymlink only checks symlinks.
     try {
         const st = await fs.lstat(filePath)
@@ -571,14 +559,9 @@ export async function lockFresh(
         const stat = await fs.stat(lockPath)
         return Date.now() - stat.mtimeMs <= ttlMs
     } catch (err) {
-        // HIGH-A: distinguish ENOENT (lock genuinely absent → not fresh) from
-        // other stat errors (EACCES, EBUSY, EIO, ...). Pre-fix code caught
-        // everything and returned false, which let the stale-claim reaper
-        // reclaim a claim whose lock file was temporarily unreadable — a
-        // transient permission or IO error would silently release an active
-        // claim, leading to double-claim races. Treat non-ENOENT errors as
-        // "lock may still be fresh" so the reaper leaves it alone; the next
-        // sweep will re-check.
+        // Distinguish ENOENT (lock genuinely absent) from other stat errors
+        // (EACCES, EBUSY, EIO, ...). Treat non-ENOENT errors as "lock may still
+        // be fresh" so the reaper leaves the claim alone until the next sweep.
         if (isEnoent(err)) return false
         return true
     }

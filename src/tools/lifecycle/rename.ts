@@ -69,7 +69,7 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
             let staleState = false
             let collision = false
             let specError: string | undefined = undefined
-            // C2: acquire namespace lock to prevent concurrent team_create
+            // Acquire the namespace lock to prevent concurrent team_create
             // from claiming the old name slot after rename moves the directory.
             await withLock(teamNamespaceLockPath(ctx.storageRoot), async () => withLock(teamLifecycleLockPath(team.directory), async () => team.mutex.runExclusive(async () => {
                 // Revalidate inside the mutex: a concurrent
@@ -84,7 +84,7 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                 // claim the new dir name. This is TOCTOU-safe because mkdir
                 // is atomic — if it succeeds, we are the sole creator.
                 // The placeholder is removed just before fs.rename below.
-                // CRIT #5: do NOT use mkdir+rmdir (which reopens the window).
+                // Do not use mkdir+rmdir because that reopens the collision window.
                 // Instead, keep the empty dir as the rename destination —
                 // fs.rename on Linux replaces an empty dir atomically.
                 try {
@@ -118,17 +118,16 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                 try {
                     spec = await readTeamSpec(ctx.storageRoot, args.team_id, pathLeadSessionId)
                 } catch (err) {
-                    // HIGH-A: do not silently swallow spec read errors. A
+                    // Do not silently swallow spec read errors. A
                     // corrupt config.json would lead to a rename that loses
                     // the spec entirely (spec=null branch skips writeTeamSpec
                     // in the new directory, so the renamed team has no config).
                     // Treat as a fatal precondition and refuse the rename.
-                    // H57: set a flag instead of returning a string — the outer
-                    // code checks flags, not the callback return value, so a
-                    // returned string was silently dropped.
+                    // Set a flag because the outer code checks flags and the mutex
+                    // callback return value is discarded.
                     specError = `Error: team "${args.team_id}" config is unreadable — refusing to rename (${err instanceof Error ? err.message : String(err)})`
                     logSwallowed(ctx, "team_rename: team spec unreadable", err, { team: args.team_id })
-                    // MEDIUM: clean up the placeholder directory created above.
+                    // Clean up the placeholder directory created above.
                     await fs.rmdir(newDir).catch((cleanupErr) => {
                         logSwallowed(ctx, "team_rename: placeholder cleanup failed", cleanupErr, { newDir })
                     })
@@ -170,8 +169,8 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                     if (wasActive) {
                         setActiveTeam(context.sessionID, newDir)
                     }
-                    // H21: the lifecycle lock file moved with the directory
-                    // rename. withLock will release from the OLD path (which
+                    // The directory rename moves the lifecycle lock file.
+                    // withLock releases from the old path (which
                     // no longer exists) and fail gracefully, but the lock file
                     // at newDir/team.lifecycle.lock still carries our PID.
                     // Clean it up so future lifecycle operations on the renamed
@@ -183,21 +182,16 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                     // Rollback: restore the old directory and in-memory state.
                     team.teamName = args.team_id
                     team.directory = oldDir
-                    // HIGH-A: if the spec was written to the new directory with
+                    // If the spec was written to the new directory with
                     // the new name, restore the original spec.name and re-write
                     // it BEFORE moving the directory back. Without this, the
                     // moved-back directory's config.json would still carry the
                     // new name, leaving an inconsistent state.json (name=A) /
                     // config.json (name=B) pair.
                     if (spec && originalSpecName !== undefined && spec.name !== originalSpecName) {
-                        // H-T5: rename FIRST, then write the restored spec. Pre-fix
-                        // code called writeTeamSpec before rename — writeTeamSpec
-                        // writes to the path based on spec.name (now restored to
-                        // the original), which recreates oldDir, causing the
-                        // subsequent fs.rename(newDir, oldDir) to fail with EEXIST.
-                        // The result was a split team: oldDir had only config.json,
-                        // newDir retained state.json, and the index pointed to the
-                        // corrupt oldDir.
+                        // Rename the directory before writing the restored spec because
+                        // writeTeamSpec targets oldDir from the restored name. Writing
+                        // first would recreate oldDir and make the rename fail with EEXIST.
                     }
                     await fs.rename(newDir, oldDir).catch((rollbackErr) => {
                         logSwallowed(ctx, "rename rollback: fs.rename failed", rollbackErr, { oldDir, newDir })

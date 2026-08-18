@@ -79,10 +79,8 @@ export function SessionNavigatorSidebar(props: {
         }
     }
 
-    // M-24: debounce refresh to 300ms (up from 150ms) to coalesce burst
-    // events more aggressively and reduce N+1 mailbox-count request load.
-    // Each refresh runs N+1 HTTP calls plus O(n^2) childCount work, so
-    // coalescing more events into a single refresh materially reduces load.
+    // Debounce refreshes by 300 ms to coalesce bursts. Each refresh performs
+    // N+1 HTTP calls plus O(n^2) child-count work, so batching reduces load.
     let refreshTimer: ReturnType<typeof setTimeout> | undefined
     const scheduleRefresh = () => {
         clearTimeout(refreshTimer)
@@ -240,7 +238,7 @@ export function SessionNavigatorSidebar(props: {
                 </box>
             ) : null}
 
-            {/* Line 3: "Teams" header — collapsible, shows team info (Phase 2.9) */}
+            {/* Line 3: "Teams" header, collapsible with team info */}
             <box
                 flexDirection="row"
                 width="100%"

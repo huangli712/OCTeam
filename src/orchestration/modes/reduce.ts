@@ -37,9 +37,8 @@ export async function maybeTriggerReduce(ctx: PluginContext, team: Team): Promis
     if (Object.keys(task.responses).length <= 1) return false
     const reducer = findMember(team, task.reducerMember ?? "")
     if (!reducer?.sessionId || reducer.status === "errored") {
-        // MEDIUM: configured reducer unavailable — log so the run's
-        // silent summarize fallback is diagnosable. Pre-fix code returned
-        // false indistinguishably from "no reduce configured".
+        // Log an unavailable configured reducer so the summarize fallback is
+        // distinguishable from a run with no reduction configured.
         logSwallowed(ctx, "maybeTriggerReduce: configured reducer unavailable, falling back to summarize", undefined, {
             reducer: task.reducerMember, status: reducer?.status,
         })
@@ -52,7 +51,7 @@ export async function maybeTriggerReduce(ctx: PluginContext, team: Team): Promis
     // dispatch and the reducer's capture cannot promote it as reducedResult
     // on resume (resume.ts sees responses[reducer] truthy → handleReduceIdle
     // → task.reducedResult = stale mapper output). Mirrors fanout.ts:218-220.
-    // J-4: snapshot the value first so empty-output retries can restore it
+    // Snapshot the value first so empty-output retries can restore it
     // and rebuild the same input set as the first attempt.
     task._reducerMapperSnapshot = task.responses[reducer.name]
     delete task.responses[reducer.name]
@@ -78,14 +77,9 @@ export async function handleReduceIdle(
     if (member.name !== task.reducerMember) return
 
     const reduced = task.responses[member.name]
-    // HIGH-D: if the reducer itself is errored, neither retry nor empty-
-    // output fail is correct — the reducer cannot produce. Pre-fix code
-    // fell through to the retry path: dispatchToMember silently no-ops on an
-    // errored member (its `if (member.status === "errored") return`), so
-    // the reducer was never re-dispatched, no idle ever fired, and the run
-    // hung until wall-clock timeout. Clear reduceStage and fall back to the
-    // parallel non-reduce delivery path so successful mappers' work is not
-    // wasted.
+    // An errored reducer cannot produce or be retried. Clear reduceStage and
+    // fall back to non-reduced parallel delivery so successful mapper output
+    // is preserved and the run cannot stall.
     if (member.status === "errored") {
         task.reduceStage = false
         task.reducedResult = undefined
@@ -114,7 +108,7 @@ export async function handleReduceIdle(
                 task.responses[member.name] = task._reducerMapperSnapshot
                 task._reducerMapperSnapshot = undefined
             }
-            // H41: honor signoff on the fallback path, matching the normal
+            // Honor signoff on the fallback path, matching the normal
             // reduce completion path (line 125). Without this, a parallel
             // task configured with signoffPolicy + a reducer could deliver
             // unreviewed raw mapper outputs when the reducer errors.
@@ -131,7 +125,7 @@ export async function handleReduceIdle(
         const maxRetries = task.maxRetries ?? 0
         task.reduceRetries = (task.reduceRetries ?? 0) + 1
         if (task.reduceRetries > maxRetries) {
-            // J-7/MEDIUM: restore the mapper snapshot before failing so the
+            // Restore the mapper snapshot before failing so the
             // summary includes the mapper's original output.
             if (task._reducerMapperSnapshot !== undefined) {
                 task.responses[member.name] = task._reducerMapperSnapshot
@@ -145,12 +139,8 @@ export async function handleReduceIdle(
             await finishRun(ctx, team, "parallel_reduce_failed:reducer_unavailable", "failed")
             return
         }
-        // J-4: restore the reducer's mapper-stage response before rebuilding
-        // the summary so the retry input matches the first attempt. Pre-fix
-        // code deleted responses[reducer] at reduce-trigger time (line 45,
-        // correct for the stale-promotion guard) but the retry path here
-        // rebuilds from current responses — which no longer has the reducer's
-        // mapper output — producing a different (smaller) input set.
+        // Restore the reducer's mapper-stage response before rebuilding the
+        // summary so retries receive the same input set as the first attempt.
         if (task._reducerMapperSnapshot !== undefined && !task.responses[member.name]) {
             task.responses[member.name] = task._reducerMapperSnapshot
         }
@@ -162,7 +152,7 @@ export async function handleReduceIdle(
     }
     task.reducedResult = reduced
     task.reduceStage = false
-    // J-4: clear the snapshot once a real reduction is captured so it is
+    // Clear the snapshot once a real reduction is captured so it is
     // not persisted in the run record.
     task._reducerMapperSnapshot = undefined
     if (await maybeTriggerSignoff(ctx, team)) return

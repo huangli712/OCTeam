@@ -371,9 +371,8 @@ export type WorkflowToolArgs = {
     workflow_file?: string
     vars?: Record<string, string>
     dry_run?: boolean
-    // L3: include the 5 tool-level fields that the runtime accepts but the
-    // type omitted. Without these, direct callers using WorkflowToolArgs get
-    // excess-property errors and ResolvedWorkflowToolArgs loses them.
+    // Tool-level orchestration controls accepted by the runtime and preserved
+    // in ResolvedWorkflowToolArgs.
     signoff_policy?: "none" | "decider" | "peer-quorum"
     signoff_decider?: string
     signoff_quorum?: number

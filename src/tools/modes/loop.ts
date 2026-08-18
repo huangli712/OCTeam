@@ -69,11 +69,8 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
                     if (explicitDeciderStageIndex !== -1 && explicitDeciderStageIndex !== stageMembers.length - 1) {
                         return `Error: decider "${args.decider}" appears in stage ${explicitDeciderStageIndex + 1} but must be the LAST stage (decision must follow all modify stages)`
                     }
-                    // M-12: decider stage MUST be read_only. An omitted action defaults
-                    // to read_only (the common case); only an explicit action:"modify"
-                    // is rejected. Pre-fix code allowed undefined to pass silently,
-                    // but also allowed modify — now we default undefined to read_only
-                    // and reject modify explicitly.
+                    // Omitted actions default to read_only; only an explicit
+                    // action:"modify" is rejected.
                     const deciderAction = args.stages[explicitDeciderStageIndex]?.action
                     if (deciderAction === "modify") {
                         return `Error: decider "${args.decider}" stage must be action "read_only" (it reviews, not modifies)`
@@ -86,10 +83,8 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
                 const stages: Stage[] = args.stages.map(s => ({
                     member: s.member,
                     task: s.task,
-                    // H41: default omitted action to read_only so the decider
-                    // participates in read-only/no-issues judgment. Pre-fix
-                    // code saved undefined, which excluded the decider from
-                    // these checks.
+                    // Omitted actions default to read_only so the decider
+                    // participates in read-only/no-issues judgment.
                     action: s.action ?? "read_only",
                     completed: false,
                 }))

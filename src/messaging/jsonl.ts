@@ -16,7 +16,7 @@ import type { Message } from "../core/types.js"
 export async function appendJsonl(filePath: string, obj: unknown, trustedRoot?: string): Promise<void> {
     await refuseSymlink(filePath, trustedRoot)
     await fs.mkdir(path.dirname(filePath), { recursive: true })
-    // P1a: fd-based open with O_NOFOLLOW|O_NONBLOCK|O_APPEND rejects leaf
+    // An fd-based open with O_NOFOLLOW|O_NONBLOCK|O_APPEND rejects leaf
     // symlinks and FIFOs. stat-on-fd eliminates TOCTOU between check and
     // write. handle.appendFile uses the same fd for atomic verify+write.
     const noFollow = (fs.constants as { O_NOFOLLOW?: number }).O_NOFOLLOW ?? 0
@@ -41,9 +41,8 @@ export async function appendJsonl(filePath: string, obj: unknown, trustedRoot?: 
  * wrong-shape entries are skipped alongside the already-skipped malformed
  * lines.
  *
- * HIGH-E: pre-fix code only validated id/from/body, leaving to/kind/timestamp
- * unverified. A line with a non-string `to` crashed downstream path
- * operations, a non-string `kind` broke switch statements, and a non-string
+ * Validate every field consumed by downstream code. A non-string `to` crashes
+ * path operations, a non-string `kind` breaks switch statements, and a non-string
  * `correlationId` (when present) crashed formatMailboxInjection's
  * String.replace call. One maliciously crafted line could block an entire
  * mailbox batch (never acked, retried forever).
@@ -54,17 +53,17 @@ export async function appendJsonl(filePath: string, obj: unknown, trustedRoot?: 
 function isValidMessage(value: unknown): value is Message {
     if (typeof value !== "object" || value === null) return false
     const m = value as Record<string, unknown>
-    // H10: version MUST be 1 (the only defined schema). A missing or
+    // Version MUST be 1 (the only defined schema). A missing or
     // mismatched version indicates a tampered or forward-incompatible line.
     if (m.version !== 1) return false
     if (typeof m.id !== "string" || !isSafePathSegment(m.id)) return false
-    // H2: cap id length. The id is used as a filename component (reservation
+    // Cap id length because it is used as a filename component (reservation
     // files, processed entries). An id longer than NAME_MAX (255 on Linux)
     // triggers ENAMETOOLONG on every file operation, permanently wedging the
     // mailbox. 128 is far above any legitimate UUID-based id.
     if (Buffer.byteLength(m.id, "utf8") > 128) return false
     if (typeof m.from !== "string") return false
-    // M-JSONL: cap string field lengths to prevent DoS. from/to/summary are
+    // Cap string field lengths to prevent DoS. from/to/summary are
     // short identifiers or one-line text; correlationId/runId are UUIDs. A
     // tampered line with multi-MB from/correlationId would inflate the
     // injected prompt context and bypass the 32 KiB body cap.
@@ -89,7 +88,7 @@ function isValidMessage(value: unknown): value is Message {
     ) {
         return false
     }
-    // M7 fix: Message.deliveryStatus is a required field, but legacy or
+    // Message.deliveryStatus is a required field, but legacy or
     // hand-edited JSONL lines may omit it. Normalize undefined to "pending"
     // so the type assertion (value is Message) is sound.
     if (m.deliveryStatus === undefined) {

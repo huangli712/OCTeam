@@ -64,8 +64,8 @@ export function indexMember(
 
 /**
  * Add a team to a master session's team map. Does NOT change the active pointer.
- * Replaces the old 1:1 indexMaster — adding a second team no longer overwrites
- * the first (which previously orphaned its result delivery).
+ * Adding another team preserves existing entries and their result-delivery
+ * routing.
  */
 export function indexMasterTeam(
     sessionID: string,
@@ -124,8 +124,8 @@ export function isMasterSession(sessionID: string): boolean {
 
 /**
  * Verify that `sessionID` is the master of the team identified by `directory`,
- * using the in-memory index built at startup as an independent trust source
- * (C9). Returns true ONLY when the session is registered in masterIndex as
+ * using the in-memory index built at startup as an independent trust source.
+ * Returns true ONLY when the session is registered in masterIndex as
  * owning a team at exactly this directory. Disk-tampered state.json cannot
  * grant master privileges because the index is built once from trusted
  * startup state and is not re-read from disk on each call.
@@ -150,19 +150,16 @@ export function resolveMasterTeams(sessionID: string): MasterTeamEntry[] {
 }
 
 /**
- * P4: Resolve the trusted (index-verified) leadSessionId for a team at
+ * Resolve the trusted (index-verified) leadSessionId for a team at
  * `directory`. Returns undefined when no master session is registered as
  * owning that directory. Use this in delivery paths (finishRun) instead of
  * the disk-tamperable `team.leadSessionId` so a state.json swap cannot
  * redirect sensitive run output to an attacker-controlled session.
  */
 export function trustedLeadSessionId(directory: string): string | undefined {
-    // R4: never return a tamperable leadSessionId. The sessionID map key is
-    // the ONLY trust source — it was validated against master.sentinel at
-    // startup. An empty sessionID means sentinel validation FAILED, and
-    // the team was indexed under "" as a last-resort fallback. Returning
-    // the disk-derived leadSessionId in that case re-opens the P4 attack
-    // vector (state.json swap redirects run output). Fail closed instead.
+    // Return only a sessionID map key validated against master.sentinel at
+    // startup. An empty sessionID marks failed sentinel validation, so fail
+    // closed instead of returning the disk-derived leadSessionId.
     for (const [sessionID, entry] of masterIndex) {
         if (sessionID === "") continue  // skip unverified entries
         const team = entry.teams.get(directory)
@@ -228,12 +225,9 @@ async function resolveMemberFromIndex(sessionID: string): Promise<ResolvedMember
     const team = await loadTeamState(m.storageRoot, m.teamName, m.leadSessionId)
     const member = team.members.find(x => x.name === m.memberName)
     if (!member) return null
-    // H22/R4: verify 1:1 identity binding. The member's on-disk sessionId
-    // MUST strictly match the sessionID used to look it up. Pre-fix code only
-    // rejected when sessionId was defined AND different — clearing sessionId
-    // (e.g. session deleted, member reset) still authorized the old index
-    // entry. Strict equality closes this gap: undefined sessionId means the
-    // member has no active session, so no sessionID should resolve to them.
+    // Verify 1:1 identity binding. The member's on-disk sessionId must strictly
+    // match the lookup key. An undefined sessionId means the member has no
+    // active session, so no sessionID may resolve to that member.
     if (member.sessionId !== sessionID) {
         logger.warn("resolveMemberFromIndex: sessionID mismatch (stale index entry)", {
             indexedSessionID: sessionID,
@@ -320,24 +314,21 @@ export async function resolveCallerInTeam(
     // Master path (1:many) — find the team by explicit teamId.
     const master = masterIndex.get(sessionID)
     if (!master) return null
-    // H23/R3: scope-aware disambiguation. When multiple teams share the
+    // Use scope-aware disambiguation. When multiple teams share the
     // same teamName across different scopes, prefer the one matching the
     // caller's storageRoot. When only one team matches by name, use it
     // regardless of scope (the index already knows its correct storageRoot).
-    // R3 removed the original strict-only match (broke tools that pass a
-    // different storageRoot than the team's actual scope) and the broad
-    // teamName fallback (defeated scope disambiguation entirely).
+    // A unique name match is unambiguous regardless of caller scope, while
+    // multiple matches require an exact storageRoot match.
     const nameMatches = Array.from(master.teams.values()).filter(t => t.teamName === teamId)
     if (nameMatches.length === 0) return null
     const entry = nameMatches.length === 1
         ? nameMatches[0]
         : nameMatches.find(t => t.storageRoot === storageRoot)
     if (!entry) {
-        // L/R3: multiple teams share this name across scopes and none match
-        // the caller's storageRoot. Pre-fix code fell back to nameMatches[0]
-        // (Map insertion order), which could resolve to the wrong scope's
-        // team. Fail closed so the caller gets a clear "ambiguous team" error
-        // instead of silently operating on the wrong team.
+        // Multiple teams share this name across scopes and none match the
+        // caller's storageRoot. Fail closed so the caller gets a clear
+        // "ambiguous team" error instead of operating on the wrong team.
         logger.warn("resolveCallerInTeam: ambiguous team name across scopes; no storageRoot match", {
             teamId, storageRoot, matches: nameMatches.map(m => m.storageRoot),
         })
@@ -390,32 +381,28 @@ async function indexScope(storageRoot: string, segmented: boolean, ctx?: PluginC
     for (const { leadSessionId, teamName } of teams) {
         try {
             const team = await loadTeamState(storageRoot, teamName, leadSessionId)
-            // C-3 master identity source: for project scope (segmented), the
-            // authoritative owner is the directory-derived `leadSessionId`
+            // For project scope (segmented), the authoritative owner is the
+            // directory-derived `leadSessionId`
             // (enumerated by listAllTeams from the filesystem layout
             // <root>/<sid>/teams/<team>). The disk-persisted
-            // team.leadSessionId MUST NOT be trusted here — a member with
-            // .octeam/ write access can rewrite state.json to set
-            // leadSessionId to its own session, which on the pre-fix code
-            // granted that session master privilege on the next rebuild.
+            // team.leadSessionId must not be trusted here because a member with
+            // .octeam/ write access could set it to their own session and gain
+            // master privilege on the next rebuild.
             //
-            // C-17: for user scope (segmented=false), read the master.sentinel
+            // For user scope (segmented=false), read the master.sentinel
             // file (written once at team_create, read-only) instead of the
-            // mutable state.json.leadSessionId. If the sentinel is absent
-            // (legacy team created before C-17) or mismatches state.json, log
-            // a warning and fall back to state.json — but mark it as untrusted.
-            // A member with FS write can still overwrite the sentinel, but the
-            // read-only permission and separate file raise the bar and make
-            // tampering observable via the warning.
+            // mutable state.json.leadSessionId. A missing sentinel falls back
+            // to state.json with a warning, while a mismatch refuses master
+            // privilege. The separate read-only file makes tampering observable.
             let trustedLeadSessionId: string | undefined
-            // C14: project scope also verifies the sentinel (previously only
-            // user scope did). Project scope stores auth state in member-
-            // writable .octeam/, so a member could forge a <sid>/teams/...
+            // Project scope also verifies the sentinel because it stores auth
+            // state in member-writable .octeam/, so a member could forge a
+            // <sid>/teams/...
             // directory to gain master privilege. Requiring the sentinel
-            // raises the bar: the attacker must also forge master.sentinel.
+            // raises the bar because the attacker must also forge master.sentinel.
             // A sentinel mismatch always refuses master; a missing sentinel
-            // (ENOENT) falls back to directory-derived value for backward
-            // compatibility but logs a prominent warning.
+            // (ENOENT) falls back to the directory-derived value and logs a
+            // prominent warning.
             try {
                 const sentinelPath = masterSentinelPath(team.directory)
                 const sentinelContent = await safeReadFile(team.directory, sentinelPath, { maxBytes: 1024 })

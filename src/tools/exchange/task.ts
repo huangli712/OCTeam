@@ -49,8 +49,8 @@ async function rejectIfIsolated(
     try {
         const team = await loadTeamState(caller.storageRoot, teamId, caller.leadSessionId)
         const at = team.activeTask
-        // HIGH: check mode field, not tasks array presence. Pre-fix code
-        // used !at.tasks which can be bypassed by passing tasks in isolated mode.
+        // Use the authoritative mode field because tasks array presence is not
+        // an isolation boundary.
         if (at?.type === "parallel" && at.mode === "isolated") {
             return `Error: shared task access is disabled in parallel isolated mode. Isolated members cannot share a task list.`
         }
@@ -85,24 +85,18 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
                 logSwallowed(ctx, "loadTeamState failed", err, { team: args.team_id })
                 return `Error: team "${args.team_id}" could not be loaded (state file unreadable)`
             }
-            // H60: recurse mode guard moved INSIDE team.mutex (below) so a
-            // concurrent startOrchestration cannot flip activeTask to recurse
-            // between this check and the create. Pre-fix code checked at line
-            // 65 outside the lock, allowing a race where recurse starts mid-
-            // create and the member's manually-created task duplicates the
-            // orchestrator's automatic subtask.
-            // Keep the count-check + blocked_by-check + create under both the
-            // cross-process claim mutex and the in-process team mutex.
+            // Keep the recurse guard, count check, dependency validation, and create
+            // under both the cross-process claim mutex and the in-process team mutex.
+            // This prevents recurse from starting mid-create and duplicating an
+            // automatically generated subtask.
             let task: Task | undefined
             let limitError = false
             let blockedByError: string | undefined
             await withLock(claimMutexPath(team.directory), () => team.mutex.runExclusive(async () => {
-                // HIGH: tombstone guard — refuse writes after team_delete.
                 if (team.deleted) {
                     blockedByError = "Error: team has been deleted"
                     return
                 }
-                // H60: re-check recurse mode INSIDE the mutex.
                 if (team.activeTask?.type === "recurse") {
                     blockedByError = (
                         `Error: team_task_create is disabled in recurse mode. Subtasks are created `
@@ -110,8 +104,7 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
                     )
                     return
                 }
-                // H8: parallel isolated mode prohibits task creation.
-                // H11: use at.mode === "isolated" (the authoritative field),
+                // Use at.mode === "isolated", the authoritative field,
                 // not !at.tasks (tamperable — a forged state.json with
                 // mode:"isolated" + non-empty tasks bypassed this check).
                 const at = team.activeTask
@@ -123,9 +116,9 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
                     return
                 }
                 const allTasks = await listAllTasks(caller.directory)
-                // blocked_by validation (moved inside mutex for TOCTOU safety).
+                // Validate blocked_by inside the mutex for TOCTOU safety.
                 if (args.blocked_by && args.blocked_by.length > 0) {
-                    // MEDIUM: cap blocker count to prevent oversized task files.
+                    // Cap blocker count to prevent oversized task files.
                     if (args.blocked_by.length > 32) {
                         blockedByError = `Error: blocked_by cannot exceed 32 entries (got ${args.blocked_by.length})`
                         return
@@ -193,7 +186,7 @@ export function teamTaskListTool(ctx: PluginContext): ToolDefinition {
             let tasks = await listAllTasks(caller.directory)
             if (args.status) tasks = tasks.filter(t => t.status === (args.status as TaskStatus))
             if (args.owner) tasks = tasks.filter(t => t.owner === args.owner)
-            // S2: cap output size. Default 100, max 200 via schema.
+            // Cap output size at 100 by default and 200 through the schema.
             const limit = args.limit ?? 100
             const totalCount = tasks.length
             const truncated = tasks.length > limit
@@ -205,7 +198,7 @@ export function teamTaskListTool(ctx: PluginContext): ToolDefinition {
                     + `${t.owner ? ` @${t.owner}` : ""}`
                     + `${t.blockedBy.length ? ` (blocked by ${t.blockedBy.length})` : ""}`,
             )
-            // S2: hard byte cap to prevent oversized responses.
+            // Apply a hard byte cap to prevent oversized responses.
             const MAX_TASK_LIST_BYTES = 64 * 1024
             let result = lines.join("\n")
             if (Buffer.byteLength(result, "utf8") > MAX_TASK_LIST_BYTES) {
@@ -245,11 +238,8 @@ export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
             if (!caller) return "Error: caller is not a member of this team"
             const dir = caller.directory
             if (args.status === "claimed") {
-                // M29 fix: isolated mode (parallel without per-member tasks) also
-                // prohibits claiming shared tasks, not just creating them.
-                // Pre-fix code let isolated members claim existing tasks, forming
-                // a side channel for reading shared task content. The mode check
-                // and claim now share both lock scopes.
+                // Apply the isolated-mode guard to claims under the same locks as
+                // the claim itself, preventing access to shared task content.
                 let team
                 try {
                     team = await loadTeamState(caller.storageRoot, args.team_id, caller.leadSessionId)
@@ -274,7 +264,7 @@ export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
                             return `Error: cannot verify team state for isolated-mode check. Task claim rejected. Underlying error: ${err instanceof Error ? err.message : String(err)}`
                         }
                         const at = team.activeTask
-                        // H11: use at.mode === "isolated" (authoritative).
+                        // Use at.mode === "isolated", the authoritative field.
                         if (at?.type === "parallel" && at.mode === "isolated") {
                             return `Error: team_task_claim is disabled in parallel isolated mode. Isolated members cannot share a task list.`
                         }
@@ -379,7 +369,6 @@ export function teamTaskGetTool(ctx: PluginContext): ToolDefinition {
             if (!caller) return "Error: caller is not a member of this team"
             const isolatedError = await rejectIfIsolated(ctx, caller, args.team_id)
             if (isolatedError) return isolatedError
-            // HIGH #22: tombstone guard for non-claim updates.
             try {
                 const team = await loadTeamState(caller.storageRoot, args.team_id, caller.leadSessionId)
                 if (team.deleted) return "Error: team has been deleted"

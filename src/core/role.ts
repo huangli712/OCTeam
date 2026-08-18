@@ -36,12 +36,12 @@
  */
 
 /** A role's fixed agent and preset instruction text.
- * M1 fix: fields are readonly to prevent runtime mutation of the frozen
+ * Fields are readonly to prevent runtime mutation of the frozen
  * role catalogue entries. */
 export type RoleDef = { readonly agent: string; readonly instruction: string }
 
 /** The complete role catalogue — maps role labels to agent and instruction.
- * M-ROLES: frozen so callers cannot mutate the shared catalogue in-place.
+ * Frozen so callers cannot mutate the shared catalogue in-place.
  * Use roleDef() for a defensive copy when mutation of individual entries is needed. */
 export const ROLES: Readonly<Record<string, RoleDef>> = Object.freeze({
     // --- software ---
@@ -453,7 +453,7 @@ export const ROLES: Readonly<Record<string, RoleDef>> = Object.freeze({
  * read-only role ("reviewer" -> oracle agent) on purpose: an unrecognized role
  * (e.g. a typo) must fail safe to least privilege, never silently escalate to a
  * full write-capable agent. "almighty" stays available as an explicit opt-in
- * role (mapped to oct-junior), but is no longer the silent fallback.
+ * role (mapped to oct-junior), but is never selected as the implicit fallback.
  */
 export const DEFAULT_ROLE = "reviewer"
 
@@ -466,13 +466,10 @@ export const DEFAULT_ROLE = "reviewer"
  */
 export const ROLE_NAMES: readonly string[] = Object.freeze(Object.keys(ROLES))
 
-// MEDIUM: deep-freeze each RoleDef so instruction arrays and nested
-// objects are also immutable. Object.freeze(ROLES) only freezes the
-// top-level record; individual role objects remain mutable.
+// Freeze each RoleDef because Object.freeze(ROLES) protects only the top-level
+// record; individual role objects would otherwise remain mutable.
 for (const def of Object.values(ROLES)) {
     Object.freeze(def)
-    // LOW: instruction is already a string from .join(), so
-    // Array.isArray is always false. Removed dead branch.
 }
 
 /**
@@ -502,9 +499,7 @@ const SAFE_FALLBACK_AGENT: string = roleAgent(DEFAULT_ROLE)
  * falsely match.
  */
 export function normalizeRole(role: unknown): string {
-    // M-32: guard against non-string input (null, number, object from
-    // tampered config). Pre-fix code called role.toLowerCase() unconditionally,
-    // which threw on null/number/object. Now coerce to string safely.
+    // Reject non-string input from tampered config before calling toLowerCase.
     if (typeof role !== "string") return DEFAULT_ROLE
     const key = role.toLowerCase()
     return Object.prototype.hasOwnProperty.call(ROLES, key) ? key : DEFAULT_ROLE
@@ -521,14 +516,10 @@ export function isOCTeamAgent(agent: string): boolean {
 
 /**
  * Return `agent` when it is a hardened oct-* agent, else the read-only
- * fallback. This is the fail-safe replacement for the old `member.agent ?? "build"`
- * pattern at every dispatch site: a tampered, stale, or hand-edited `agent`
+ * fallback. At every dispatch site, a tampered, stale, or hand-edited `agent`
  * value (e.g. "build" written into state.json) can never escalate a member to
- * a privileged host agent. When `agent` is undefined (a member created without
- * an explicit agent override, then loaded from old state), the role-derived
- * agent was already set at create time and stored — so this fallback only
- * fires for corrupted/legacy state, where oct-oracle (read-only) is the safe
- * default.
+ * a privileged host agent. An undefined value also resolves to oct-oracle,
+ * keeping incomplete or corrupted state read-only.
  */
 export function safeMemberAgent(agent: string | undefined): string {
     return agent !== undefined && isOCTeamAgent(agent) ? agent : SAFE_FALLBACK_AGENT
@@ -536,7 +527,7 @@ export function safeMemberAgent(agent: string | undefined): string {
 
 /** The full role definition for a label (normalized, always resolves).
  *
- * H5: returns a defensive copy so callers cannot mutate the shared ROLES
+ * Returns a defensive copy so callers cannot mutate the shared ROLES
  * catalog. The fields (agent, instruction) are immutable string primitives,
  * so a shallow clone is sufficient.
  */

@@ -64,10 +64,8 @@ function shouldLog(level: LogLevel): boolean {
  * swallows all errors so logging never adds latency, backpressure, or
  * thrown exceptions to the calling handler.
  *
- * H6: the pre-fix code used `void sinkFn(...).catch(...)` which only caught
- * async rejections. A SYNCHRONOUS throw from sinkFn() (e.g. a host bug or
- * a sink that validates args eagerly) would escape and crash the calling
- * handler. The try/catch now wraps both the sync call and its Promise.
+ * The outer try/catch handles synchronous sink failures, while the attached
+ * Promise catch handles asynchronous rejections.
  */
 function sendToSink(
     sinkFn: PluginContext["client"]["app"]["log"],
@@ -76,7 +74,7 @@ function sendToSink(
     extra?: Record<string, unknown>,
 ): void {
     // Do not await: logging must not add latency or backpressure to handlers.
-    // H6: try/catch guards synchronous throws from sinkFn; .catch guards async
+    // The try/catch guards synchronous throws from sinkFn; .catch guards async
     // rejections from the returned Promise.
     try {
         void sinkFn({ body: { service: "octeam", level, message, extra } }).catch(() => {
@@ -114,10 +112,10 @@ function emitGlobal(level: LogLevel, message: string, extra?: Record<string, unk
  * Safe to call multiple times; each call replaces the sink for the current host.
  */
 export function initLogger(ctx: PluginContext): void {
-    // H-C1: bind the log method to preserve `this` context. The SDK's
+    // Bind the log method to preserve `this` context. The SDK's
     // App.log() may depend on `this._client`; extracting it as a bare
     // function reference and calling it without binding causes a
-    // TypeError that H6's catch silently swallows, dropping ALL
+    // TypeError that the logger silently swallows, dropping all
     // structured logs. Binding at capture time is safe and idempotent.
     sink = ctx.client.app.log.bind(ctx.client.app)
 }
@@ -142,7 +140,7 @@ export function logEvent(
     extra?: Record<string, unknown>,
 ): void {
     if (!shouldLog(level)) return
-    // H-C1: bind to preserve `this` for SDK methods that depend on it.
+    // Bind to preserve `this` for SDK methods that depend on it.
     sendToSink(ctx.client.app.log.bind(ctx.client.app), level, message, extra)
 }
 

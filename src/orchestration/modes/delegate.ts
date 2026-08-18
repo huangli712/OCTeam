@@ -44,10 +44,9 @@ export async function runDelegateStyleTail(
     const incomplete = tasks.filter(t => t.status !== "completed" && t.status !== "deleted")
 
     if (incomplete.length === 0) {
-        // J-1/CRITICAL: do NOT finalize while a non-master member is still
-        // running. Their idle event will re-drive this tail. Pre-fix code
-        // captured partial output, cleared activeTask, and dispatched signoff
-        // to running members — losing in-flight output and racing signoff.
+        // Do not finalize while a non-master member is still running. Its idle
+        // event will re-drive this tail after in-flight output is available,
+        // preventing completion from racing signoff.
         const stillRunning = team.members.some(
             m => !m.isMaster && m.sessionId && m.status === "running",
         )
@@ -69,30 +68,26 @@ export async function runDelegateStyleTail(
             // Skip already-errored members — they're terminal, no need to
             // re-check the status API.
             if (m.status === "errored") continue
-            // HIGH #11: verify the member's session is still live before
-            // treating it as complete. A member whose cached status is
+            // Verify the member's session is still live before treating it as
+            // complete. A member whose cached status is
             // "idle" but whose session has actually errored/crashed would
             // pass the incomplete.length === 0 check and finish the run
             // prematurely.
             try {
                 const st = await ctx.client.session.status({})
-                // HIGH: use extractSessionStatusEntry which handles both object
-                // and array shapes. Pre-fix code treated .data as array.
+                // Use extractSessionStatusEntry to handle both object and array
+                // response shapes.
                 const entry = extractSessionStatusEntry(st.data, m.sessionId)
-                // H26: any non-idle live status means the member is still
-                // working. Pre-fix code only checked "retry" and ignored
-                // "busy"/"running", allowing delegate to finish while the
-                // member's turn was still in flight.
+                // Any non-idle live status means the member is still working and
+                // prevents delegate completion while its turn remains in flight.
                 if (entry?.type === "retry" || entry?.type === "busy" || entry?.type === "running") {
                     return
                 }
             } catch {
                 // Status API unavailable — fall through to cached-state check.
             }
-            // H4: log capture failures so operators can diagnose incomplete
-            // output in run summaries. Pre-fix code silently swallowed all
-            // errors — a transient session.messages failure or persistent I/O
-            // error was indistinguishable from a member with zero output.
+            // Log capture failures so operators can distinguish missing member
+            // output from session-message or persistent I/O failures.
             try {
                 const res = await ctx.client.session.messages({ path: { id: m.sessionId } })
                 const msgs = asSdkMessages(res.data)
@@ -108,12 +103,11 @@ export async function runDelegateStyleTail(
         return
     }
 
-    // H40: reset errored members' claimed/in_progress tasks to pending
+    // Reset errored members' claimed or in-progress tasks to pending
     // BEFORE the claimable filter. Without this, an errored member's task
     // stays at "claimed"/"in_progress" — excluded from claimable — so the
     // deadlock check sees claimable.length === 0 AND all members
-    // idle/errored → false deadlock. recurse.ts:184-197 already does this;
-    // the shared tail now matches.
+    // idle/errored → false deadlock. This matches the recurse handler.
     let erroredResetHappened = false
     for (const m of team.members) {
         if (m.status !== "errored" || !m.sessionId) continue
@@ -122,10 +116,8 @@ export async function runDelegateStyleTail(
         )
         if (erroredTask) {
             try {
-                // J-3/CAS: pass expectedOwner + expectedStatus so a concurrent
-                // reaper reset + re-claim by another member is not clobbered.
-                // Pre-fix code called updateTask without CAS — a slow release
-                // here could clear a new owner's claim.
+                // Pass expectedOwner and expectedStatus so a concurrent reaper
+                // reset and re-claim cannot be clobbered by a slow release.
                 await updateTask(team.directory, erroredTask.id, {
                     status: "pending",
                     owner: undefined,
@@ -156,7 +148,7 @@ export async function runDelegateStyleTail(
         : incomplete
 
     // Claimable tasks: pending AND all blockers completed or deleted.
-    // M-DELEGATE: claimTask treats deleted blockers as resolved (tasks.ts:400);
+    // claimTask treats deleted blockers as resolved (tasks.ts:400);
     // the tail must match, or a pending task whose only blocker was deleted
     // is forever unclaimable → false deadlock.
     const claimable = incompleteForClaimable.filter(
@@ -173,12 +165,9 @@ export async function runDelegateStyleTail(
     // the deadlock check -- its claimed tasks are reaped by the sweep and a
     // survivor reclaims them.
     if (claimable.length === 0) {
-        // H4: before declaring deadlock, check if any member holds a
-        // claimed/in_progress task. Pre-fix code only checked pending tasks;
-        // a member that went idle while holding a claimed task would be
-        // counted as "all idle with nothing to do" → false deadlock. The
-        // member may have produced output but not yet finalized, or been
-        // woken by a wake-hint. Re-prompt the oldest such member instead.
+        // Before declaring deadlock, check whether a member holds a claimed or
+        // in-progress task. Such a member may have output awaiting finalization
+        // or may have been woken by a wake hint, so re-prompt its owner.
         const membersWithTasks = incompleteForClaimable.filter(
             t => (t.status === "claimed" || t.status === "in_progress") && t.owner,
         )
@@ -240,7 +229,7 @@ export async function runDelegateStyleTail(
     const eligible = allIdle.filter(
         m => !m.lastNotifiedAt || now - m.lastNotifiedAt >= NOTIFY_COOLDOWN_MS,
     )
-    // C16: when every idle member is in cooldown, claimable tasks would be
+    // When every idle member is in cooldown, claimable tasks would be
     // permanently stranded — no event re-invokes this handler after cooldown
     // expires (all members are already idle, no new idle event fires). In
     // that case, bypass the cooldown filter and dispatch the member notified

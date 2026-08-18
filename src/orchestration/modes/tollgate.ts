@@ -76,7 +76,7 @@ export async function startVerification(
         return
     }
     task.tollgatePhase = "verify"
-    // C17: clear stale verifier response before dispatch. Mirrors the
+    // Clear the stale verifier response before dispatch. Mirrors the
     // producer-side clearing in advanceToGatedStage:113 (HIGH-D). Without
     // this, a verifier reused across gates (or re-verified after INVALID)
     // would have its previous verdict parsed as the new gate's verdict —
@@ -112,7 +112,7 @@ export async function advanceToGatedStage(
     const upstream = buildUpstreamContext(
         task.gatedStages ?? [], task.responses, task.currentStageIndex)
     const text = upstream ? `${upstream}\n\n[Your task]\n${stage.task}` : stage.task
-    // HIGH-D: clear stale producer response before re-dispatch. Same reason
+    // Clear the stale producer response before re-dispatch. Same reason
     // as the verifier clear above — a producer reused across gates (or
     // retried after a timeout) would otherwise have its prior artifact
     // counted as the new one.
@@ -186,19 +186,16 @@ async function escalateInvalid(
         await saveTeamState(team)
         return
     }
-    // H-26: no escalation handler configured. The pre-fix code called
-    // finishRun("failed") immediately, which contradicts the documented
-    // contract ("hand to the leader for a human decision"). Use
-    // forceApprovalRequest so the leader can approve (retry) or reject
-    // (fail) instead of auto-failing on a potentially recoverable INVALID.
+    // With no escalation handler, ask the leader to approve a retry or reject
+    // the gate instead of automatically failing a potentially recoverable
+    // INVALID verdict.
     const paused = await forceApprovalRequest(ctx, team, {
         kind: "tollgate_gate",
         stage: task.currentStageIndex,
         summary: `Gate INVALID on stage "${stage.member}": ${reason}. No escalateTo handler configured. Approve to retry verification, or reject to fail the run.`,
     })
     if (!paused) {
-        // Approval system unavailable (e.g. no leadSessionId). Fall back to
-        // the original fail-closed behavior so the run is not stuck.
+        // If approval is unavailable, fail closed so the run cannot remain stuck.
         await finishRun(ctx, team, `tollgate_invalid:${stage.member}:${reason}`, "failed")
     }
 }
@@ -231,7 +228,7 @@ export async function handleTollgateIdle(
     if (phase === "produce") {
         if (member.name !== stage.member) return            // stray idle
         if (!task.responses[stage.member]) {
-            // S7: use a separate counter for empty producer output so it
+            // Use a separate counter for empty producer output so it
             // does not consume gate FAIL retries.
             stage.producerEmptyAttempts = (stage.producerEmptyAttempts ?? 0) + 1
             const maxEmpty = 3
@@ -242,7 +239,7 @@ export async function handleTollgateIdle(
             await advanceToGatedStage(ctx, team, stage)
             return
         }
-        // S7: reset on successful non-empty output so the counter tracks
+        // Reset on successful non-empty output so the counter tracks
         // CONSECUTIVE empty outputs, not cumulative.
         stage.producerEmptyAttempts = 0
         if (await maybeRequestApproval(ctx, team, {
@@ -312,7 +309,7 @@ export async function handleTollgateIdle(
         }
         // Within retries -> return to produce with the diff diagnostic.
         task.tollgatePhase = "produce"
-        // H43: clear the stale producer artifact before re-dispatch, mirroring
+        // Clear the stale producer artifact before re-dispatch, mirroring
         // advanceToGatedStage:113 (HIGH-D). Without this, a subsequent stale
         // idle or verifier re-read could evaluate the OLD failed artifact,
         // incorrectly consuming a retry attempt.

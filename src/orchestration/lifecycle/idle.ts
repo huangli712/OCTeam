@@ -131,8 +131,8 @@ export function getExpectedMember(task: ActiveTask): string | null {
 
 /**
  * Build the re-prompt text for a member that went idle without calling
- * team_done() under require_done_ack. Extracted from processIdle's parallel
- * case so the prompt copy lives in one named place rather than inline.
+ * team_done() under require_done_ack. The named builder keeps this prompt copy
+ * outside processIdle's parallel branch.
  */
 export function buildPrematureIdleReprompt(teamName: string): string {
     return `[Team Orchestrator]\n` 
@@ -147,7 +147,7 @@ export function buildPrematureIdleReprompt(teamName: string): string {
 
 // --- main entry ---
 
-// processIdle helpers (extracted from the 158-line function for readability)
+// Helpers for processIdle's accounting and recovery stages.
 
 /**
  * Steps 2-3: Fetch session messages, recompute token accounting (always from
@@ -214,7 +214,7 @@ async function maybeRepromptPrematureIdle(
         && !member.declaredDone
         && member.sessionId
     ) {
-        // H-11: route through the canonical dispatch primitive so promptAsync +
+        // Route through the canonical dispatch primitive so promptAsync +
         // member state transition + saveTeamState + event recording are atomic.
         await dispatchToMember(
             ctx,
@@ -232,9 +232,8 @@ async function maybeRepromptPrematureIdle(
 /**
  * Error-recovery barrier re-drive: called from hooks.ts session.error handler.
  * Unlike processIdle, this does NOT gate on member.status === "errored" —
- * the whole point is to let the mode handler see the errored member and
- * advance the barrier past it. Pre-fix code called processIdle which
- * returned immediately at the H6 errored guard.
+ * the mode handler must see the errored member and advance the barrier past
+ * it without hitting processIdle's stale-idle guard.
  */
 export async function processErrorRecovery(
     ctx: PluginContext,
@@ -242,7 +241,7 @@ export async function processErrorRecovery(
     member: MemberState,
 ): Promise<void> {
     if (!team.activeTask) return
-    // CRIT #4: cross-process ownership guard.
+    // Cross-process ownership guard.
     if (team.runnerPid !== undefined && team.runnerPid !== process.pid) return
     if (team.activeTask.approvalStage) return
     if (team.activeTask.signoffStage) {
@@ -257,7 +256,7 @@ export async function processErrorRecovery(
     }
     const taskType = team.activeTask.type
     if (taskType === "workflow") {
-        // HIGH: workflow error recovery should NOT route to handleWorkflowIdle
+        // Workflow error recovery should NOT route to handleWorkflowIdle
         // which treats responses as valid outputs. Instead, mark the step's
         // verifier/member as errored and advance — matching the retry-escalation
         // path used by status.ts. This prevents a failed verifier's stale
@@ -273,6 +272,7 @@ export async function processErrorRecovery(
     }
 }
 
+/** Re-drive a mode handler after a transient idle-processing failure. */
 export async function retryIdleHandler(
     ctx: PluginContext,
     team: Team,
@@ -309,7 +309,7 @@ export async function processIdle(
     member: MemberState,
     sessionID: string,
 ): Promise<void> {
-    // CRITICAL #2: cross-process ownership guard. If runnerPid is set and
+    // Cross-process ownership guard. If runnerPid is set and
     // differs from our PID, another process owns this run — our idle events
     // are from a member session that may have been superseded. Skip to avoid
     // double-processing. team_resume explicitly sets runnerPid before
@@ -321,7 +321,7 @@ export async function processIdle(
     // those all funnel through atomicWrite, whose mkdir({recursive:true}) would
     // otherwise recreate the just-removed directory.
     if (team.deleted) return
-    // HIGH: stale idle guard — the idle event's sessionID must match the
+    // Stale idle guard: the idle event's sessionID must match the
     // member's current sessionId. A session that was replaced (rename,
     // fixmember, re-spawn) can fire a late idle for the OLD session, which
     // would process the new session's output as if it belonged to the old one.
@@ -335,7 +335,7 @@ export async function processIdle(
     }
 
     // Step 2: member is now idle.
-    // H6: refuse stale idle for errored members. An errored member's late
+    // Refuse stale idle for errored members. An errored member's late
     // idle event (from a turn that was already aborted/failed) must not
     // resurrect the member to idle and re-enter the mode handler.
     if (member.status === "errored") {
@@ -344,13 +344,9 @@ export async function processIdle(
         })
         return
     }
-    // M-1: defer the status flip to "idle" until AFTER output capture
-    // succeeds. Pre-fix code set status="idle" at line 250, then called
-    // session.messages/captureMemberOutput which can throw (transient host
-    // error). The sweep's missed-idle reconciliation only retries members
-    // with status==="running", so a read failure permanently stranded the
-    // member as idle with uncaptured output. Now: keep status="running"
-    // until capture succeeds; the sweep will retry on the next tick.
+    // Defer the status flip to "idle" until output capture succeeds. Keeping
+    // the member "running" during session reads lets the sweep retry after a
+    // transient host error instead of leaving output uncaptured.
     // Step 3: Role-setup barrier — first idle of an uninitialized member
     // marks it ready and returns WITHOUT capturing output or advancing.
     if (!member.initialized) {
@@ -388,9 +384,8 @@ export async function processIdle(
     }
     const capturedNew = captureResult.fresh
 
-    // M-1: now that capture succeeded, flip the status to idle. Pre-fix
-    // code flipped at the start; deferring means a capture throw leaves
-    // the member as "running" so the sweep retries on the next tick.
+    // Once capture succeeds, flip the status to idle. A capture failure leaves
+    // the member "running" so the sweep retries on the next tick.
     member.retryingSince = undefined
     member.status = "idle"
     await saveTeamState(team)
@@ -417,7 +412,7 @@ export async function processIdle(
     }
 
     // Step 7: Unread messages — wake hint only (Transform hook injects content).
-    // HIGH-B: only short-circuit on stale idle (!capturedNew). When this turn
+    // Only short-circuit on stale idle (!capturedNew). When this turn
     // produced fresh output, the handler MUST run first (step 8) — otherwise
     // the next turn's capture overwrites task.responses[member] with mailbox
     // reply content, losing the original verdict / reduce output / work.
@@ -451,7 +446,7 @@ export async function processIdle(
         try {
             await handleReduceIdle(ctx, team, member, captureResult)
         } catch (handlerErr) {
-            // HIGH: handler exception after capture would stall the member
+            // A handler exception after capture would stall the member
             // (next idle sees same message count → stale → skip). Set
             // retryingSince so sweep re-drives on the next tick.
             member.retryingSince = Date.now()
@@ -478,7 +473,7 @@ export async function processIdle(
     try {
         await idleDispatch[taskType](ctx, team, member, captureResult)
     } catch (handlerErr) {
-        // HIGH: same stall prevention as above.
+        // Apply the same stall prevention as above.
         member.retryingSince = Date.now()
         logSwallowed(ctx, "processIdle: mode handler threw", handlerErr, { member: member.name, team: team.teamName })
     }
@@ -486,7 +481,7 @@ export async function processIdle(
     // Step 9: Termination checks.
     await checkTermination(ctx, team)
 
-    // HIGH-B: after dispatch, if the task is still active and there are unread
+    // After dispatch, if the task is still active and there are unread
     // messages, wake-hint so the member drains its mailbox on the next turn.
     // This runs only when capturedNew=true caused us to skip the step 7
     // short-circuit above.

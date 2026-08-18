@@ -38,16 +38,13 @@ export async function handleConsensusIdle(
     const participants = nonMasterMembers(team).map(m => m.name)
 
     await maybeAdvanceBarrier(team, participants, async () => {
-        // HIGH #H3: require ALL participants to have responses, not just
-        // successfully dispatched ones. Pre-fix code used dispatchedParticipants
-        // (which excludes failed dispatches), letting the barrier advance
-        // with missing members. Failed-dispatch members need re-dispatch,
-        // not silent exclusion.
+        // Require all participants to have responses, including members whose
+        // dispatch failed. Missing members need re-dispatch rather than silent
+        // exclusion from the round barrier.
         const allResponded = participants.every(name => task.responses[name] !== undefined)
         if (!allResponded) {
-            // HIGH: re-dispatch members who haven't responded this round.
-            // Pre-fix code returned without re-dispatching, causing the
-            // barrier to stall until wall-clock timeout.
+            // Re-dispatch members who have not responded this round so the
+            // barrier can make progress instead of waiting until timeout.
             const roundText = task.roundPrompt
                 ?? `[Consensus Round ${task.currentRound ?? 1}]\n${buildRoundSummary(task.responses)}\n\nRespond, then emit <consensus>{"agreed": true|false}</consensus>.`
             for (const m of nonMasterMembers(team)) {
@@ -93,17 +90,16 @@ export async function handleConsensusIdle(
         for (const name of Object.keys(task.responses)) {
             delete task.responses[name]
         }
-        // H6: persist currentRound BEFORE dispatching. dispatchToMember saves
-        // state internally, so pre-fix code left disk with old round + cleared
-        // responses — a crash would resume with wrong round. Setting it first
-        // ensures the disk state is consistent with the dispatched prompts.
+        // Persist currentRound before dispatching because dispatchToMember saves
+        // state internally. Setting it first keeps disk state consistent with
+        // cleared responses and the dispatched prompts after a crash.
         task.currentRound = nextRound
         task.dispatchedParticipants = []
         recordEvent(team, { timestamp: Date.now(), kind: "round", round: nextRound })
         const roundText =
             `[Consensus Round ${nextRound}]\n${summary}\n\n`
             + `Respond, then emit <consensus>{"agreed": true|false}</consensus> (or <共识>{"agreed": ...}</共识>).`
-        // #15: snapshot the round prompt so late/retry dispatches reuse
+        // Snapshot the round prompt so late or retry dispatches reuse
         // the same text (not rebuilt from mutable task.responses).
         task.roundPrompt = roundText
         for (const m of nonMasterMembers(team)) {
@@ -114,7 +110,7 @@ export async function handleConsensusIdle(
                 logSwallowed(ctx, "consensus: dispatch failed for member", err, { member: m.name, round: nextRound })
             }
         }
-        // HIGH: persist the dispatched roster after the dispatch loop so
+        // Persist the dispatched roster after the dispatch loop so
         // crash recovery knows which members were successfully prompted.
         await saveTeamState(team)
     })

@@ -22,7 +22,7 @@ export function isEnoent(err: unknown): boolean {
 // --- polling primitive ---
 
 /** Resolve when predicate is true; reject on timeout. Polls every pollMs.
- * M6: validates timeoutMs is a finite positive number. NaN/Infinity/
+ * Validates timeoutMs is a finite positive number. NaN/Infinity/
  * negative values would cause an infinite loop (NaN comparison is always
  * false) or immediate spurious rejection. */
 export function waitUntil(
@@ -32,14 +32,14 @@ export function waitUntil(
     if (!Number.isFinite(opts.timeoutMs) || opts.timeoutMs < 0) {
         return Promise.reject(new Error(`waitUntil: invalid timeoutMs ${opts.timeoutMs} (must be finite and >= 0)`))
     }
-    // MEDIUM: check AbortSignal for early cancellation.
+    // Check AbortSignal for early cancellation.
     if (opts.signal?.aborted) {
         return Promise.reject(new Error("waitUntil: aborted"))
     }
     const rawPollMs = opts.pollMs ?? 250
     const pollMs = Number.isFinite(rawPollMs) && rawPollMs > 0 ? rawPollMs : 250
     return new Promise<void>((resolve, reject) => {
-        // MEDIUM: use performance.now() for monotonic timing. Date.now()
+        // Use performance.now() for monotonic timing. Date.now()
         // can jump backward on NTP sync, causing premature timeout or
         // indefinite waiting.
         const start = performance.now()

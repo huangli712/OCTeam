@@ -113,28 +113,26 @@ function assertValidTaskId(taskId: string): void {
 function isValidTask(value: unknown): value is Task {
     if (typeof value !== "object" || value === null) return false
     const t = value as Record<string, unknown>
-    // M16: normalize missing blockedBy to [] instead of accepting undefined.
-    // Pre-fix code accepted undefined, but many code paths (delegate,
-    // recurse, task list) unconditionally access .length and .every() —
-    // a legacy or corrupted task file without blockedBy would crash.
+    // Normalize missing blockedBy to [] because delegate, recurse, and task
+    // listing unconditionally access .length and .every().
     if (t.blockedBy === undefined) t.blockedBy = []
     return (
         typeof t.id === "string"
         && (t.runId === undefined || (typeof t.runId === "string" && t.runId.length > 0 && t.runId.length <= 128))
         && typeof t.subject === "string"
         && typeof t.status === "string"
-        // M-21: reject out-of-enum task statuses.
+        // Reject out-of-enum task statuses.
         && new Set(["pending", "claimed", "in_progress", "completed", "deleted"]).has(t.status as string)
         && Array.isArray(t.blockedBy)
         && t.blockedBy.every(v => typeof v === "string")
-        // M-11: validate claimedAt is a finite number when present. A
+        // Validate claimedAt as a finite number when present. A
         // non-numeric claimedAt makes stale-claim computation produce NaN,
         // stranding the task forever (NaN > TTL is always false).
         && (t.claimedAt === undefined || (typeof t.claimedAt === "number" && Number.isFinite(t.claimedAt)))
-        // M-11: validate each blockedBy entry is a valid string.
+        // Validate each blockedBy entry as a valid task id.
         && t.blockedBy.every(v => typeof v === "string" && v.length > 0 && v.length <= 128
             && TASK_ID_PATTERN.test(v))
-        // M-3: cross-field — claimed/in_progress tasks MUST have an owner.
+        // Cross-field rule: claimed and in-progress tasks MUST have an owner.
         // A tampered task with status:"in_progress" and no owner would be
         // invisible to reaper (not claimable) and to deadlock detection.
         && ((t.status !== "claimed" && t.status !== "in_progress") || typeof t.owner === "string")
@@ -144,9 +142,8 @@ function isValidTask(value: unknown): value is Task {
 /** Read a task file from disk, validate its schema, return null if not found or corrupt. */
 async function readTaskFile(teamDirectory: string, taskId: string): Promise<Task | null> {
     try {
-        // H12: cap file size and reject symlinks/non-files before reading,
-        // matching H11 in readJsonOrNull. Task files are small JSON blobs;
-        // a symlinked or tampered file can be unbounded (/dev/zero, FIFO).
+        // Cap file size and reject symlinks/non-files before reading. Task files
+        // are small JSON blobs, but a symlinked or tampered file can be unbounded.
         const filePath = taskPath(teamDirectory, taskId)
         const stat = await fs.lstat(filePath)
         if (stat.isSymbolicLink()) return null
@@ -232,7 +229,7 @@ export async function listAllTasks(teamDirectory: string, strict = false): Promi
         if (!TASK_ID_PATTERN.test(id)) continue
         ids.push(id)
     }
-    // MEDIUM: bounded concurrency to prevent unbounded file descriptor / memory
+    // Use bounded concurrency to prevent unbounded file descriptor / memory
     // consumption when a team has many tasks (up to 10,000).
     const BATCH_SIZE = 50
     const results: (Task | null)[] = []
@@ -256,11 +253,9 @@ export async function listAllTasks(teamDirectory: string, strict = false): Promi
         )
         results.push(...batchResults)
     }
-    // M28 fix: in strict mode, schema-invalid tasks (readTaskFile returned
-    // null due to validation failure, NOT ENOENT) must also throw. Pre-fix
-    // code treated schema-corrupt files the same as missing files, so
-    // claimTask's strict scan silently ignored them, potentially bypassing
-    // maxTasks and single-active-task invariants. We can't distinguish
+    // In strict mode, schema-invalid tasks (readTaskFile returned null due to
+    // validation failure, NOT ENOENT) must also throw. Treating them as missing
+    // could bypass maxTasks and single-active-task invariants. We can't distinguish
     // "file existed but failed schema" from "file was ENOENT" inside
     // readTaskFile without changing its return type, so check the file's
     // existence when strict and result is null.
@@ -313,7 +308,7 @@ export async function updateTask(
         if (opts.expectedStatus !== undefined && task.status !== opts.expectedStatus) {
             throw new TaskStatusError(taskId, opts.expectedStatus, task.status)
         }
-        // H-21: TOCTOU-safe claimedAt check. The stale-claim reaper reads a
+        // Use a TOCTOU-safe claimedAt check. The stale-claim reaper reads a
         // task's claimedAt, determines it is stale, then calls updateTask to
         // reset it. Between the read and the write, the original owner may
         // have re-claimed with a NEW claimedAt (the old lock was reaped
@@ -324,13 +319,10 @@ export async function updateTask(
         if (opts.expectedClaimedAt !== undefined && task.claimedAt !== opts.expectedClaimedAt) {
             throw new TaskStatusError(taskId, "claimed (same claimedAt)", `claimed (different claimedAt: ${task.claimedAt})`)
         }
-        // H-18: status transition matrix. Terminal statuses (completed, deleted)
+        // Enforce the status transition matrix. Terminal statuses (completed, deleted)
         // cannot be revived to active statuses (pending, claimed, in_progress).
-        // Pre-fix code used Object.assign which allowed any transition — a
-        // caller could flip a completed task back to in_progress, bypassing
-        // the live-task limit and confusing dependents that already saw it as
-        // done. The recurse internal path (claimed→pending for re-aggregation)
-        // is allowed via the explicit `pending` target.
+        // The recurse internal path from claimed to pending remains available
+        // through the explicit `pending` target.
         if (patch.status !== undefined && patch.status !== task.status) {
             const ACTIVE = new Set<TaskStatus>(["pending", "claimed", "in_progress"])
             if (task.status === "deleted" || (task.status === "completed" && ACTIVE.has(patch.status))) {
@@ -344,10 +336,10 @@ export async function updateTask(
                 )
             }
         }
-        // HIGH: enforce 64 KiB limit on result to match reader's cap.
+        // Enforce the 64 KiB result limit to match the reader's cap.
         if (patch.result !== undefined && typeof patch.result === "string"
             && Buffer.byteLength(patch.result, "utf8") > 60_000) {
-            // MEDIUM: truncate by UTF-8 bytes, not UTF-16 code units.
+            // Truncate by UTF-8 bytes, not UTF-16 code units.
             // reader limits the entire JSON file to 65536 bytes, so we need
             // to leave room for JSON overhead + marker.
             const MAX_RESULT_BYTES = 60_000 // leave ~5KiB for JSON + other fields
@@ -375,7 +367,7 @@ export async function updateTask(
             || patch.status === "pending"
         ) {
             await fs.unlink(claimLockPath(teamDirectory, taskId)).catch((err: unknown) => {
-                // M13: ENOENT is benign (no lock to clean). Non-ENOENT errors
+                // ENOENT is benign (no lock to clean). Non-ENOENT errors
                 // leave an orphaned claim lock that the stale-claim reaper will
                 // eventually clean up, but log so the orphan is observable.
                 if (!isEnoent(err)) {
@@ -405,10 +397,9 @@ async function tryCreateClaimLock(lockPath: string, owner: string): Promise<bool
             await fs.unlink(lockPath).catch(() => { /* best-effort rollback */ })
             throw writeErr
         }
-        // M17: close after successful write. If close fails, the lock
-        // file is on disk without a live fd → permanent orphan. Unlink
-        // and re-throw. Pre-fix code had close() in finally without error
-        // handling, silently leaving the orphan.
+        // Close after a successful write. If close fails, the lock file is on
+        // disk without a live fd and becomes a permanent orphan. Unlink and
+        // rethrow the error.
         try {
             await fh.close()
         } catch (closeErr) {
@@ -439,8 +430,8 @@ export async function claimTask(
     options: { readonly claimMutexHeld?: boolean } = {},
 ): Promise<Task> {
     assertValidTaskId(taskId)
-    // C-6: claimsDir mkdir happens before withLock; guard its ancestor chain
-    // so a symlinked <team>/tasks or <team> cannot redirect the recursive
+    // claimsDir mkdir happens before withLock. Guard its ancestor chain so a
+    // symlinked <team>/tasks or <team> cannot redirect the recursive
     // mkdir to an external location. The subsequent withLock(claimMutexPath)
     // re-verifies its own lockPath ancestor chain.
     await assertNoSymlinkTraversal(teamDirectory, claimsDir(teamDirectory))
@@ -505,7 +496,7 @@ export async function claimTask(
                 const incomplete = blockers.find(b =>
                     b === null || (b !== null && b.status !== "completed" && b.status !== "deleted"),
                 )
-                // H-20: use `!== undefined` (not truthy) because find() returns
+                // Use `!== undefined` (not truthy) because find() returns
                 // `null` when a missing blocker matched — `if (null)` is falsy
                 // and would silently skip the guard, letting a member claim a
                 // task whose dependency file is missing/corrupt.
@@ -532,10 +523,8 @@ export async function claimTask(
             }, { expectedStatus: "pending" })
             return updated
         } catch (err) {
-            // M-CLAIM: release the claim lock on ANY failure, not just
-            // TaskStatusError. Pre-fix code only unlinked on
-            // TaskStatusError; a non-TaskStatusError (I/O, ENOSPC) would
-            // leave an orphaned claim lock blocking future claims until TTL.
+            // Release the claim lock on ANY failure. An I/O or ENOSPC failure
+            // would otherwise leave an orphaned lock blocking claims until TTL.
             await fs.unlink(lockPath).catch(() => {
                 // best-effort: stale-claim reaper will eventually clean
             })
@@ -561,8 +550,8 @@ export function isClaimStale(fresh: boolean, claimedAt: number, now: number, ttl
 /**
  * Reconcile stale claims (run by the sweep timer). For every task in "claimed"
  * status whose claim lock is stale AND whose claimedAt exceeds CLAIM_TTL, reset
- * to "pending" so another member can pick it up. Fixes the limbo where a crash
- * left a stale lock + status="claimed".
+ * to "pending" so another member can pick it up after a crash leaves a stale
+ * lock with status="claimed".
  */
 export async function reapStaleClaims(teamDirectory: string): Promise<void> {
     const tasks = await listAllTasks(teamDirectory)
@@ -574,7 +563,7 @@ export async function reapStaleClaims(teamDirectory: string): Promise<void> {
                 await updateTask(teamDirectory, task.id, {
                     status: "pending",
                     owner: undefined,
-                    // MEDIUM: clear claimedAt on reaper reset so stale claim
+                    // Clear claimedAt on reaper reset so stale claim
                     // metadata doesn't persist on a pending task.
                     claimedAt: undefined,
                 }, { expectedStatus: "claimed", expectedClaimedAt: task.claimedAt })

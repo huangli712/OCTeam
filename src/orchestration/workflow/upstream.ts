@@ -2,8 +2,8 @@
  * Workflow upstream-context construction: builds the prefix of prior completed
  * TASK-step outputs injected into a task step's dispatch prompt.
  *
- * Extracted from workflow.ts. Gate-step verdicts are skipped (control-flow, not
- * work product). Each output block is individually truncated, then capped at
+ * Gate-step verdicts are skipped because they are control-flow, not work
+ * product. Each output block is individually truncated, then capped at
  * MAX_UPSTREAM_OUTPUT_BYTES total bytes.
  */
 

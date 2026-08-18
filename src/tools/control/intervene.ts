@@ -3,7 +3,7 @@
  * directive to a member's mailbox (or broadcasts to all members) DURING a
  * running orchestration. The directive rides the same three-layer comms model
  * as team_send_message — mailbox write (Layer 1) + best-effort wake hint
- * (Layer 2); the Transform hook (Layer 3, T5) renders it FIRST with a
+ * (Layer 2); the Transform hook (Layer 3) renders it FIRST with a
  * [DIRECTIVE] marker and filters by runId on the recipient's next turn.
  *
  * It holds team.mutex while validating and capturing the active run and writing
@@ -87,12 +87,9 @@ export function teamInterveneTool(ctx: PluginContext): ToolDefinition {
                     }
                 }
 
-                // M-20/C-10: the directive MUST carry the active run's runId so the
-                // Transform hook can scope it. Pre-fix code allowed runId===undefined
-                // which let the directive inject in ANY subsequent run (cross-run
-                // replay). Now: refuse to send an unscoped directive when there IS
-                // an active task. The only legitimate unscoped case is a pre-capture
-                // team (no activeTask at all).
+                // Bind the directive to the active runId so the Transform hook can
+                // reject cross-run replay. An active task without runId cannot accept
+                // a safely scoped directive.
                 const runId = team.activeTask.runId
                 if (!runId) {
                     return `Error: cannot send directive — active task has no runId. `
@@ -112,7 +109,7 @@ export function teamInterveneTool(ctx: PluginContext): ToolDefinition {
                     deliveryStatus: "pending",
                 }
 
-                // Backpressure is now enforced INSIDE the mailbox lock by
+                // Enforce backpressure inside the mailbox lock through
                 // writeMailboxMessage (via deliverToRecipients) so concurrent
                 // senders cannot both pass the check and collectively exceed the cap.
 

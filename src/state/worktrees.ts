@@ -28,24 +28,21 @@ export async function hasUncommittedChanges(worktreePath: string): Promise<boole
     try {
         const { stdout } = await execFileP("git", ["status", "--porcelain"], {
             cwd: worktreePath,
-            timeout: 10_000, // MEDIUM: bound git status to prevent indefinite hangs
+            timeout: 10_000, // Bound git status to prevent indefinite hangs
         })
         return stdout.trim().length > 0
     } catch (err) {
         // Distinguish "not a git path" (safe — worktree: false members have
         // no git worktree) from "git failed" (unsafe).
-        // L-2: a corrupted .git in a formerly-valid worktree also produces
-        // "not a git repository". Pre-fix code returned false (clean) for this
-        // case, which could destroy undetectable staged/unstaged work on a
-        // non-force delete. Now: only "does not exist" / ENOENT returns false
-        // (genuinely no path, no work to lose). "not a git repository" returns
-        // true (fail-closed) so the caller requires force: true to proceed.
-        // C8 fix: ENOENT can also mean the git binary itself is missing. Verify
+        // A corrupted .git directory also produces "not a git repository", so
+        // only an absent worktree path is considered clean. Every other failure
+        // returns true, requiring force: true to proceed.
+        // ENOENT can also mean the git binary itself is missing. Verify
         // the path exists independently before treating ENOENT as "path absent".
         const msg = err instanceof Error ? err.message : String(err)
         const isEnoent = (err as NodeJS.ErrnoException).code === "ENOENT"
         if (isEnoent || /does not exist|no such file/i.test(msg)) {
-            // C8: confirm the WORKTREE PATH itself is the missing entity, not
+            // Confirm the worktree path itself is the missing entity, not
             // the git binary or some other ENOENT source. Only if the path is
             // genuinely absent is it safe to return false (no work to lose).
             try {
@@ -57,7 +54,7 @@ export async function hasUncommittedChanges(worktreePath: string): Promise<boole
                 })
                 return true
             } catch (accessErr) {
-                // H-O1: only ENOENT means the path doesn't exist. EACCES,
+                // Only ENOENT means the path doesn't exist. EACCES,
                 // EIO, ELOOP etc. mean it exists but is inaccessible —
                 // treat as dirty (fail-closed) to protect uncommitted work.
                 const code = (accessErr as NodeJS.ErrnoException).code
@@ -87,7 +84,7 @@ export async function hasUncommittedChanges(worktreePath: string): Promise<boole
  * bypassing the load-time validator — could otherwise point at an unrelated
  * registered worktree of the project repo and `git worktree remove --force`
  * would destroy it. An out-of-bounds path is refused (warning + early return);
- * git errors remain best-effort as before.
+ * git errors remain best-effort.
  */
 export async function cleanWorktree(
     projectDir: string,
@@ -99,7 +96,7 @@ export async function cleanWorktree(
     const resolved = path.resolve(root, worktreePath)
     // Walk ancestor chain with lstat (no follow) so an intermediate-directory
     // symlink cannot redirect `git worktree remove --force` outside the team's
-    // worktrees root. The previous path.resolve-only check missed symlinks.
+    // worktrees root.
     try {
         await assertNoSymlinkTraversal(root, resolved)
     } catch (err) {
@@ -112,7 +109,7 @@ export async function cleanWorktree(
         logger.warn("cleanWorktree: refusing out-of-bounds worktreePath", { path: worktreePath })
         return false
     }
-    // C15: pass the validated `resolved` (absolute) path to git, not the
+    // Pass the validated `resolved` (absolute) path to git, not the
     // original `worktreePath`. The validation above checks `resolved` =
     // path.resolve(worktreesRoot, worktreePath), but git resolves a relative
     // worktreePath against its cwd (projectDir). When projectDir !=
@@ -137,7 +134,7 @@ export async function createWorktree(
     memberName: string,
 ): Promise<string> {
     const dest = worktreePath(teamDirectory, memberName);
-    // H12: verify the worktrees/ path chain is not symlink-redirected before
+    // Verify the worktrees/ path chain is not symlink-redirected before
     // handing it to git. A symlinked worktrees/ dir would let git check out the
     // full repository outside the trusted team root.
     await assertNoSymlinkTraversal(teamDirectory, dest);
@@ -160,12 +157,11 @@ export async function createWorktree(
  * Tear down a member's worktree AND its companion branch in one call.
  * Symmetric to {@link createWorktree}: removes the worktree registration +
  * files via {@link cleanWorktree}, then deletes the `team/<team>/<member>`
- * branch. The branch deletion is best-effort (matching spawn rollback's
- * original behavior): a git failure is swallowed so it never blocks team
+ * branch. Branch deletion failures are swallowed so they never block team
  * teardown. Order matters — the worktree must be removed before its branch
  * can be deleted (a checked-out branch is locked while the worktree exists).
  *
- * C-10 branch-deletion guard: when `worktreePath` is undefined (the member
+ * When `worktreePath` is undefined (the member
  * never had a worktree registered with OCTeam — e.g. worktree: false was
  * set at create time, or the team was created without worktrees), the
  * companion `team/<team>/<member>` branch was NEVER created by OCTeam and
@@ -200,7 +196,7 @@ export async function destroyWorktree(
         cwd: projectDir,
         timeout: 10_000,
     }).catch((err) => {
-        // MEDIUM: log instead of silently swallowing so orphan branches
+        // Log instead of silently swallowing so orphan branches
         // are diagnosable.
         logger.warn("destroyWorktree: branch deletion failed (best-effort)", {
             branch, error: err instanceof Error ? err.message : String(err),

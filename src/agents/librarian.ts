@@ -41,7 +41,7 @@ export const librarianAgent: OcteamAgentConfig = {
     description: "OCTeam external reference researcher",
     temperature: 0.1,
     color: "#4169e1",
-    // C4: prompt says "Do NOT search the codebase — that's explore's job",
+    // The prompt excludes codebase search,
     // so local read tools (read/glob/grep) are removed to match. Keeping them
     // would let a prompt-injected task (from webfetch'd content) read local
     // source files and exfiltrate them via webfetch — the prompt instruction

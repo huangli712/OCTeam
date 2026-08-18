@@ -10,9 +10,8 @@
  * Runtime shape of an OpenCode SDK chat message (session.messages /
  * experimental.chat.messages.transform). The SDK types these as `{}`, so
  * callers cast to this loose shape to read info.sessionID / info.role and
- * inspect parts. Defining it once here avoids the duplicated
- * `{ info?: any; parts?: any }` casts that previously appeared at every
- * SDK boundary call site.
+ * inspect parts. Defining it once here avoids duplicated loose casts at SDK
+ * boundary call sites.
  *
  * `info` is the SDK's Message type (UserMessage | AssistantMessage) so
  * sumMemberTokens (which reads info.tokens) stays type-safe; `parts` stays

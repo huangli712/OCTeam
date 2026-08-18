@@ -12,7 +12,7 @@ import { isEnoent } from "../../core/utils.js"
 import { clearActiveTeam, isIndexedMasterOf, setActiveTeam } from "../../state/resolve.js"
 import { decideActivate, withOrderedLocks } from "../../state/activation.js"
 
-// H-22: process-level activation mutex keyed by sessionID. Prevents two
+// A process-level activation mutex keyed by sessionID prevents two
 // concurrent team_activate calls from the same session from both scanning
 // "no active sibling" outside the lock and then activating different targets
 // simultaneously (which would leave two teams active).
@@ -30,7 +30,7 @@ async function withSessionMutex<T>(key: string, fn: () => Promise<T>): Promise<T
         return await fn()
     } finally {
         release()
-        // LOW: evict the Map entry once the chain settles so long-lived hosts
+        // Evict the Map entry once the chain settles so long-lived hosts
         // don't accumulate stale session keys. If another caller queued behind
         // us, they've already replaced the value; our delete is a no-op.
         if (activationMutex.get(key) === next) {
@@ -64,7 +64,7 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
                 return "Error: team_activate is master-only (only the team's leader session can activate it)"
             }
 
-            // H-22: serialize sibling scan + activation per session so two
+            // Serialize sibling scan and activation per session so two
             // concurrent team_activate calls cannot both see "no active
             // sibling" and proceed to activate different targets.
             return await withSessionMutex(context.sessionID, async () => {
@@ -79,12 +79,8 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
                         loadTeamState(ctx.storageRoot, name, leadSessionId)
                             .then(t => ({ t, ok: true as const }))
                             .catch(err => {
-                                // HIGH-B: surface sibling-load failures so an
-                                // operator can diagnose a transient IO/permission
-                                // error. Pre-fix code silently treated the
-                                // sibling as non-existent, which could let two
-                                // teams activate concurrently if the active
-                                // sibling's state was momentarily unreadable.
+                                // Record sibling-load failures for the fail-closed check below
+                                // and log enough context to diagnose transient I/O or permission errors.
                                 logSwallowed(ctx, "team_activate: sibling load failed (treating as inactive)", err, {
                                     siblingTeam: name,
                                     leadSessionId,
@@ -93,11 +89,9 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
                             }),
                     ),
             )
-            // H-T7: fail-closed when a sibling's state is unreadable. Pre-fix
-            // code treated unreadable siblings as inactive, which could let
-            // two teams activate concurrently if the active sibling's state
-            // was momentarily unreadable (EACCES, EIO). Now refuse the
-            // activation so the operator can diagnose the IO issue first.
+            // Fail closed when a sibling state is unreadable. Treating it as
+            // inactive could allow concurrent activation, so refuse activation
+            // and surface the I/O issue to the operator.
             const failedSiblings = loaded.filter(r => !r.ok)
             if (failedSiblings.length > 0) {
                 return `Error: cannot verify sibling team states (unreadable: ${failedSiblings.length}). Refusing to activate to prevent concurrent activation. Check .octeam/ permissions and retry.`

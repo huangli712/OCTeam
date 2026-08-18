@@ -41,6 +41,7 @@ export function detectBlockedByCycle(
     const state = new Map<string, number>()
     const path: string[] = []
 
+    // Walk the dependency graph depth-first and return the first cycle path.
     const walk = (node: string): string[] | null => {
         state.set(node, IN_PATH)
         path.push(node)

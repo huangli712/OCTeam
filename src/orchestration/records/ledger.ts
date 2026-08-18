@@ -2,8 +2,8 @@
  * Workflow step ledger formatting: renders the 1-based per-step ledger and
  * the task/join output sections for a workflow run's summary.
  *
- * Extracted from summary.ts. All functions are pure formatting helpers —
- * they read WorkflowStep data and produce strings, with no side effects.
+ * All functions are pure formatting helpers that read WorkflowStep data and
+ * produce strings without side effects.
  */
 
 import type { WorkflowStep, WorkflowGateStep, WorkflowFanoutStep } from "../../core/types.js";
@@ -73,9 +73,8 @@ export function formatWorkflowLedgerStep(steps: readonly WorkflowStep[], step: W
             return `${index + 1}. [task]${idTag} ${step.member || "?"}${state}`
         }
         case "gate": {
-            // M-19: show skipped gates as "(skipped)" not "pending". Pre-fix
-            // code rendered step.verdict ?? "pending", so a forward-jumped
-            // gate that was marked skipped still showed as pending.
+            // Show forward-jumped gates as "(skipped)" rather than deriving
+            // their display state from a missing verdict.
             if (step.skipped === true) {
                 return `${index + 1}. [gate]${idTag} ${step.verifier ?? "?"} verifies ${workflowTargetLabel(step)} (skipped)`
             }

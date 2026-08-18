@@ -34,8 +34,8 @@ export function defaultBounds(override?: Partial<Bounds>): Bounds {
  * Assert that `name` is a member of `team`. Returns a ready-to-return Error
  * string when the name does not match any member, or null when it is valid.
  * `label` identifies the offending field in the message (e.g.
- * "signoff_decider", "decomposer"). The message format is kept identical to the
- * previous inline checks so existing error-string assertions still hold.
+ * "signoff_decider", "decomposer"). The stable message format supports existing
+ * error-string assertions.
  */
 export function assertMember(team: Team, name: string, label: string): string | null {
     if (!team.members.some(m => m.name === name && !m.isMaster)) {
@@ -57,20 +57,17 @@ export function findMember(team: Team, name: string): MemberState | undefined {
 /**
  * Abort every running non-master member session and reset all non-master
  * members to a clean idle state (clears declaredDone / retryingSince). Shared
- * by team_cancel and team_delete (busy-team teardown), which previously
- * duplicated this ~12-line block. Best-effort on abort: a failed abort must
- * not block cancel/delete. Caller MUST already hold team.mutex.
+ * by team_cancel and team_delete during busy-team teardown. Best-effort on
+ * abort: a failed abort must not block cancel/delete. Caller MUST already hold
+ * team.mutex.
  */
 export async function abortAndResetMembers(
     ctx: PluginContext,
     team: Team,
 ): Promise<Array<{ member: string; aborted: boolean }>> {
     // Abort running member turns (best-effort).
-    // M-10: track which members failed to abort so they are marked errored
-    // (not idle) in the reset loop below. Pre-fix code reset ALL members to
-    // idle regardless of abort outcome, so a still-running member whose abort
-    // failed would be marked idle — its next idle event would be processed
-    // as if it were a fresh turn.
+    // Track abort failures so affected members remain errored instead of being
+    // reset to idle while their sessions may still be running.
     const abortFailed = new Set<string>()
     const abortResults: Array<{ member: string; aborted: boolean }> = []
     for (const m of team.members) {
@@ -92,7 +89,7 @@ export async function abortAndResetMembers(
     // Reset every non-master member to a clean idle state.
     for (const m of team.members) {
         if (m.isMaster) continue
-        // M-10: members whose abort failed are marked errored, not idle.
+        // Members whose abort failed remain errored; all others return to idle.
         if (abortFailed.has(m.name)) {
             m.status = "errored"
         } else {

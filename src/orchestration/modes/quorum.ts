@@ -31,7 +31,7 @@ function parseBallot(
     voteOptions: string[] | undefined,
 ): QuorumBallot {
     if (!output) return { vote: "", status: "invalid" }
-    // HIGH #20: use shared extractTaggedJSON instead of local regex.
+    // Use shared extractTaggedJSON instead of a local regex.
     const parsed = extractTaggedJSON(output, "vote", "投票")
     if (parsed === null || parsed === undefined) return { vote: "", status: "invalid" }
     const raw = parsed[voteKey]
@@ -60,10 +60,8 @@ export async function handleQuorumIdle(ctx: PluginContext, team: Team): Promise<
     await maybeAdvanceBarrier(team, participants, async () => {
         const ballots: Record<string, QuorumBallot> = {}
         let abstainCount = 0
-        // M-17: track malformed/invalid ballots separately from errored
-        // members so the run record distinguishes "members crashed" from
-        // "members returned unparseable output". Pre-fix code lumped both
-        // into abstainCount → erroredCount, making diagnosis impossible.
+        // Track malformed ballots separately from errored members so the run
+        // record distinguishes crashes from unparseable output.
         let malformedCount = 0
         let erroredMemberCount = 0
 
@@ -87,17 +85,15 @@ export async function handleQuorumIdle(ctx: PluginContext, team: Team): Promise<
         const threshold = Math.floor(nEff / 2) + 1
 
         task.ballots = ballots
-        // M-17: record the combined count for backward compat, but also
+        // Record the combined count for backward compatibility, but also
         // store the split for diagnostic tools.
         task.erroredCount = abstainCount
         task.nEff = nEff
         task.threshold = threshold
 
-        // HIGH-D: use a null-prototype object for vote counts so a ballot
-        // with value "__proto__" or "constructor" cannot pollute Object.prototype
-        // or shadow inherited properties. Pre-fix code used `{}` which inherits
-        // from Object.prototype — `counts["__proto__"]` would set the prototype,
-        // and `counts["constructor"]` would shadow the constructor property.
+        // Use a null-prototype object so ballots such as "__proto__" or
+        // "constructor" cannot mutate the prototype or shadow inherited
+        // properties in the vote counts.
         const counts: Record<string, number> = Object.create(null)
         for (const name of participants) {
             const b = ballots[name]
@@ -108,7 +104,7 @@ export async function handleQuorumIdle(ctx: PluginContext, team: Team): Promise<
 
         // Verdict — three explicit terminal states.
         if (nEff === 0) {
-            // M-17: distinguish all-errored (members crashed) from
+            // Distinguish all-errored (members crashed) from
             // all-malformed (members returned unparseable output).
             const reason = erroredMemberCount > 0 && malformedCount > 0
                 ? `quorum_all_abstained:${erroredMemberCount}_errored:${malformedCount}_malformed`

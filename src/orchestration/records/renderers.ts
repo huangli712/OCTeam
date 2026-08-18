@@ -1,8 +1,8 @@
 /**
  * Per-mode summary builders for OCTeam orchestration results.
  *
- * Extracted from summary.ts — these are pure renderers that format an
- * ActiveTask's captured outputs into the text delivered to the leader.
+ * These pure renderers format an ActiveTask's captured outputs into the text
+ * delivered to the leader.
  * buildSummary (summary.ts) dispatches to exactly one of these per run.
  */
 
@@ -33,9 +33,8 @@ const WORKFLOW_OUTPUT_TRUNCATED_MARKER = "[workflow outputs truncated: 524288-by
  * evaluate. Mirrors the responses-inclusion pattern used by summarizePipeline.
  */
 export async function summarizeDelegate(team: Team, task: ActiveTask, head: string): Promise<string> {
-    // HIGH #25: only include tasks from the CURRENT run, not the entire
-    // history. Pre-fix code called listAllTasks which returns all statuses
-    // including deleted tasks from previous runs, causing unbounded growth.
+    // Include only tasks from the current run so deleted tasks from previous
+    // runs cannot make summaries grow without bound.
     const allTasks = await listAllTasks(team.directory)
     const tasks = allTasks.filter(t =>
         t.status !== "deleted"
@@ -52,11 +51,8 @@ export async function summarizeDelegate(team: Team, task: ActiveTask, head: stri
     const taskResults = tasks
         .filter(t => t.status === "completed")
         .flatMap(t => {
-            // HIGH #24: only use task.result, NOT task.responses[owner] as a
-            // fallback. Pre-fix code fell back to the owner's latest response,
-            // which overwrites earlier task outputs when the same member
-            // completed multiple tasks — showing the latest output for ALL
-            // tasks and losing earlier work.
+            // Use task.result rather than the owner's latest response so a member
+            // completing several tasks retains each task's distinct output.
             const result = t.result
             if (!result || result.trim().length === 0) return []
             if (t.owner) coveredOwners.add(t.owner)
@@ -138,11 +134,8 @@ export async function summarizeRecurse(team: Team, task: Extract<ActiveTask, { t
     const collectChildren = (parentId: string) => {
         if (visited.has(parentId)) return
         visited.add(parentId)
-        // M-RENDERER: recurse stores child IDs in parent.blockedBy (parent waits
-        // for children). Pre-fix code searched ALL tasks for whose blockedBy
-        // contains parentId — that finds tasks blocked BY parentId, not tasks
-        // that ARE parentId's children. The correct direction: read parentId's
-        // own blockedBy to get its child IDs.
+        // Recurse stores child IDs in parent.blockedBy because the parent waits
+        // for its children. Read that parent field directly to preserve edge direction.
         const parent = taskById.get(parentId)
         const childIds = parent?.blockedBy ?? []
         const children = childIds
@@ -177,9 +170,7 @@ export function summarizeTollgate(task: Extract<ActiveTask, { type: "tollgate" }
     const rows = stages.map((s, i) =>
         `${i + 1}. [${s.verdict ?? "pending"}] ${s.member} -> verified by ${s.verifier}`
         + (s.attempts > 0 ? ` (${s.attempts} retries)` : ""))
-    // M-3: de-duplicate outputs when multiple stages share the same producer
-    // member. Pre-fix code emitted task.responses[s.member] once per stage,
-    // so a producer running stages 1+3 would appear twice with the same text.
+    // De-duplicate outputs when multiple stages share the same producer member.
     const seen = new Set<string>()
     const outputs = stages
         .filter(s => s.completed)
@@ -260,7 +251,7 @@ export function summarizeWorkflow(task: Extract<ActiveTask, { type: "workflow" }
 /** Render a consensus run: concatenated member outputs. */
 export function summarizeConsensus(task: ActiveTask, head: string): string {
     // Consensus has no reducePolicy; concatenate member outputs
-    // (the same summarize behavior the old default branch produced).
+    // using the standard summarize behavior.
     const candidates = Object.entries(task.responses)
         .map(([name, out]) => `by ${name}:\n${safeMemberOutput(out)}`)
         .join("\n\n")

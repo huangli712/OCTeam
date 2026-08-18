@@ -1,10 +1,10 @@
 /**
- * Workflow gate-verdict routing + unevaluable-verdict handling, extracted from
- * workflow-handler.ts. handleGateVerdict routes PASS / FAIL / INVALID /
+ * Workflow gate-verdict routing and unevaluable-verdict handling.
+ * handleGateVerdict routes PASS / FAIL / INVALID /
  * parse_failure verdicts; handleInvalidVerdict implements the on_invalid /
  * on_malformed policies (fail / retry_verifier / skip / escalate). Ensemble
  * gate aggregation lives in collectEnsembleVerdicts. resetStepAfterCompletion
- * is shared with workflow-handler.ts for task / join step completion.
+ * is shared with handler.ts for task / join step completion.
  */
 
 import type { PluginContext } from "../../core/context.js";
@@ -53,9 +53,8 @@ type ParsedVerdict = ReturnType<typeof parseVerdict>;
 /**
  * Stamp completion timing on the step via markWorkflowStepCompleted and clear
  * the transient dispatch/correlation bookkeeping that should not survive past
- * a step settling. Centralizes the reset sequence that was duplicated across
- * the task / join / gate-PASS / loop-exhaust / on_fail=skip / on_malformed=skip
- * completion paths.
+ * a step settling. This keeps the reset sequence consistent across task, join,
+ * gate-PASS, loop-exhaust, on_fail=skip, and on_malformed=skip completion paths.
  *
  * opts.completed flips step.completed (join leaves it false because
  * advanceWorkflowStep finalizes join state on the next cycle).
@@ -181,6 +180,7 @@ type InvalidVerdictPayload = GateVerdictContext & {
     diff: string;
 };
 
+/** Apply the gate's invalid or malformed verdict policy. */
 export async function handleInvalidVerdict(
     ctx: PluginContext,
     team: Team,
@@ -213,7 +213,7 @@ export async function handleInvalidVerdict(
         });
         if (await maybePauseAfterWorkflowStep(ctx, team, gateIndex))
             return;
-        // H52: honor task-level human approval before advancing (parity with
+        // Honor task-level human approval before advancing, as in
         // handleGatePass). Without this, a malformed+skip would advance to the
         // next step without the human review pause that human_approval promises.
         const wfSteps = task.steps ?? [];
@@ -300,10 +300,10 @@ export async function handleInvalidVerdict(
     }
 
     if (policy === "escalate") {
-        // MEDIUM #11: mark the gate complete BEFORE creating the approval
+        // Mark the gate complete before creating the approval
         // pause so both changes are persisted in a single saveTeamState call.
         resetStepAfterCompletion(step, { completed: true });
-        // LOW: compute nextIndex AFTER marking gate complete so the summary
+        // Compute nextIndex after marking the gate complete so the summary
         // describes the actual next step, not the current gate.
         const nextIndex = (task.steps ?? []).findIndex((s) => !s.completed);
         let escalated: boolean;
@@ -323,8 +323,8 @@ export async function handleInvalidVerdict(
         if (escalated) {
             return;
         }
-        // forceApprovalRequest failed to create the pause (H-30 rollback
-        // already cleared approvalStage). Revert the gate completion since
+        // forceApprovalRequest failed to create the pause and already cleared
+        // approvalStage. Revert the gate completion since
         // there is no approval to gate it on.
         step.completed = false;
         // No escalation handler available -> fall through to terminal fail.
@@ -370,19 +370,16 @@ export async function handleGatePass(
     // a stale verdict (parity with FAIL/INVALID paths and ensemble gates).
     const task = team.activeTask;
     if (task) delete task.responses[verifierName];
-    // C18: when approval_after is configured, mark the gate completed BEFORE
+    // When approval_after is configured, mark the gate completed before
     // pausing. Without this, the pause returns early and the gate remains
     // un-completed; after approval, applyApprovalDecision calls
     // advanceWorkflowStep, which re-processes the still-active gate
     // (re-dispatching the verifier in linear workflows, or waiting forever
     // on stale dispatchedAt in DAG workflows).
     //
-    // This is safe because approval_after is validator-guaranteed
-    // incompatible with on_*_goto (so the gotoIdx === -2 branch below is
-    // unreachable when approvalAfter is set). H-4's constraint (gate must
-    // NOT be marked completed before the unevaluable-where check) only
-    // applies to gates WITHOUT approvalAfter — those gates still defer
-    // resetStepAfterCompletion past the gotoIdx check (line 373 below).
+    // approval_after is incompatible with on_*_goto, so this cannot bypass a
+    // jump. Gates without approvalAfter remain incomplete until after the
+    // unevaluable-where check.
     if (step.approvalAfter) {
         resetStepAfterCompletion(step, { completed: true });
     }
@@ -392,14 +389,14 @@ export async function handleGatePass(
         return;
     const gotoIdx = gatedGotoIndex(steps, gateIndex, step.onPassGoto);
     if (gotoIdx === -2) {
-        // H-4: the where condition was unevaluable (verifier omitted a
+        // The where condition was unevaluable because the verifier omitted a
         // required field). Route to INVALID instead of silently advancing
         // to the default successor — the verifier's contract was violated.
         //
         // The step MUST NOT be marked completed before this check: the
         // retry_verifier branch in handleInvalidVerdict re-dispatches the
         // verifier and waits for a fresh idle response, but a completed gate
-        // is skipped by the idle router → the retry response would never
+        // is skipped by the idle router, so the retry response would never
         // process, deadlocking the run until wall-clock timeout.
         await handleInvalidVerdict(ctx, team, {
             step, gateIndex, verifierName,
@@ -452,6 +449,7 @@ type FailVerdictPayload = GateVerdictContext & {
     v: ParsedVerdict;
 };
 
+/** Apply a terminal FAIL gate policy, including skip and bounded goto paths. */
 export async function handleGateFail(
     ctx: PluginContext,
     team: Team,
@@ -475,7 +473,7 @@ export async function handleGateFail(
         // Honor approval_after before advancing (parity with handleGatePass).
         if (await maybePauseAfterWorkflowStep(ctx, team, gateIndex))
             return;
-        // H52: honor task-level human approval before advancing (parity with
+        // Honor task-level human approval before advancing, as in
         // handleGatePass). Without this, a FAIL+skip would advance without
         // the human review pause that human_approval promises.
         const failSkipNextIndex = steps.findIndex((s) => !s.completed);
@@ -502,7 +500,7 @@ export async function handleGateFail(
         step.onFailGoto,
     );
     if (failGoto === -2) {
-        // H-4: where condition unevaluable → route to INVALID.
+        // Route an unevaluable where condition to INVALID.
         await handleInvalidVerdict(ctx, team, {
             step, gateIndex, verifierName,
             reason: "INVALID",
@@ -530,9 +528,8 @@ export async function handleGateFail(
                             + ` after ${loop.maxIterations} iterations;`
                             + ` on_exhaust=continue`,
                     });
-                    // H-LOOP-EXHAUST: honor task-level human approval before
-                    // advancing (parity with handleGatePass / handleGateFail
-                    // skip paths, H52). Without this, on_exhaust=continue would
+                    // Honor task-level human approval before advancing, as in
+                    // the gate PASS and skip paths. Otherwise, on_exhaust=continue would
                     // immediately advance to the next step without the review
                     // pause that human_approval promises.
                     const exhaustNextIndex = steps.findIndex((s) => !s.completed);
@@ -600,7 +597,7 @@ export async function handleGateRetry(
             step.onFailGoto,
         );
         if (failGoto === -2) {
-            // H-4: where condition unevaluable → route to INVALID.
+            // Route an unevaluable where condition to INVALID.
             await handleInvalidVerdict(ctx, team, {
                 step, gateIndex, verifierName,
                 reason: "INVALID",
@@ -647,7 +644,7 @@ export async function handleGateRetry(
         if (retryStep.kind === "task") {
             retryStep.output = undefined;
             retryStep.taskAttempts = 0;
-            // H51: reset task timeoutAttempts (parity with the gate branch
+            // Reset task timeoutAttempts, as in the gate branch
             // below and the backward-jump reset in engine.ts).
             retryStep.timeoutAttempts = 0;
         }
@@ -693,7 +690,7 @@ export async function handleGateRetry(
     step.dispatchedActor = undefined;
     if (!(await dispatchTaskStep(ctx, team, task, producerIdx, feedback))) {
         const result = await handleWorkflowDispatchUnavailable(ctx, team, task, producerStep);
-        // HIGH: if degraded (fanout tolerance), advance so the frontier
+        // If fanout tolerance degrades the branch, advance so the frontier
         // doesn't stall waiting for an idle that won't come from the
         // errored producer.
         if (result === "degraded") await advanceWorkflowStep(ctx, team);
@@ -746,9 +743,8 @@ export async function handleGateVerdict(
     } else {
         const response = task.responses[verifierName];
         if (response !== undefined) {
-            // HIGH: parse the FULL response first, then store a truncated
-            // version. Pre-fix code truncated before parsing, which could
-            // cut the closing </verdict> tag and cause false parseFailed.
+            // Parse the full response before storing a truncated snapshot;
+            // truncating first could remove the closing </verdict> tag.
             output = response;
             if (Buffer.byteLength(response, "utf8") > 8192) {
                 const responseBuffer = Buffer.from(response, "utf8");

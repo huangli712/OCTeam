@@ -83,7 +83,7 @@ export type TeamState = {
     bounds: Bounds                     // resource limits
     createdAt: number
     startedAt?: number                 // when first task started
-    runnerPid?: number                  // H38: PID of the OpenCode process running the
+    runnerPid?: number                  // PID of the OpenCode process running the
                                         // active orchestration. Set at startup, cleared
                                         // by finishRun. Reconciler checks process liveness
                                         // via this PID to distinguish crashed from live
@@ -96,7 +96,7 @@ export type TeamState = {
                                        // (clears ALL activatedAt on plugin restart so nothing
                                        // auto-activates after a reload). Orthogonal to TeamStatus.
     spawning?: boolean                 // cross-process spawn guard.
-    spawningOwner?: string             // CRIT #2: UUID of the process that set
+    spawningOwner?: string             // UUID of the process that set
                                        // spawning. Only the owner can clear it.
                                        // reconciler clears if owner PID is dead.
 }
@@ -146,7 +146,7 @@ export type MemberState = {
                                        // spawn). Delivered as <member-instruction> on the member's FIRST
                                        // real task dispatch (NOT during role-setup, which is identity-only).
     promptDelivered?: boolean          // true after prompt has been prepended to a dispatch once
-    promptSentAt?: number              // H14: epoch ms when the current turn's promptAsync succeeded.
+    promptSentAt?: number              // epoch ms when the current turn's promptAsync succeeded.
                                        // Used by resume-modes to detect crash-between-persist-and-send:
                                        // running without promptSentAt means the prompt was never delivered.
     lastCapturedMsgCount?: number      // capture dedup: messages.length at the last successful

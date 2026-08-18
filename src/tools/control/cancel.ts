@@ -53,10 +53,9 @@ export function teamCancelTool(ctx: PluginContext): ToolDefinition {
                 const abortResults = await abortAndResetMembers(ctx, team)
                 const abortFailureCount = abortResults.filter(member => !member.aborted).length
                 // b. Notify master, clear active task, and transition to idle.
-                // M-2: cancel keeps team status "idle" (available for new work)
-                // but overrides the run record status to "failed" so cancel is
-                // not counted as success in metrics. Pre-fix code recorded
-                // cancelled runs as "completed".
+                // Keep team status "idle" so it remains available for new work,
+                // but record the cancelled run as failed so metrics do not count it
+                // as a success.
                 await finishRun(ctx, team, "cancelled", "idle", "failed")
                 // d. Persist.
                 await saveTeamState(team)

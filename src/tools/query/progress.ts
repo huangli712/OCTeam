@@ -79,7 +79,7 @@ function liveStepsToRunSteps(steps: readonly WorkflowStep[]): WorkflowRunStep[] 
                     onInvalid: step.onInvalid,
                     invalidAttempts: step.invalidAttempts,
                     jumpCount: step.jumpCount,
-                    // M34 fix: include goto and conditional fields so the live
+                    // Include goto and conditional fields so the live
                     // mermaid diagram shows non-linear control flow correctly.
                     onPassGoto: step.onPassGoto === undefined ? undefined : step.onPassGoto + 1,
                     onFailGoto: step.onFailGoto === undefined ? undefined : step.onFailGoto + 1,
@@ -200,11 +200,12 @@ type RunEventWindow = {
 }
 
 const MAX_RUN_EVENT_LINE_BYTES = 1024 * 1024
-// H44: cap total formatted output so limit=200 lines × large detail fields
+// Cap total formatted output so limit=200 lines × large detail fields
 // cannot produce multi-hundred-MB responses. 256 KiB matches the
 // accumulated output capture cap.
 const MAX_FORMATTED_OUTPUT_BYTES = 256 * 1024
 
+// Stream and validate run events while retaining only the latest matching window.
 async function readRunEventWindow(
     teamDirectory: string,
     runId: string,
@@ -294,13 +295,13 @@ function formatTimeline(events: RunEvent[], runId: string, totalBefore: number, 
             e.round !== undefined ? `round ${e.round}` : "",
             e.bytes !== undefined ? `${e.bytes} bytes` : "",
             e.reason ? `— ${e.reason}` : "",
-            // H44: truncate detail to prevent multi-MB detail fields from
+            // Truncate detail to prevent multi-MB detail fields from
             // producing oversized responses.
             e.detail ? `(${e.detail.length > 256 ? e.detail.slice(0, 256) + "…" : e.detail})` : "",
         ].filter(Boolean).join(" ")
         return `  [${rel(e.timestamp)}] ${e.kind}${who}${extra ? ` ${extra}` : ""}`
     })
-    // H44: cap total output to MAX_FORMATTED_OUTPUT_BYTES.
+    // Cap total output to MAX_FORMATTED_OUTPUT_BYTES.
     let totalBytes = 0
     const cappedLines: string[] = []
     for (const line of lines) {

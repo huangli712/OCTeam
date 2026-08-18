@@ -93,7 +93,7 @@ function formatRunLine(r: RunRecord): string {
     const when = new Date(r.finishedAt).toISOString()
     const members = Object.keys(r.memberOutputs).length
     const winner = r.arena?.winner ? `  winner=${r.arena.winner}` : ""
-    // S3: cap reason to prevent oversized list entries.
+    // Cap reason to prevent oversized list entries.
     const reason = r.reason.length > 200 ? r.reason.slice(0, 200) + "..." : r.reason
     return (
         `- ${r.runId}  [${r.type}${mode}] ${r.status}  reason=${reason}  ${when}  tokens=${r.tokensUsed}` +
@@ -224,7 +224,7 @@ function formatWorkflowStepLines(steps: readonly WorkflowRunStep[]): string[] {
     return lines
 }
 
-/** Arena winner + evaluator-attested scoreboard audit trail (4e). The winner is
+/** Arena winner and evaluator-attested scoreboard audit trail. The winner is
  * read VERBATIM from record.arena.winner (selection already happened in the
  * evaluate phase) — never re-derived from the scoreboard here. A scored
  * candidate absent from survivingCandidates is tagged [ineligible] so an
@@ -345,13 +345,13 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
                 }
                 const memberOutputFile = runMemberOutputPath(caller.directory, record.runId, args.member)
                 try {
-                    // C-4: refuse to read through a symlinked member output
+                    // Refuse to read through a symlinked member output
                     // file or intermediate dir. Without this, a member with FS
                     // write access could symlink runs/<runId>/<member>.md to an
                     // arbitrary file and have its contents returned through the
                     // tool. assertNoSymlinkTraversal runs before readFile so the
                     // rejection is not swallowed by the catch below.
-                    // C1: use fd-based safeReadFile to shrink TOCTOU window.
+                    // Use fd-based safeReadFile to shrink the TOCTOU window.
                     const content = await safeReadFile(caller.directory, memberOutputFile, { maxBytes: 256 * 1024 })
                     if (content === undefined) return `Error: output file for "${args.member}" is missing in run ${record.runId}`
                     return content
@@ -386,9 +386,9 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
             for (const [name, info] of Object.entries(record.memberOutputs)) {
                 const memberOutputFile = runMemberOutputPath(caller.directory, record.runId, name)
                 try {
-                    // C-4: refuse to read through a symlinked member output
+                    // Refuse to read through a symlinked member output
                     // file. See team_result_get for the same guard.
-                    // C1: use fd-based safeReadFile to shrink TOCTOU window.
+                    // Use fd-based safeReadFile to shrink the TOCTOU window.
                     const content = await safeReadFile(caller.directory, memberOutputFile, { maxBytes: 256 * 1024 })
                     if (content === undefined) continue
                     previews.push(
@@ -397,9 +397,8 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
                                 `team_id="${record.teamName}", run_id="${record.runId}", member="${name}")]`,
                     )
                 } catch (err: unknown) {
-                    // M-31: distinguish ENOENT (file genuinely missing) from
-                    // other errors (EACCES, EIO, corruption). Pre-fix code
-                    // reported "[output file missing]" for ALL errors.
+                    // Distinguish ENOENT (file genuinely missing) from other
+                    // errors such as EACCES, EIO, and corruption.
                     const code = (err as NodeJS.ErrnoException).code
                     if (code === "ENOENT") {
                         previews.push(`### ${name} (${info.bytes} bytes)\n[output file missing]`)
@@ -426,7 +425,7 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
             }
 
             const body = previews.length > 0 ? previews.join("\n\n") : "(no member outputs captured)"
-            // S3: cap final response to 256 KiB to prevent oversized responses.
+            // Cap final response to 256 KiB to prevent oversized responses.
             const MAX_RESULT_GET_BYTES = 256 * 1024
             let result = `${header.join("\n")}\n\n${body}`
             if (Buffer.byteLength(result, "utf8") > MAX_RESULT_GET_BYTES) {

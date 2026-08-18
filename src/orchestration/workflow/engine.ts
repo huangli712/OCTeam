@@ -110,8 +110,8 @@ export async function dispatchTaskStep(
         return false;
     const member = liveWorkflowActor(team, step.member, step.fallbackMember);
     if (member === undefined) return false;
-    // H-2: when the task declares explicit `inputs`, verify every referenced
-    // step completed NON-SKIPPED. A forward goto can mark intermediate steps
+    // When the task declares explicit `inputs`, verify every referenced step
+    // completed without being skipped. A forward goto can mark intermediate steps
     // as completed+skipped; without this guard the task would dispatch with
     // an empty upstream (buildWorkflowUpstream silently drops !completed and
     // skipped-only entries) and produce work product missing its declared
@@ -142,7 +142,7 @@ export async function dispatchTaskStep(
         : step.task;
     step.dispatchedActor = member.name;
     step.correlationId = crypto.randomUUID();
-    // HIGH #14: mark dispatched BEFORE dispatchToMember so the step state
+    // Mark dispatched before dispatchToMember so the step state
     // is persisted atomically with the dispatch intent.
     markWorkflowStepDispatched(step);
     try {
@@ -173,8 +173,8 @@ export async function dispatchEnsembleGate(
     if (!step || step.kind !== "gate" || !step.verifiers) return false;
     const targetIndices = gateTargetIndices(task.steps ?? [], index);
     if (targetIndices.length === 0) return false;
-    // HIGH-C: refuse to verify a target that is incomplete or skipped. Same
-    // contract as the single-verifier path — without this, an ensemble gate
+    // Refuse to verify a target that is incomplete or skipped. The single-verifier
+    // path has the same contract; otherwise, an ensemble gate
     // reached by a forward goto would receive empty producer output and emit
     // a spurious PASS.
     const skippedTargets: string[] = []
@@ -204,17 +204,17 @@ export async function dispatchEnsembleGate(
     );
     let dispatchedAny = false;
     const unavailable: string[] = [];
-    // HIGH: if ALL verifiers already have results, the ensemble is already
-    // complete — return true so the engine doesn't try to re-dispatch or
+    // If all verifiers already have results, the ensemble is complete. Return
+    // true so the engine doesn't try to re-dispatch or
     // fail the run. This happens when a verifier crashed after all others
     // completed, or on resume after a partial crash.
     const allResolved = step.verifiers.every(v => step.ensembleResults?.[v] !== undefined);
     if (allResolved) {
-        // NEW: settle the ensemble verdict immediately.
+        // Settle the ensemble verdict immediately.
         await settleEnsembleGate(ctx, team, task, step);
         return true;
     }
-    // HIGH: mark dispatched BEFORE the first dispatch so crash between
+    // Mark dispatched before the first dispatch so a crash between
     // dispatch and mark doesn't leave the step unmarked on disk.
     markWorkflowStepDispatched(step);
     for (const verifierName of step.verifiers) {
@@ -233,7 +233,7 @@ export async function dispatchEnsembleGate(
         if (step.correlationId === undefined) {
             step.correlationId = crypto.randomUUID();
         }
-        // R3: do NOT pass stepIndex in eventMeta for ensemble verifiers.
+        // Do not pass stepIndex in eventMeta for ensemble verifiers.
         // dispatch.ts rollback clears step.dispatchedAt/dispatchedActor/
         // correlationId on failure, but ensemble gate shares ONE step
         // across MULTIPLE verifiers. Clearing shared fields when verifier #2
@@ -292,12 +292,12 @@ export async function dispatchGateStep(
     if (verifier === undefined) return false;
     const targetIndices = gateTargetIndices(task.steps ?? [], index);
     if (targetIndices.length === 0) return false;
-    // HIGH-C: refuse to verify a target that is incomplete or skipped. A
+    // Refuse to verify a target that is incomplete or skipped. A
     // forward goto can jump past a producer task and land on a gate that
     // verifies it; without this guard the verifier is dispatched with an
     // empty producer output (buildGateProducerOutput drops !completed /
     // skipped entries), and may emit a spurious PASS. Mirror the input-guard
-    // contract from dispatchTaskStep (H-2): finishRun with
+    // contract from dispatchTaskStep: finishRun with
     // workflow_input_skipped so the run fails deterministically rather than
     // passing a gate on missing inputs.
     const skippedTargets: string[] = []
@@ -331,7 +331,7 @@ export async function dispatchGateStep(
     );
     step.dispatchedActor = verifier.name;
     step.correlationId = crypto.randomUUID();
-    // HIGH #18: mark dispatched BEFORE dispatchToMember so the step state
+    // Mark dispatched before dispatchToMember so the step state
     // is persisted atomically with the dispatch intent.
     markWorkflowStepDispatched(step);
     await dispatchToMember(
@@ -382,10 +382,8 @@ export function moveActiveWorkflowStep(
 function stepHasPendingResponse(task: WorkflowTask, step: WorkflowStep): boolean {
     if (step.kind === "task") return step.member !== undefined && task.responses[step.member] !== undefined;
     if (step.kind === "gate") {
-        // H-1: for ensemble gates, check ALL verifiers' responses, not just
-        // the last dispatched one. Pre-fix code used step.verifier ??
-        // step.dispatchedActor which missed ensemble verifiers whose response
-        // arrived but was not yet collected.
+        // For ensemble gates, check every verifier's response. Any response
+        // that has arrived but has not yet been collected remains pending.
         if (step.verifiers !== undefined) {
             return step.verifiers.some(v => task.responses[v] !== undefined
                 && step.ensembleResults?.[v] === undefined)
@@ -410,7 +408,7 @@ export function hasWaitingActiveWorkflowActor(
         switch (step.kind) {
             case "task":
             case "gate": {
-                // H-1: for ensemble gates, check all verifiers for pending
+                // For ensemble gates, check all verifiers for pending
                 // responses (not just the last dispatched actor).
                 if (step.kind === "gate" && step.verifiers !== undefined) {
                     const hasPending = step.verifiers.some(v =>
@@ -491,11 +489,8 @@ export async function maybePauseBeforeWorkflowStep(
     const step = task.steps?.[index];
     if (!step || !step.approvalBefore || step.approvalBeforeGranted)
         return false;
-    // K-2: set approvalBeforeGranted BEFORE forceApprovalRequest so the
-    // grant is persisted atomically with the pause inside forceApprovalRequest's
-    // own save. Pre-fix code saved the pause first, then set the grant and
-    // saved again — a crash between the two saves left approval pending
-    // without the grant, causing a duplicate approval request on resume.
+    // Set approvalBeforeGranted before forceApprovalRequest so its save persists
+    // the grant atomically with the pause and prevents duplicate requests on resume.
     // If forceApprovalRequest fails to pause (no escalation handler), roll
     // back the grant flag so the caller falls through to dispatch.
     step.approvalBeforeGranted = true;
@@ -634,7 +629,7 @@ export async function gotoWorkflowStep(
             if (s.kind === "task") {
                 s.output = undefined;
                 s.taskAttempts = 0;
-                // H51: reset task timeoutAttempts too. The base-class field
+                // Reset task timeoutAttempts too. The base-class field
                 // (WorkflowStepRuntime.timeoutAttempts) is shared by task
                 // and gate, but only the gate branch reset it. A task with
                 // exhausted timeoutAttempts from a previous pass would fail
@@ -646,12 +641,9 @@ export async function gotoWorkflowStep(
                 // Clear cached per-verifier results so the ensemble gate
                 // re-dispatches every verifier when the body re-runs.
                 s.ensembleResults = undefined;
-                // H-1: reset retry counters on EVERY re-entered gate, including
-                // the triggering gate. The prior `i !== gateIndex` guard left
-                // the triggering gate with its exhausted budget, so a gate
-                // configured with `on_fail: retry, max_retries: 1` that already
-                // used its retry on the previous pass would fail immediately
-                // on the re-run — defeating the purpose of the backward jump.
+                // Reset retry counters on every re-entered gate, including the
+                // triggering gate, so an exhausted budget from the prior pass
+                // does not fail immediately after a backward jump.
                 // The outer loop bound (jumpCount, incremented above) is still
                 // respected, so infinite loops are still prevented.
                 s.attempts = 0;
@@ -704,7 +696,7 @@ export async function gotoWorkflowStep(
               )
             : await dispatchGateStep(ctx, team, task, targetIndex);
     if (!dispatched) {
-        // H-2: dispatchTaskStep / dispatchGateStep may have already finishRun
+        // dispatchTaskStep or dispatchGateStep may already have called finishRun on
         // the team (e.g. input-skipped violation in dispatchTaskStep, or any
         // other finishRun-on-false path). Detect that and bail rather than
         // treating it as a tolerance-fanout branch error and continuing to
@@ -783,7 +775,7 @@ export async function advanceWorkflowStep(
                         )
                             return;
                         if (!(await dispatchTaskStep(ctx, team, task, index))) {
-                            // H-2: input-guard finishRun detection. See goto
+                            // Detect input-guard termination. See the goto
                             // jump path above for the same guard.
                             if (team.activeTask !== task) return;
                             const result = await handleWorkflowDispatchUnavailable(ctx, team, task, step);
@@ -801,7 +793,7 @@ export async function advanceWorkflowStep(
                         )
                             return;
                         if (!(await dispatchGateStep(ctx, team, task, index))) {
-                            // H-2: same finishRun-already-called detection as
+                            // Detect an existing finishRun call, as in
                             // the task dispatch path above.
                             if (team.activeTask !== task) return;
                             const result = await handleWorkflowDispatchUnavailable(ctx, team, task, step);
@@ -825,7 +817,7 @@ export async function advanceWorkflowStep(
                         if (result === "failed") return;
                         if (result === "dispatched" || result === "waiting")
                             dispatched = true;
-                        // H-3: when a join completes and the workflow task has
+                        // When a join completes and the workflow task has
                         // human_approval set, pause for master approval before
                         // the loop dispatches the next ready step. Mirrors the
                         // linear advance path's maybeRequestApproval call
@@ -874,7 +866,7 @@ export async function advanceWorkflowStep(
             ? await dispatchTaskStep(ctx, team, task, nextIndex)
             : await dispatchGateStep(ctx, team, task, nextIndex);
     if (!dispatched) {
-        // H-2: detect prior finishRun (e.g. input-guard violation).
+        // Detect a prior finishRun call, such as an input-guard violation.
         if (team.activeTask !== task) return;
         await handleWorkflowDispatchUnavailable(ctx, team, task, step);
         return;
@@ -882,15 +874,15 @@ export async function advanceWorkflowStep(
     await saveTeamState(team);
 }
 
-/** NEW: settle an ensemble gate whose verifiers have all responded. */
+/** Settle an ensemble gate whose verifiers have all responded. */
 async function settleEnsembleGate(
     ctx: PluginContext,
     team: Team,
     task: WorkflowTask,
     step: WorkflowGateStep,
 ): Promise<void> {
-    // N9: when allResolved is true, ensemble results are already collected.
-    // Do NOT call handleGateVerdict — it reads task.responses[verifierName]
+    // When allResolved is true, ensemble results are already collected.
+    // Do not call handleGateVerdict; it reads task.responses[verifierName]
     // which was deleted during dispatch, causing an infinite loop on resume.
     // Instead, aggregate directly and process the final verdict.
     const { handleInvalidVerdict, handleGatePass, handleGateFail, handleGateRetry } = await import("./verdict.js");

@@ -41,8 +41,8 @@ export const momusAgent: OcteamAgentConfig = {
     temperature: 0.1,
     color: "#ef4444",
     // task allowed: momus consults oracle/explore for review validation
-    // N1: '*' first so explicit allows override regardless of host match order.
-    // N2: nested task permission replaces ineffective taskTargets field.
+    // Put "*" first so explicit allows override regardless of host match order.
+    // Nested task permissions restrict delegation to the allowed agents.
     permission: {
         "*": "deny",
         // Team collaboration tools. They are instance-global (Hooks.tool);

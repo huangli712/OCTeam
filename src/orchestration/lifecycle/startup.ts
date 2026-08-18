@@ -3,9 +3,8 @@
  * orchestration modes: parallel, pipeline, loop, delegate, consensus, route,
  * arbitrate, recurse, tollgate, arena, quorum, workflow).
  *
- * Extracted from tools/support.ts so that pure validation/utility helpers
- * (validateMemberName, validateSignoff, defaultBounds, ...) no longer pull in
- * the dispatch/worktree subsystem via ensureMembersReady.
+ * Pure validation and utility helpers remain separate from the dispatch and
+ * worktree subsystem used by ensureMembersReady.
  *
  * ALL workflow tools share the same three-phase lock order via
  * startOrchestration (team_resume follows the same Phase 2 contract too — see
@@ -110,7 +109,7 @@ export function humanApprovalTaskFields(
     return {
         humanApproval: args.human_approval,
         approvalHistory: [],
-        // HIGH #13: connect the schema-level approval_timeout_ms to the
+        // Connect the schema-level approval_timeout_ms to the
         // ActiveTask field so checkTermination's timeout logic is reachable.
         // Default: no timeout (infinite wait) unless explicitly configured.
         approvalTimeoutMs: args.approval_timeout_ms,
@@ -220,13 +219,12 @@ export async function startOrchestration(
     // lock. The spawning guard reserves the spawn slot: a second concurrent
     // caller (including a sibling process) sees spawning=true and bails
     // before duplicating member-session spawns in Phase 2.
-    // H7: pre-fix code only used the in-process mutex, so two sibling
-    // processes could both pass the spawning check and both start spawning.
-    // The file lock serializes the check-then-set across processes.
+    // The file lock serializes the spawning check and state update across
+    // sibling processes, complementing the in-process mutex.
     let busy = false
     const spawnOwner = crypto.randomUUID()
     await withLock(teamLifecycleLockPath(team.directory), async () => team.mutex.runExclusive(async () => {
-        // C1/H7: read state.json directly (NOT via loadTeamState, which
+        // Read state.json directly (NOT via loadTeamState, which
         // re-acquires team.mutex internally and self-deadlocks the
         // non-reentrant AsyncMutex). The teamLifecycleLockPath file lock
         // guarantees no sibling process is concurrently writing state.json.
@@ -285,7 +283,7 @@ export async function startOrchestration(
                     const data = Array.isArray(result.data) ? result.data : []
                     return [m.name, sumMemberTokens(data as SdkMessage[])] as const
                 } catch (err) {
-                    // M-5: log the error so operators can distinguish a genuinely
+                    // Log the error so operators can distinguish a genuinely
                     // empty session (baseline 0 is correct) from a permission /
                     // protocol / SDK failure (baseline 0 is wrong — it over-counts
                     // tokens for the current run, potentially triggering budget
@@ -303,11 +301,9 @@ export async function startOrchestration(
 
         // Step 6: Phase 3 — commit activeTask + initial dispatch (UNDER mutex).
         await team.mutex.runExclusive(async () => {
-            // H-6: re-check activation AND activeTask AND spawning inside the
-            // mutex. Pre-fix code only re-checked activeTask — a concurrent
-            // deactivation between Phase 1 and Phase 3 would leave the team
-            // deactivated but the orchestration would still commit activeTask
-            // and start dispatching on a team that should be inert.
+            // Re-check activation, activeTask, and spawning inside the mutex so
+            // a concurrent deactivation between Phase 1 and Phase 3 cannot start
+            // dispatching on an inactive team.
             if (team.activeTask || !team.spawning) { raced = true; return }
             // Re-validate activation: team_deactivate sets activatedAt=undefined.
             const stillActivated = activationError(team.teamName, team.activatedAt)
@@ -321,16 +317,14 @@ export async function startOrchestration(
             const prevStatus = team.status
             team.status = "busy"
             team.activeTask = built
-            // H38: record the running process PID so the reconciler can
+            // Record the running process PID so the reconciler can
             // distinguish a crashed process from a live sibling.
             team.runnerPid = process.pid
             // Reset per-member done/retry flags for the new run so a previous
             // run's acks don't bleed in. declaredDone only matters when
             // requireDoneAck is true, but cheap to always reset.
-            // M-4: also reset lastCapturedMsgCount so a new run's first idle is
-            // not skipped by the idempotency guard (pre-fix code retained the
-            // prior run's watermark; if session compaction reset message count,
-            // the guard would match and drop the capture).
+            // Reset lastCapturedMsgCount so the idempotency guard cannot skip a
+            // new run's first idle after session compaction changes message count.
             for (const m of team.members) {
                 m.declaredDone = false
                 m.retryCount = 0
@@ -339,11 +333,9 @@ export async function startOrchestration(
             }
             // Persist AFTER flag resets so a crash between saveTeamState and
             // the reset loop does not leave stale member flags on disk.
-            // H-L4: persist INSIDE the dispatch try/catch so a save failure
-            // triggers the same rollback as a dispatch failure (members →
-            // errored, status restored, activeTask cleared). Pre-fix code
-            // had saveTeamState outside the try, so a persistence failure
-            // left the team wedged in busy+activeTask with no rollback.
+            // Persist inside the dispatch try/catch so save and dispatch failures
+            // share the same rollback: members become errored, status is restored,
+            // and activeTask is cleared.
             try {
                 await saveTeamState(team)
                 await dispatch(team, built)
@@ -353,7 +345,7 @@ export async function startOrchestration(
                 // member flags while the runtime shows them as running.
                 await saveTeamState(team)
             } catch (err) {
-                // H-9: Roll back the busy+activeTask commit so a dispatch failure
+                // Roll back the busy+activeTask commit so a dispatch failure
                 // does not wedge the team requiring external recovery.
                 // Members already dispatched (status="running", turnCount>0) must
                 // be marked errored — without this they keep running but their
@@ -362,7 +354,7 @@ export async function startOrchestration(
                 // collides with the orphaned turn).
                 for (const m of team.members) {
                     if (m.status === "running" || (m.turnCount ?? 0) > 0) {
-                        // HIGH: abort the session before marking errored so
+                        // Abort the session before marking errored so
                         // it doesn't keep running and consume tokens.
                         if (m.sessionId) {
                             try {
@@ -382,12 +374,11 @@ export async function startOrchestration(
             }
         })
     } finally {
-        // CRIT #2 + R5: only clear if we still own the lease. Perform
+        // Only clear the spawning flag if we still own the lease. Perform
         // the check+clear INSIDE the mutex so a concurrent Phase 1
         // acquiring the lifecycle lock sees the correct on-disk state.
-        // Pre-fix (R5): this ran outside mutex, so a concurrent startup
-        // could read stale spawning=true from disk and bail even though
-        // we already cleared it in memory.
+        // Keeping the operation inside the mutex prevents a concurrent startup
+        // from observing stale spawning state on disk.
         await team.mutex.runExclusive(async () => {
             if (team.spawningOwner === spawnOwner) {
                 team.spawning = false

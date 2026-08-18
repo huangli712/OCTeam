@@ -113,9 +113,8 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 .max(12),
             bounds: tool.schema
                 .object({
-                    // M-11: each bound has BOTH a minimum (>=1, prevents zero/negative)
-                    // AND a maximum (prevents LLM from setting absurdly large values
-                    // that would disable the "hard limit" semantics).
+                    // Each bound has a minimum to reject zero or negative values and a
+                    // maximum to preserve the hard-limit semantics for malformed input.
                     maxMembers: tool.schema.number().int().min(1).max(50).optional(),
                     maxParallelMembers: tool.schema.number().int().min(1).max(50).optional(),
                     maxMessagesPerRun: tool.schema.number().int().min(1).max(100_000).optional(),
@@ -179,7 +178,7 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
             // wins, the rest get EEXIST. This closes the TOCTOU window that a
             // check-then-create sequence would leave open.
             //
-            // C-1: assert no symlink traversal before any mkdir. Without this,
+            // Assert no symlink traversal before any mkdir. Without this,
             // a symlinked teams/ or <sid>/ ancestor can redirect both mkdir and
             // the subsequent atomicWrite of config/state outside storageRoot.
             // The check accepts not-yet-existing paths (ENOENT components are
@@ -248,17 +247,17 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 // ancestor chain on every write).
                 await writeTeamSpec(ctx.storageRoot, spec, leadSessionId, ctx.storageRoot)
 
-                // C-17: write a read-only master.sentinel pinning the creator's
+                // Write a read-only master.sentinel pinning the creator's
                 // sessionID. For user-scope teams (flat layout, no directory
                 // segment), this is the trusted master source at restart instead
                 // of the mutable state.json.leadSessionId. chmod 0444 raises the
                 // bar against tampering (attacker needs explicit chmod first).
-                // C2 fix: always write context.sessionID, NOT leadSessionId which
+                // Always write context.sessionID, not leadSessionId, which
                 // is undefined for user-scope teams (writing "undefined\n" would
                 // make the sentinel useless and cause master restoration to fail).
                 try {
                     const sentinelPath = masterSentinelPath(newTeamDir)
-                    // CRITICAL #3: use O_CREAT|O_EXCL|O_NOFOLLOW so a concurrent
+                    // Use O_CREAT|O_EXCL|O_NOFOLLOW so a concurrent
                     // symlink plant cannot redirect the write to an arbitrary
                     // file. O_EXCL fails if the file already exists (fresh team).
                     // O_NOFOLLOW fails if the leaf is a symlink.

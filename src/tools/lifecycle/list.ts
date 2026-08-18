@@ -19,8 +19,7 @@ export function teamListTool(ctx: PluginContext): ToolDefinition {
             const leadSessionId = ctx.scope === "project" ? context.sessionID : undefined
             let names = await listTeamNames(ctx.storageRoot, leadSessionId)
             if (names.length === 0) return "No teams found."
-            // MEDIUM: in user scope, filter to only teams owned by this
-            // leader session. Pre-fix code listed ALL user-scope teams.
+            // In user scope, list only teams owned by this leader session.
             if (ctx.scope !== "project") {
                 names = names.filter(name => {
                     const dir = teamDir(ctx.storageRoot, name)
@@ -30,11 +29,8 @@ export function teamListTool(ctx: PluginContext): ToolDefinition {
             if (names.length === 0) return "No teams found."
             const rows = await Promise.all(
                 names.map(async name => {
-                    // M-15: isolate per-team spec read so one corrupt config
-                    // does not abort the entire list. Pre-fix code called
-                    // readTeamSpec outside any try/catch, so a single bad JSON
-                    // or I/O error would reject the whole Promise.all and hide
-                    // all other teams.
+                    // Isolate each spec read so one corrupt config or I/O error
+                    // does not reject Promise.all and hide every other team.
                     let spec = null
                     try {
                         spec = await readTeamSpec(ctx.storageRoot, name, leadSessionId)

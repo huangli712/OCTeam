@@ -105,12 +105,9 @@ export async function approveRecurseDecompose(
     if (!parent) return
     const childDepth = (parent.depth ?? 0) + 1
     const ids: string[] = []
-    // M-9: wrap child creation + parent blockedBy update in a transactional
-    // try/catch. Pre-fix code only cleaned up orphaned children on create
-    // failure (line 106-113) but NOT on parent update failure (line 115).
-    // If updateTask(parent, blockedBy) threw, the children existed as
-    // claimable tasks but the parent was never linked — delegate mode would
-    // pick them up and they'd be aggregated into nothing, consuming tokens.
+    // Treat child creation and parent linkage as one transaction. If either
+    // step fails, delete every created child so no unlinked claimable work
+    // remains.
     try {
         for (const subtask of request.subtasks) {
             const child = await createTask(team.directory, {
@@ -126,9 +123,8 @@ export async function approveRecurseDecompose(
             blockedBy: ids,
         })
     } catch (err) {
-        // M-9: clean up ALL created children regardless of which step failed.
-        // Pre-fix only cleaned on create failure; parent-update failure left
-        // orphans. Also log the cleanup so operators can diagnose.
+        // Clean up all created children regardless of which transactional step
+        // failed, and log cleanup failures for diagnosis.
         for (const id of ids) {
             await updateTask(team.directory, id, { status: "deleted" }).catch(cleanupErr => {
                 logSwallowed(ctx, "recurse decompose: failed to delete orphaned child task", cleanupErr, { taskId: id })
@@ -194,18 +190,15 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
     const T = tasks.find(
         t => t.owner === member.name && (t.status === "claimed" || t.status === "in_progress"),
     )
-    // H-27: an errored member must NOT have its claimed task finalized as
-    // completed. Pre-fix code processed the errored member's stale output
-    // as if it were a legitimate result, marking the task done even though
-    // the member crashed/errored mid-work. Release the task back to pending
-    // so another member can pick it up.
+    // An errored member must not have its claimed task finalized from stale
+    // output. Release the task to pending so another member can complete it.
     if (T && member.status === "errored") {
         await updateTask(team.directory, T.id, {
             status: "pending",
             owner: undefined,
             claimedAt: undefined,
         }, {
-            // HIGH: use actual status, not hardcoded "claimed".
+            // Use the actual status rather than assuming "claimed".
             expectedOwner: member.name,
             expectedStatus: T.status as "claimed" | "in_progress",
         })
@@ -215,18 +208,14 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
             member: member.name,
             detail: `recurse: released claimed task ${T.id} from errored member`,
         })
-        // H-M3: fall through to runDelegateStyleTail instead of returning.
-        // The released task is now claimable; the tail will dispatch idle
-        // members toward it. Pre-fix code returned here, stranding the task
-        // until wall-clock timeout.
+        // Fall through to runDelegateStyleTail so idle members are dispatched
+        // toward the newly claimable task instead of leaving it stranded.
     } else if (T) {
         const output = task.responses[member.name] ?? ""
         const depth = T.depth ?? 0
         const dec = parseDecompose(output)
-        // MEDIUM #6: reset the parse-failure counter on ANY successful parse
-        // (not just decomposition). Pre-fix code only reset on successful
-        // decomposition, so a direct-solve success after a failure left the
-        // counter at 1, and a later unrelated failure could terminate the run.
+        // Reset the parse-failure counter on any successful parse so failures
+        // are consecutive rather than accumulated across unrelated tasks.
         if (!dec.parseFailed) {
             task.decomposeParseFailures = 0
         }
@@ -254,10 +243,8 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
                 return
             }
             // Branch: create subtasks (depth+1), re-queue T as their aggregator.
-            // O-2: wrap in try/catch so a failure mid-creation or during the
-            // parent update rolls back the already-created children. Pre-fix
-            // code had no rollback — a parent-update failure left orphaned
-            // children that would be claimable but belong to no parent.
+            // Roll back already-created children if creation or parent linkage
+            // fails so no claimable child is left without a parent.
             const ids: string[] = []
             try {
                 for (const s of dec.subtasks) {
@@ -275,13 +262,10 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
                 })
                 delete task.responses[member.name]
             } catch (createErr) {
-                // C7 fix: rollback must mark created children as deleted via
-                // updateTask (which uses atomicWrite with symlink traversal
-                // protection) instead of raw fs.unlink. Raw unlink had no
-                // symlink check (TOCTOU redirect risk) and silently swallowed
-                // ALL errors via bare catch. updateTask's "deleted" status
-                // leaves the file on disk but makes it unclaimable and visible
-                // to the stale-claim reaper for final cleanup.
+                // Mark rolled-back children deleted through updateTask, which
+                // uses atomicWrite with symlink traversal protection. Deleted
+                // tasks remain visible to the stale-claim reaper but cannot be
+                // claimed.
                 const { updateTask } = await import("../../state/tasks.js")
                 for (const id of ids) {
                     try {
@@ -305,10 +289,8 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
                 member: member.name,
                 detail: `${T.subject} -> ${ids.length} @d${depth + 1}`,
             })
-            // J-4/HIGH: reset the parse-failure counter after a successful
-            // decomposition. Pre-fix code accumulated failures across
-            // unrelated, widely-spaced malformed responses, eventually
-            // terminating long recurse runs.
+            // Reset the parse-failure counter after successful decomposition so
+            // unrelated malformed responses do not accumulate across the run.
             task.decomposeParseFailures = 0
         } else if (dec.subtasks.length > 0 && !dec.parseFailed) {
             if (forcedDirect) {
@@ -335,14 +317,13 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
             await saveTeamState(team)
             return
         } else if (dec.parseFailed) {
-            // H46/J/M-20: a malformed <decompose> block is NOT a leaf — the
-            // member explicitly tried to decompose but formatted it wrong.
-            // M-20: track a dedicated parse-failure counter with a mode-local
-            // budget so continuous format errors don't burn unlimited tokens.
-            // Pre-fix code re-dispatched indefinitely with no mode-local cap.
+            // A malformed <decompose> block is not a leaf: the member attempted
+            // decomposition but formatted it incorrectly. Track a dedicated
+            // parse-failure counter so continuous errors cannot consume
+            // unlimited tokens.
             task.decomposeParseFailures = (task.decomposeParseFailures ?? 0) + 1
             const maxParseFailures = task.maxDecomposeParseFailures ?? 3
-            // J-4: use >= so 'max 3' means exactly 3 failures, not 4.
+            // Use >= so "max 3" means exactly three failures, not four.
             if (task.decomposeParseFailures >= maxParseFailures) {
                 await finishRun(ctx, team, `recurse_decompose_parse_failed:${task.decomposeParseFailures}_attempts`, "failed")
                 return
@@ -374,17 +355,14 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
             if (T.id === task.rootTaskId) {
                 task.aggregationDispatchCount = 0
             }
-            // HIGH: empty output should NOT mark the task completed. Retry
-            // the member instead. Pre-fix code marked it completed with
-            // "(no output provided)", allowing the root to finish without
-            // any actual result.
+            // Empty output must not complete the task; retry the member so the
+            // root cannot finish without an actual result.
             if (output.length === 0) {
                 // Don't complete — re-dispatch the member for a direct solve.
                 const owner = team.members.find(m => m.name === member.name)
                 if (owner?.sessionId && owner.status !== "running") {
-                    // H25: include the full description, not just subject.
-                    // Pre-fix code sent only T.subject, losing the main task
-                    // content and leaving the member to guess the requirements.
+                    // Include the full description so the member receives the
+                    // task requirements rather than only its subject.
                     const prompt = T.description ? `${T.subject}\n\n${T.description}` : T.subject
                     await dispatchToMember(ctx, owner, prompt, owner.worktreePath ?? ctx.directory, team)
                 }
@@ -392,7 +370,7 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
             }
             const result = output
             await updateTask(team.directory, T.id, { status: "completed", result }, {
-                // HIGH #11: CAS guard.
+                // Guard the update with compare-and-swap ownership.
                 expectedOwner: member.name,
             })
             delete task.responses[member.name]
@@ -407,7 +385,7 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
     //      undefined above — protocol slip; re-dispatch with a stronger
     //      aggregation instruction).
     if (task.rootTaskId && task.decomposerMember) {
-        // MEDIUM: re-read tasks AFTER the leaf completion above so the
+        // Re-read tasks after the leaf completion above so the
         // root-ready check sees the updated child statuses.
         const freshTasks = await listAllTasks(team.directory)
         const root = freshTasks.find(t => t.id === task.rootTaskId)
@@ -442,7 +420,7 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
                     // looping to wall-clock. Reset to 0 when the decomposer
                     // claims the root (see leaf branch above).
                     task.aggregationDispatchCount = (task.aggregationDispatchCount ?? 0) + 1
-                    // H42: allow task-level override of the aggregation stall threshold.
+                    // Allow a task-level override of the aggregation stall threshold.
                     const maxDispatches = task.maxAggregationDispatches ?? MAX_AGGREGATION_DISPATCHES
                     if (task.aggregationDispatchCount > maxDispatches) {
                         recordEvent(team, {
@@ -455,7 +433,7 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
                         return
                     }
                     decomposer.lastNotifiedAt = now
-                    // J: clear stale response before re-dispatch so the next
+                    // Clear the stale response before re-dispatch so the next
                     // idle handler doesn't re-read the old aggregation output.
                     delete task.responses[decomposer.name]
                     await dispatchToMember(
@@ -472,7 +450,7 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
     }
 
     // Shared delegate-style tail: all-complete / deadlock / re-prompt.
-    // HIGH: before entering the tail, verify the root task exists and is
+    // Before entering the tail, verify the root task exists and is
     // completed. If root is deleted/missing, the delegate tail's
     // incomplete.length === 0 check would falsely succeed.
     if (task.rootTaskId) {
@@ -482,7 +460,7 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
             return
         }
         if (rootTask.status === "completed") {
-            // LOW: emit the aggregated event when root task completes.
+            // Emit the aggregated event when the root task completes.
             await recordEvent(team, { timestamp: Date.now(), kind: "aggregated", member: member.name })
         }
     }

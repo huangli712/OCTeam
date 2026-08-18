@@ -33,7 +33,7 @@ export function prependStandingInstruction(
  * until an explicit recovery path resets them. When a Team is supplied, the
  * dispatch is also appended to the run event stream.
  *
- * C5 atomicity: after promptAsync succeeds and state is mutated, saveTeamState
+ * Atomicity: after promptAsync succeeds and state is mutated, saveTeamState
  * is called IMMEDIATELY (before returning to the caller). This eliminates the
  * window where a caller could forget or delay the save, leaving the member
  * dispatched on the host but not persisted to disk. Callers that also call
@@ -51,12 +51,9 @@ export async function dispatchToMember(
     if (!member.sessionId) return
     if (member.status === "errored") return
     const dispatchedText = prependStandingInstruction(member, text)
-    // #10: persist dispatch intent BEFORE sending the prompt. Pre-fix code
-    // called promptAsync first, then set status/turnCount and saved — a crash
-    // between prompt and save left disk unaware of the dispatch, and recovery
-    // would re-dispatch (duplicate prompt) with no way to attribute the old
-    // output. Now: set state + persist first, then send. If promptAsync
-    // fails, rollback the state so the next caller can retry.
+    // Persist dispatch intent before sending the prompt so recovery cannot
+    // duplicate a prompt after a crash. Roll back the persisted intent if
+    // promptAsync fails so the next caller can retry.
     // Save originals for accurate rollback.
     const origPromptDelivered = member.promptDelivered
     const origStatus = member.status
@@ -65,7 +62,7 @@ export async function dispatchToMember(
     member.promptDelivered = true
     member.status = "running"
     member.turnCount++
-    member.promptSentAt = undefined  // H14: clear stale timestamp from previous turn
+    member.promptSentAt = undefined  // clear the stale timestamp from the previous turn
     if (team) {
         recordEvent(team, {
             timestamp: Date.now(),
@@ -99,7 +96,7 @@ export async function dispatchToMember(
             },
             query: { directory },
         })
-        // H14: record successful prompt delivery timestamp. On crash-resume,
+        // Record the successful prompt delivery timestamp. On crash-resume,
         // a running member without promptSentAt indicates the prompt was
         // never actually sent (crash between persist-running and promptAsync).
         member.promptSentAt = Date.now()
@@ -114,14 +111,14 @@ export async function dispatchToMember(
                 const step = team.activeTask.steps?.[eventMeta.stepIndex]
                 if (step) {
                     step.dispatchedAt = undefined
-                    // H2: clear dispatchedActor/correlationId too so resume
+                    // Clear dispatchedActor and correlationId too so resume
                     // doesn't see a stale actor reference without dispatchedAt
                     // and misclassify the step as dispatched-but-broken.
                     step.dispatchedActor = undefined
                     step.correlationId = undefined
                 }
             }
-            // #5: set retryingSince so the sweep timer re-drives this member
+            // Set retryingSince so the sweep timer re-drives this member
             // instead of stalling until wall-clock timeout. The mode handler
             // that called dispatchToMember may not have a catch path.
             member.retryingSince = Date.now()

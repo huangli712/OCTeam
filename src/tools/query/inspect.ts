@@ -50,7 +50,7 @@ export function teamQueryTool(ctx: PluginContext): ToolDefinition {
                 logSwallowed(ctx, "readTeamSpec failed (inspect)", err, { team: caller.teamName })
             }
 
-            // C15: use caller.isMaster (from session index, rebuilt from
+            // Use caller.isMaster (from session index, rebuilt from
             // directory structure at startup) instead of the tamperable
             // team.leadSessionId field from state.json.
             const isMaster = caller.isMaster === true

@@ -3,8 +3,8 @@
  * preview shown by `team_workflow --dry_run` and the "resolved steps" section
  * of error messages.
  *
- * Extracted from lower.ts so the lowering engine stays focused on ref
- * resolution + step flattening, while this module owns presentation.
+ * This module owns presentation so the lowering engine stays focused on
+ * reference resolution and step flattening.
  */
 
 import {
@@ -133,10 +133,8 @@ export function formatWorkflowDryRun(args: ResolvedWorkflowToolArgs): string {
                 }
                 const jumpTag = jumps.length > 0 ? `; ${jumps.join(" ")} (max_jumps=${step.max_jumps ?? 3})` : ""
                 const indent = step.branchContext === undefined ? "" : "  "
-                // M-16: show ensemble verifier details when present. Pre-fix
-                // code only showed step.verifier (single verifier), so an
-                // ensemble gate with verifiers[] displayed as "verifier=?",
-                // hiding the actual policy and verifier list from reviewers.
+                // Include ensemble policy and verifier details so reviewers see
+                // the complete gate configuration.
                 const verifierLabel = step.verifiers !== undefined && step.verifiers.length > 0
                     ? `${step.verifiers.join("+")} (${step.ensemble_policy ?? "majority"}${step.ensemble_quorum !== undefined ? ` quorum=${step.ensemble_quorum}` : ""})`
                     : step.verifier ?? "?"

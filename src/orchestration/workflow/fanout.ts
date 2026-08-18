@@ -2,10 +2,9 @@
  * Workflow fanout/join lifecycle: branch error tolerance, join satisfaction,
  * reduce/select reducer dispatch, and joined-output construction.
  *
- * Extracted from workflow.ts so the fanout-specific state machine transitions
- * (join advance, branch error marking, tolerance evaluation, policy-impossible
- * fail-fast) live in one focused module. The core step dispatch/advance loop
- * remains in workflow.ts.
+ * This module owns fanout-specific state transitions: join advance, branch
+ * error marking, tolerance evaluation, and policy-impossible fail-fast. The
+ * core step dispatch/advance loop lives in engine.ts.
  */
 
 import crypto from "node:crypto";
@@ -47,7 +46,7 @@ export type WorkflowFanoutErrorResult =
     | { readonly kind: "within_tolerance" }
     | { readonly kind: "failed"; readonly reason: string };
 
-// --- shared step helpers (used by fanout.ts + workflow.ts) ---
+// --- shared step helpers ---
 
 /** Mark a workflow step as dispatched with a timestamp. */
 export function markWorkflowStepDispatched(step: WorkflowStep): void {
@@ -125,7 +124,7 @@ function buildJoinedWorkflowOutput(
         const separator = blocks.length === 0 ? "" : "\n\n";
         const branchLabel = `[Branch ${branchId}]\n`;
 
-        // MEDIUM: cap each branch block to a per-branch budget so a
+        // Cap each branch block to a per-branch budget so a
         // single oversized branch doesn't get entirely dropped.
         let branchUsed = Buffer.byteLength(separator + branchLabel, "utf8")
         for (
@@ -252,11 +251,10 @@ export async function dispatchWorkflowJoinReducer(
     delete task.responses[reducer.name];
     step.dispatchedActor = reducer.name;
     step.correlationId = crypto.randomUUID();
-    // H2: mark dispatched BEFORE promptAsync so a crash between dispatch and
-    // mark doesn't cause resume to re-dispatch (duplicate prompt). If
-    // dispatchToMember throws, dispatch.ts rollback clears member state and
-    // retryingSince; the stale dispatchedAt is acceptable — the next idle
-    // event will find no response and escalate the member to errored.
+    // Mark dispatched before dispatchToMember so a crash between the state
+    // change and dispatch cannot cause a duplicate prompt on resume. If
+    // dispatchToMember throws, dispatch.ts rolls back the member state; the
+    // next idle event handles the unavailable reducer.
     markWorkflowStepDispatched(step);
     await dispatchToMember(
         ctx,
@@ -304,9 +302,8 @@ function survivorBranchIdsForJoin(
     join: WorkflowJoinMetadata,
 ): readonly string[] {
     const erroredBranchIds = new Set(join.erroredBranchIds ?? []);
-    // M-22: also exclude branches whose tail step is skipped (any_success
-    // marks losing branches as skipped via dag.ts). Pre-fix code only excluded
-    // errored branches, so cancelled branches appeared as survivors in run
+    // Exclude branches whose tail step is skipped because any_success marks
+    // losing branches that way. This keeps canceled branches out of survivor
     // records and join metadata.
     return branchIdsForJoin(steps, join).filter(
         (branchId) => !erroredBranchIds.has(branchId),
@@ -510,10 +507,7 @@ function removeActiveWorkflowBranch(
 }
 
 /** Find a branch already recorded as errored for a given member name.
- * H-7: for ensemble gates, any verifier in the step.verifiers list counts
- * as the actor — the pre-fix code only checked workflowStepActorName which
- * returns the first verifier, so a second verifier's error could not find
- * the already-errored branch and returned not_fanout. */
+ * Any ensemble verifier can identify the branch, not only the gate's primary actor. */
 function recordedErroredBranchForMember(
     steps: WorkflowStep[],
     memberName: string,
@@ -529,11 +523,8 @@ function recordedErroredBranchForMember(
                 return step.branch;
             continue;
         }
-        // H-7: ensemble gate — any verifier in the list is a potential actor.
-        // Without this, a second verifier's error cannot rediscover the
-        // already-errored branch (workflowStepActorName returns only the
-        // first verifier) and the caller gets not_fanout, potentially
-        // mishandling the error.
+        // Match every ensemble verifier so each can rediscover an already
+        // errored branch even when it is not the gate's primary actor.
         if (step.kind === "gate" && step.verifiers?.includes(memberName) === true) {
             const joinStep = steps[step.branch.joinIndex];
             const join = joinStep?.kind === "join" ? joinStep.join : undefined;
@@ -556,7 +547,7 @@ export function markWorkflowFanoutBranchErrored(
         activeStep?.branch === undefined
         && recordUnavailableEnsembleVerifier(activeStep, memberName)
     ) {
-        // MEDIUM #9: check if ALL ensemble verifiers now have results. If so,
+        // Check whether all ensemble verifiers now have results. If so,
         // clear dispatchedAt so hasWaitingActiveWorkflowActor stops waiting
         // and the engine can aggregate on the next tick.
         if (activeStep && activeStep.kind === "gate" && activeStep.verifiers) {
@@ -565,7 +556,7 @@ export function markWorkflowFanoutBranchErrored(
             );
             if (allResolved) {
                 activeStep.dispatchedAt = undefined;
-                // HIGH #16: cleared dispatchedAt — next sweep tick will
+                // Clearing dispatchedAt lets the next sweep
                 // detect allResolved and advance. Direct call would need
                 // ctx/team which aren't available in this pure function.
             }
@@ -574,13 +565,9 @@ export function markWorkflowFanoutBranchErrored(
     }
     const activeBranch =
         activeIndex === null ? null : (activeStep?.branch ?? null);
-    // H50: only use the recorded-errored-branch fallback when the member has
-    // NO active step at all (activeIndex === null). This covers the H-7 case
-    // where a second ensemble verifier errors after the branch was removed
-    // from activeStepIndices. When the member DOES have an active step but it
-    // is a top-level (non-branch) step, the error is a top-level error — the
-    // pre-fix code would fall back to a PAST errored branch (already marked
-    // within_tolerance), swallowing the current error.
+    // Use the recorded-branch fallback only when the member has no active step.
+    // This handles an ensemble verifier error after its branch leaves the active
+    // set. An error from an active top-level step must remain a top-level error.
     const branch = activeBranch
         ?? (activeIndex === null ? recordedErroredBranchForMember(steps, memberName) : null);
     if (branch === null) return { kind: "not_fanout" };

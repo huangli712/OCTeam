@@ -16,7 +16,9 @@ import { ultrabrainAgent } from "./ultrabrain.js"
 import { multimodalLookerAgent } from "./multimodal-looker.js"
 import type { OcteamAgentConfig, OcteamAgentPermission, OcteamPermissionAction } from "./types.js"
 
+/** A scalar tool action or a per-subtool permission map. */
 export type MergedPermissionValue = OcteamPermissionAction | Record<string, OcteamPermissionAction>
+/** Merged permissions keyed by tool name. */
 export type MergedAgentPermission = Record<string, MergedPermissionValue | undefined>
 
 function isPermissionAction(value: unknown): value is OcteamPermissionAction {
@@ -61,7 +63,7 @@ export function mergePermissionsMonotonic(
     const rank: Record<OcteamPermissionAction, number> = { allow: 0, ask: 1, deny: 2 }
     const wildcardAction = result["*"]
     for (const [tool, action] of Object.entries(userPerm)) {
-        // #2: handle both scalar and nested (Record<string,Action>) values.
+        // Handle both scalar and nested permission values.
         // SDK supports bash: { "*": "deny", "git status": "allow" }.
         if (isPermissionAction(action)) {
             const presetAction = result[tool]
@@ -73,21 +75,17 @@ export function mergePermissionsMonotonic(
             }
         } else if (action !== null && typeof action === "object" && !Array.isArray(action)) {
             // Nested permission map (e.g. bash: { "git push": "deny" }).
-            // CRIT #5: preserve the preset's wildcard baseline so the nested
-            // map doesn't weaken the default-deny posture. Pre-fix code
-            // replaced the scalar entirely, losing the "*":"deny" floor.
+            // Preserve the preset's wildcard baseline so the nested map does
+            // not weaken the default-deny posture.
             //
-            // R1: pre-fix code ALSO lost preset nested subtool rules — it
-            // seeded only "*" from the scalar/wildcard baseline and ignored
-            // any existing nested subtool allows in the preset. Fix: when
-            // the preset value is already a nested map, INHERIT its entries
-            // as the starting point, then apply user entries on top.
+            // Existing nested subtool rules seed the result before user
+            // entries are applied.
             const presetValue = result[tool]
             const presetScalar = isPermissionAction(presetValue)
                 ? presetValue
                 : isPermissionAction(wildcardAction) ? wildcardAction : undefined
             const nested: Record<string, OcteamPermissionAction> = {}
-            // R1: inherit existing nested preset entries first.
+            // Inherit existing nested preset entries first.
             if (presetValue !== undefined && typeof presetValue === "object" && !Array.isArray(presetValue)) {
                 for (const [k, v] of Object.entries(presetValue)) {
                     if (isPermissionAction(v)) nested[k] = v
@@ -152,10 +150,10 @@ export function createConfigHook(): NonNullable<Hooks["config"]> {
             const existing = cfg.agent[name]
             if (!existing) {
                 // User did not define this agent — apply OCTeam preset verbatim.
-                // HIGH-G: clone the preset so a later mutation by another config
+                // Clone the preset so a later mutation by another config
                 // hook (or by reference to cfg.agent[...]) does not leak back
                 // into OCTEAM_AGENTS (shared reference bug).
-                // H1: freeze the permission object so a LATER plugin's config
+                // Freeze the permission object so a later plugin's config
                 // hook cannot in-place weaken it (e.g. flip edit to "allow").
                 // A later hook that REPLACES the whole permission object still
                 // can (visible operation), but silent field mutation is blocked.
@@ -165,30 +163,24 @@ export function createConfigHook(): NonNullable<Hooks["config"]> {
             }
             // User pre-defined an oct-* entry. Preserve ONLY the non-security
             // fields users may legitimately tune (model, temperature, color).
-            // HIGH-G: pre-fix code spread `...existing`, which kept arbitrary
-            // user-defined fields like `tools`, `top_p`, `maxSteps`, `disable` —
-            // any of these could weaken the hardened preset (e.g. extra tools
-            // bypass the permission map; disable:false resurrects a deprecated
-            // preset). Explicit allowlist closes the gap.
+            // The explicit allowlist excludes unknown user-defined fields that
+            // could weaken the hardened preset.
             const allowed: Record<string, unknown> = {}
             if (typeof existing.model === "string") allowed.model = existing.model
             if (typeof existing.temperature === "number") allowed.temperature = existing.temperature
             if (typeof existing.color === "string") allowed.color = existing.color
-            // H2: preserve `variant` (OpenCode model reasoning variant, e.g.
-            // "max"). Pre-fix allowlist omitted it, silently dropping the
-            // user's chosen reasoning variant on every config hook pass.
+            // Preserve the user's model reasoning variant, for example "max".
             if (typeof existing.variant === "string") allowed.variant = existing.variant
-            // L1: preserve top_p (sampling parameter).
+            // Preserve the user's sampling parameter.
             if (typeof existing.top_p === "number") allowed.top_p = existing.top_p
-            // M3: preserve `steps` (conversation step limit) and `hidden`
-            // (UI visibility). Both are user preferences, not security
-            // fields — dropping them silently resets user configuration.
+            // Preserve conversation limits and UI visibility because they do
+            // not affect the security boundary.
             if (typeof existing.steps === "number") allowed.steps = existing.steps
             if (typeof existing.maxSteps === "number") allowed.maxSteps = existing.maxSteps
             if (typeof existing.hidden === "boolean") allowed.hidden = existing.hidden
             cfg.agent[name] = {
                 ...def,
-                // H1: freeze the permission object so later hooks cannot mutate
+                // Freeze the permission object so later hooks cannot mutate
                 // it in-place. Re-asserted after the allowed merge for the same
                 // reason as mode/description/prompt below.
                 permission: deepFreeze(mergePermissionsMonotonic(def.permission, existing?.permission)),

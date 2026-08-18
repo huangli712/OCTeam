@@ -31,13 +31,11 @@ const id = "octeam"
  * share ctx; event handler + sweep timer drive the per-team locked state
  * machine; mailbox/tasks/store persist under ~/.octeam (or <dir>/.octeam).
  *
- * H7 fix: accept PluginOptions so users can select storage scope via the
- * plugin config (e.g. ["octeam", { scope: "user" }]). Pre-fix code ignored
- * options entirely, making the "switch to user scope" mitigation in the
- * startup warning unreachable.
+ * Accepts plugin options so users can select project or user storage scope,
+ * for example `["octeam", { scope: "user" }]`.
  */
 const server = async (input: PluginInput, options?: Record<string, unknown>): Promise<Hooks> => {
-    // H7: read storage scope from plugin options. Default to "project".
+    // Read storage scope from plugin options. Default to "project".
     // Accept "user" or "project" (case-insensitive); reject any other value.
     const rawScope = options?.scope
     let scope: StorageScope
@@ -57,7 +55,7 @@ const server = async (input: PluginInput, options?: Record<string, unknown>): Pr
     // messaging/) can emit structured logs without a ctx parameter.
     initLogger(ctx)
 
-    // C-11: surface the control-state isolation threat model when project
+    // Surface the control-state isolation threat model when project
     // scope is active. One-time startup warning; user scope is a no-op.
     warnIfProjectScopeLacksIsolation(ctx, ctx.scope, ctx.projectStorageRoot)
 
@@ -80,9 +78,8 @@ const server = async (input: PluginInput, options?: Record<string, unknown>): Pr
 
     // Restart invariant: clear all teams' activatedAt so none is auto-active
     // after a restart. Users must team_activate explicitly.
-    // H27 fix: recovery failures are critical — continuing with stale
-    // activatedAt, busy runs, or unreleased reservations causes state
-    // conflicts. Fail-closed instead of fail-open.
+    // Activation recovery must fail closed because stale activatedAt state
+    // would violate the explicit-activation invariant.
     try {
         await reconcileActivation(ctx)
     } catch (err) {
@@ -107,8 +104,7 @@ const server = async (input: PluginInput, options?: Record<string, unknown>): Pr
 
     // Background sweep timer: reaps stale resources, enforces termination, and
     // reconciles missed idle events. Runs for the lifetime of the plugin.
-    // M-28: retain the handle so a future plugin-reload path could
-    // clearInterval(sweepHandle) to prevent duplicate sweep timers.
+    // Retain the timer controller for a future plugin-reload teardown path.
     const sweepTimer = startSweepTimer(ctx)
     void sweepTimer // retained for future teardown; .unref() prevents loop keepalive
 

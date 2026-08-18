@@ -5,9 +5,8 @@
  *
  * Fire-and-forget (returns void, never awaited at call sites) so observability
  * can never add latency or backpressure to the state machine — same philosophy
- * as logEvent. A missing runId (legacy in-flight task) silently skips the event;
- * runId is now generated at orchestration start, so that path is effectively dead
- * except for tasks persisted by an older build.
+ * as logEvent. A missing runId silently skips the event; orchestration startup
+ * assigns run IDs, so only legacy in-flight tasks can take that path.
  *
  * Appends are serialized per run so file order matches emission order. Readers
  * still sort by timestamp for compatibility with event files written by older
@@ -32,12 +31,12 @@ export function recordEvent(team: Team, event: RunEvent): Promise<void> {
     const eventsFile = runEventsPath(team.directory, runId)
     const previous = appendChains.get(eventsFile) ?? Promise.resolve()
     const append = previous.then(async () => {
-        // M-2: re-check the tombstone inside the async path so a concurrent
+        // Re-check the tombstone inside the async path so a concurrent
         // team_delete that set team.deleted after the synchronous guard above
         // is visible by the time the microtask resolves.
         if (team.deleted) return
         try {
-            // M-2 boundary: also verify the runs/ directory still exists before
+            // Also verify the runs/ directory still exists before
             // appending. team_delete's fs.rm may have completed between the
             // tombstone check above and this line; appendJsonl's mkdir would
             // silently recreate it, resurrecting the deleted run's timeline.
@@ -56,7 +55,7 @@ export function recordEvent(team: Team, event: RunEvent): Promise<void> {
                 // team_delete, team.deleted should also be true.
                 if (team.deleted) return
             }
-            // C-2: pass team.directory as trustedRoot so refuseSymlink walks the
+            // Pass team.directory as trustedRoot so refuseSymlink walks the
             // full ancestor chain. Without it, a symlinked runs/ or intermediate
             // <runId>/ directory could redirect the append outside the team root.
             if (team.deleted) return

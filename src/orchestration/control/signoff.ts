@@ -41,7 +41,7 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
     if (!task) return false
     if (!task.signoffPolicy || task.signoffPolicy === "none") return false
     if (task.signoffStage) return true
-    // HIGH #H4: if a previous call set signoffFailed, the run is already
+    // If a previous call set signoffFailed, the run is already
     // terminated or needs termination. Don't re-enter signoff setup.
     if (task.signoffFailed) return true
 
@@ -54,7 +54,7 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
     if (task.signoffPolicy === "decider") {
         const decider = findMember(team, task.signoffDecider ?? "")
         if (!decider?.sessionId || decider.status === "errored") {
-            // HIGH #H4: fail the run directly so ALL callers terminate.
+            // Fail the run directly so all callers terminate.
             task.signoffStage = false
             await finishRun(ctx, team, "signoff_failed:decider_unavailable", "failed")
             return true
@@ -80,15 +80,11 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
     // without signoffStage persisted. On resume, signoffStage=true ensures
     // reviewer responses are routed to handleSignoffIdle instead of being stray.
     //
-    // HIGH-A: rollback the in-memory signoffStage on save failure. Pre-fix
-    // code let saveTeamState throw with signoffStage=true still set in memory,
-    // stranding the team in a "signoff paused but reviewers never dispatched"
-    // state — the next idle would route to handleSignoffIdle on a stage that
-    // had no reviewers in flight.
+    // Roll back the in-memory signoff stage on save failure so idle handling
+    // cannot enter a stage with no reviewers in flight.
     //
-    // M9 fix: recordEvent was fire-and-forget BEFORE save. If save failed,
-    // the timeline showed a signoff entry that was rolled back. Now record
-    // the event only AFTER successful save so the timeline is consistent.
+    // Record the event only after a successful save so the timeline cannot
+    // retain a signoff stage that persistence rolled back.
     try {
         await saveTeamStateBounded(team)
     } catch (err) {
@@ -102,11 +98,8 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
         kind: "signoff",
         detail: task.signoffPolicy,
     })
-    // G: track dispatch failures so partial-dispatch does not leave the run
-    // stalled. Pre-fix code had no error handling in the loop; if reviewer
-    // dispatch threw partway, already-dispatched reviewers were prompted but
-    // the run stalled waiting for never-dispatched ones (peer-quorum) or
-    // failed with a misleading error (decider).
+    // Track dispatch failures so a partial reviewer dispatch cannot leave the
+    // run waiting for reviewers who were never prompted.
     const dispatchFailures: string[] = []
     const dispatchedReviewers: string[] = []
     for (const reviewer of reviewers) {
@@ -135,10 +128,9 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
                 team: team.teamName, reviewer: reviewer.name, policy: task.signoffPolicy,
             })
             if (task.signoffPolicy === "decider") {
-                // H-H3: finishRun instead of throw — the mode that triggered
-                // signoff already completed, so no idle event will re-drive
-                // the barrier after a throw. The run would stall until
-                // wall-clock timeout. finishRun terminates immediately.
+                // Terminate on decider dispatch failure because the triggering
+                // mode has completed and no future idle event can re-drive the
+                // barrier.
                 try {
                     await finishRun(ctx, team, "signoff_dispatch_failed:decider", "failed")
                 } catch (finishErr) {
@@ -171,9 +163,8 @@ export async function evaluateSignoffQuorum(ctx: PluginContext, team: Team): Pro
     if (!task?.signoffStage || task.signoffPolicy !== "peer-quorum") return
     const reviewerRoster = task.signoffReviewers
         ?? team.members.filter(member => !member.isMaster && member.sessionId).map(member => member.name)
-    // MEDIUM: keep ALL recorded votes, even from members who later errored.
-    // Pre-fix code filtered out errored members from the reviewer set,
-    // which could drop a recorded rejection and flip the result.
+    // Keep all recorded votes, including votes from members who later errored,
+    // so a recorded rejection cannot disappear and flip the result.
     // Only exclude errored members who have NOT yet voted.
     const reviewers = reviewerRoster.filter(name => {
         const reviewer = team.members.find(member => member.name === name)
@@ -214,7 +205,7 @@ export async function handleSignoffIdle(
         return
     }
 
-    // HIGH#4: errored reviewers must not be counted as rejections. A
+    // Errored reviewers must not be counted as rejections. A
     // session.error was raised — the reviewer never produced a verdict.
     // Skip errored members so they don't get signoffApprovals[false].
     if (member.status === "errored") {
@@ -230,16 +221,13 @@ export async function handleSignoffIdle(
         return
     }
 
-    // H16: prefer signoffRawOutputs (the reviewer's signoff-specific turn).
-    // Pre-fix code fell back to task.responses[member.name] (the PRIMARY task
-    // output), which could contain a <signoff> example that was miscounted
-    // as a real verdict. Now: if signoffRawOutputs has no entry, treat as
-    // empty output (triggers retry), never read the primary response.
+    // Read only signoffRawOutputs from the reviewer's signoff-specific turn.
+    // A missing entry is empty output and triggers retry rather than parsing a
+    // <signoff> example from the primary task response as a real verdict.
     const memberOutput = task.signoffRawOutputs?.[member.name] ?? ""
     const signoff = parseSignoff(memberOutput)
-    // HIGH: a completely missing tag (null) should enter the same retry path
-    // as a malformed payload (parseFailed). Pre-fix code treated null as an
-    // immediate rejection — one format omission could wrongly veto the run.
+    // A missing tag enters the same retry path as a malformed payload so one
+    // format omission cannot immediately veto the run.
     if (!signoff || signoff.parseFailed) {
         if (!task.signoffParseFailures) task.signoffParseFailures = {}
         const failures = (task.signoffParseFailures[member.name] ?? 0) + 1
@@ -273,12 +261,8 @@ export async function handleSignoffIdle(
     if (task.signoffPolicy === "decider") {
         const approved = signoff?.approved === true
         const reason = approved ? "signoff_approved" : "signoff_rejected"
-        // H36: a signoff rejection is a QUALITY GATE FAILURE, not a successful
-        // completion. Pre-fix code passed status="idle" for both approved and
-        // rejected, which completion.ts mapped to run status "completed".
-        // Run records, metrics, and result queries then showed the rejected
-        // run as successful. Pass "failed" for rejections so the run record
-        // correctly reflects the gate failure.
+        // A signoff rejection is a quality-gate failure. Mark it failed so run
+        // records, metrics, and result queries cannot report it as successful.
         await finishRun(ctx, team, reason, approved ? "idle" : "failed")
     } else if (task.signoffPolicy === "peer-quorum") {
         await evaluateSignoffQuorum(ctx, team)

@@ -100,17 +100,12 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                     staleBusy = true
                     return
                 }
-                // H#3: refuse delete of spawning teams BEFORE setting the
-                // deleted tombstone. Pre-fix code set team.deleted=true at
-                // line 82 then checked spawning at line 88 — the return
-                // skipped staleBusy, so the outer code reported success
-                // while leaving the team in a tombstone state.
+                // Refuse deletion of spawning teams before setting the tombstone
+                // so the error path does not mutate team.deleted.
                 if (team.spawning) {
-                    // G: flag the spawning state so the outer code returns the
-                    // error. Pre-fix code returned a string from inside the
-                    // mutex callback, but team.mutex.runExclusive discarded
-                    // the return value — the tool reported success while the
-                    // team was still spawning and nothing was deleted.
+                    // Flag the spawning state because team.mutex.runExclusive
+                    // discards the callback return value. The outer code uses
+                    // the flag to report the error.
                     staleSpawning = true
                     return
                 }
@@ -128,14 +123,11 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                     clearActiveTask(team)
                     team.status = "idle"
                 }
-                // H26: destroy worktrees BEFORE quarantine rename. Pre-fix code
-                // quarantined the team directory first, then tried to destroy
-                // worktrees using paths inside the now-renamed directory. The
-                // paths no longer existed, git worktree registrations and
-                // branches were silently left behind.
+                // Destroy worktrees before quarantining the team directory because
+                // their paths must remain valid until cleanup completes.
                 for (const m of team.members) {
                     try {
-                        // N33: check the boolean return — false means the
+                        // Check the boolean return because false means the
                         // worktree was rejected (out-of-bounds/symlink) but
                         // no exception was thrown.
                         const destroyed = await destroyWorktree(
@@ -163,8 +155,8 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                         team.teamRunId,
                     )
                 } catch (err) {
-                    // N7: quarantine failed AFTER worktrees were already destroyed.
-                    // The team is tombstoned; worktrees cannot be restored. Surface
+                    // If quarantine fails after worktree cleanup, the tombstoned team
+                    // cannot restore those worktrees. Surface
                     // the worktree errors alongside the quarantine failure so the
                     // user knows the full extent of what was cleaned up.
                     quarantineErr = err instanceof Error ? err : new Error(String(err))

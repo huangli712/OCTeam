@@ -77,7 +77,7 @@ export function teamMetricsTool(ctx: PluginContext): ToolDefinition {
             let failed = 0
             let workflowStepDurationCount = 0
             let workflowStepDurationTotal = 0
-            // H27: use null-prototype object to prevent __proto__/constructor
+            // Use a null-prototype object to prevent __proto__/constructor
             // pollution from tampered run records.
             const perMember: Record<string, number> = Object.create(null)
             const perType: Record<string, { count: number; totalTokens: number }> = {}
