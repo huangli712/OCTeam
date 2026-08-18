@@ -24,13 +24,25 @@ import crypto from "node:crypto"
 import type { ToolContext } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
-import { loadTeamState, saveTeamState, isValidTeamState, type Team } from "../../state/store.js"
+import {
+    loadTeamState,
+    saveTeamState,
+    isValidTeamState,
+    type Team
+} from "../../state/store.js"
 import { teamLifecycleLockPath, statePath } from "../../state/paths.js"
 import { withLock, safeReadFile } from "../../state/locks.js"
 import { ensureMembersReady } from "../control/members.js"
 import { activationError } from "../../state/activation.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
-import type { ActiveTask, DecisionRecord, MemberState, ReducePolicy, SignoffPolicy, SdkMessage } from "../../core/types.js"
+import type {
+    ActiveTask,
+    DecisionRecord,
+    MemberState,
+    ReducePolicy,
+    SignoffPolicy,
+    SdkMessage
+} from "../../core/types.js"
 import { sumMemberTokens } from "../protocol/output.js"
 import { isEnoent } from "../../core/utils.js"
 import { logSwallowed } from "../../core/log.js"
