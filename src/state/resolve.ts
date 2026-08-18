@@ -13,7 +13,7 @@ import { masterSentinelPath } from "./paths.js"
 import { safeReadFile } from "./locks.js"
 import type { MemberState } from "../core/types.js"
 import type { PluginContext } from "../core/context.js"
-import { logSwallowed, logger } from "../core/log.js"
+import { logEvent, logger, logSwallowed } from "../core/log.js"
 import { isInteractionForbidden } from "./activation.js"
 
 /** Map of sessionID -> member index entry for non-master team members. */
@@ -414,7 +414,7 @@ async function indexScope(storageRoot: string, segmented: boolean, ctx?: PluginC
                 if (sentinelLead && sentinelLead === expectedLead) {
                     trustedLeadSessionId = sentinelLead
                 } else {
-                    if (ctx) logSwallowed(ctx, `indexScope: ${segmented ? "project" : "user"}-scope master.sentinel mismatches; refusing master privilege`, undefined, {
+                    if (ctx) logEvent(ctx, "warn", `indexScope: ${segmented ? "project" : "user"}-scope master.sentinel mismatches; refusing master privilege`, {
                         teamName, sentinelLead, expectedLead,
                     })
                     // Do NOT grant master — leave trustedLeadSessionId undefined.

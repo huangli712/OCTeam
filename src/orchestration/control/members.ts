@@ -6,7 +6,7 @@
  */
 
 import type { PluginContext } from "../../core/context.js"
-import { logger, logSwallowed } from "../../core/log.js"
+import { logEvent, logSwallowed } from "../../core/log.js"
 import { safeMemberAgent } from "../../core/role.js"
 import type { MemberSpec, MemberState } from "../../core/types.js"
 import { waitUntil } from "../../core/utils.js"
@@ -64,7 +64,7 @@ async function waitForRoleSetupBarrier(
                     if (isValidTeamState(parsed, team.directory)) {
                         if (parsed.teamRunId !== team.teamRunId) {
                             revalidationBlocked = true
-                            logger.warn("barrier timeout: persisted teamRunId differs from live team; skipping cleanup", {
+                            logEvent(ctx, "warn", "barrier timeout: persisted teamRunId differs from live team; skipping cleanup", {
                                 team: team.teamName,
                                 liveTeamRunId: team.teamRunId,
                                 persistedTeamRunId: parsed.teamRunId,
@@ -272,10 +272,13 @@ async function spawnMemberSafely(
                     await ctx.client.session.delete({ path: { id: sessionId }, query: { directory: dir } })
                     deleted = true
                 } catch (secondErr) {
-                    logger.error("spawn rollback: session.delete failed after retry; host session is orphaned", {
-                        team: team.teamName, member: member.name, sessionId,
-                        error: secondErr instanceof Error ? secondErr.message : String(secondErr),
-                    })
+                    logSwallowed(
+                        ctx,
+                        "spawn rollback: session.delete failed after retry; host session is orphaned",
+                        secondErr,
+                        { team: team.teamName, member: member.name, sessionId },
+                        "error",
+                    )
                 }
             }
             // Keep sessionId indexed when deletion fails so the crash reconciler

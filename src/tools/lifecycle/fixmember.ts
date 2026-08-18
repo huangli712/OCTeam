@@ -10,7 +10,6 @@ import { logSwallowed } from "../../core/log.js"
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
-import { logger } from "../../core/log.js"
 import { loadTeamState, readTeamSpec, reloadTeamStateLocked, saveTeamState, saveTeamStateBounded, type Team, writeTeamSpec } from "../../state/store.js"
 import { indexMember, resolveCallerInTeam, unindexSession } from "../../state/resolve.js"
 import { configPath, inboxPath, processedPath, reservedDir, worktreesDir, teamLifecycleLockPath } from "../../state/paths.js"
@@ -468,10 +467,12 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                         try {
                             await writeTeamSpec(caller.storageRoot, spec, caller.leadSessionId, caller.storageRoot)
                         } catch (specRollbackErr) {
-                            logger.warn("fixmember: failed to compensate-rewrite config.json after saveTeamState failure", {
-                                teamName: caller.teamName,
-                                error: specRollbackErr instanceof Error ? specRollbackErr.message : String(specRollbackErr),
-                            })
+                            logSwallowed(
+                                ctx,
+                                "fixmember: failed to compensate-rewrite config.json after saveTeamState failure",
+                                specRollbackErr,
+                                { teamName: caller.teamName },
+                            )
                         }
                     }
                     throw writeErr
@@ -546,11 +547,13 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                 try {
                     await saveTeamStateBounded(team)
                 } catch (teardownErr) {
-                    logger.error("fixmember: teardown save failed; disk may still reference destroyed worktree/session", {
-                        teamName: caller.teamName,
-                        member: liveMember.name,
-                        error: teardownErr instanceof Error ? teardownErr.message : String(teardownErr),
-                    })
+                    logSwallowed(
+                        ctx,
+                        "fixmember: teardown save failed; disk may still reference destroyed worktree/session",
+                        teardownErr,
+                        { teamName: caller.teamName, member: liveMember.name },
+                        "error",
+                    )
                     throw teardownErr
                 }
             }), team.directory)

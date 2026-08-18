@@ -46,7 +46,8 @@ export async function handleConsensusIdle(
             // Re-dispatch members who have not responded this round so the
             // barrier can make progress instead of waiting until timeout.
             const roundText = task.roundPrompt
-                ?? `[Consensus Round ${task.currentRound ?? 1}]\n${buildRoundSummary(task.responses)}\n\nRespond, then emit <consensus>{"agreed": true|false}</consensus>.`
+                ?? `[Consensus Round ${task.currentRound ?? 1}]\n${buildRoundSummary(task.responses)}\n\n`
+                + `Respond, then emit <consensus>{"agreed": true|false}</consensus>.`
             for (const m of nonMasterMembers(team)) {
                 if (task.responses[m.name] !== undefined) continue
                 if (m.status === "running") continue // still working
@@ -70,7 +71,9 @@ export async function handleConsensusIdle(
             if (await maybeRequestApproval(ctx, team, {
                 kind: "consensus_deadlock",
                 round: task.currentRound,
-                summary: `Consensus not reached after ${task.currentRound} round(s) on topic "${task.topic ?? "unknown"}" — ${participants.length} member positions below.`,
+                summary: `Consensus not reached after ${task.currentRound} round(s) `
+                    + `on topic "${task.topic ?? "unknown"}" `
+                    + `— ${participants.length} member positions below.`,
             })) {
                 return
             }
@@ -98,7 +101,8 @@ export async function handleConsensusIdle(
         recordEvent(team, { timestamp: Date.now(), kind: "round", round: nextRound })
         const roundText =
             `[Consensus Round ${nextRound}]\n${summary}\n\n`
-            + `Respond, then emit <consensus>{"agreed": true|false}</consensus> (or <共识>{"agreed": ...}</共识>).`
+            + `Respond, then emit <consensus>{"agreed": true|false}</consensus> `
+            + `(or <共识>{"agreed": ...}</共识>).`
         // Snapshot the round prompt so late or retry dispatches reuse
         // the same text (not rebuilt from mutable task.responses).
         task.roundPrompt = roundText
@@ -107,7 +111,10 @@ export async function handleConsensusIdle(
                 await dispatchToMember(ctx, m, roundText, m.worktreePath ?? ctx.directory, team)
                 task.dispatchedParticipants.push(m.name)
             } catch (err) {
-                logSwallowed(ctx, "consensus: dispatch failed for member", err, { member: m.name, round: nextRound })
+                logSwallowed(ctx, "consensus: dispatch failed for member", err, {
+                    member: m.name,
+                    round: nextRound,
+                })
             }
         }
         // Persist the dispatched roster after the dispatch loop so

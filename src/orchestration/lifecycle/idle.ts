@@ -18,7 +18,7 @@
  */
 
 import type { PluginContext } from "../../core/context.js"
-import { logger, logSwallowed } from "../../core/log.js"
+import { logEvent, logSwallowed } from "../../core/log.js"
 import { dispatchToMember } from "../control/dispatch.js"
 import type {
     ActiveTask,
@@ -352,7 +352,7 @@ export async function processIdle(
     // idle event (from a turn that was already aborted/failed) must not
     // resurrect the member to idle and re-enter the mode handler.
     if (member.status === "errored") {
-        logger.warn("processIdle: skipping stale idle for errored member", {
+        logEvent(ctx, "warn", "processIdle: skipping stale idle for errored member", {
             team: team.teamName, member: member.name,
         })
         return

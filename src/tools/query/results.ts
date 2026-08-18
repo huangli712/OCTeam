@@ -20,7 +20,7 @@ import { formatWorkflowMermaid } from "../../orchestration/records/mermaid.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
 import { listRunRecords, readRunRecord } from "../../orchestration/records/runs.js"
 import { assertNeverWorkflowStepKind } from "../../orchestration/workflow/dag.js"
-import { logger } from "../../core/log.js"
+import { logSwallowed } from "../../core/log.js"
 import { isEnoent } from "../../core/utils.js"
 import { safeReadFile } from "../../state/locks.js"
 import { runMemberOutputPath, isSafePathSegment } from "../../state/paths.js"
@@ -275,9 +275,8 @@ export function teamResultsTool(ctx: PluginContext): ToolDefinition {
             try {
                 records = await listRunRecords(caller.directory)
             } catch (err) {
-                logger.warn("team_results: failed to read run records", {
+                logSwallowed(ctx, "team_results: failed to read run records", err, {
                     team: args.team_id,
-                    error: err instanceof Error ? err.message : String(err),
                 })
                 return `Error: run records for team "${args.team_id}" could not be read: ${err instanceof Error ? err.message : String(err)}`
             }
@@ -357,7 +356,12 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
                     return content
                 } catch (err) {
                     if (isEnoent(err)) return `Error: output file for "${args.member}" is missing in run ${record.runId}`
-                    logger.warn("team_result_get: failed to read member output file", { runId: record.runId, member: args.member, error: err instanceof Error ? err.message : String(err) })
+                    logSwallowed(
+                        ctx,
+                        "team_result_get: failed to read member output file",
+                        err,
+                        { runId: record.runId, member: args.member },
+                    )
                     return `Error: output file for "${args.member}" is unreadable in run ${record.runId}: ${err instanceof Error ? err.message : String(err)}`
                 }
             }
