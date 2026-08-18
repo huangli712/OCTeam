@@ -39,7 +39,8 @@ export async function maybeTriggerReduce(ctx: PluginContext, team: Team): Promis
     if (!reducer?.sessionId || reducer.status === "errored") {
         // Log an unavailable configured reducer so the summarize fallback is
         // distinguishable from a run with no reduction configured.
-        logSwallowed(ctx, "maybeTriggerReduce: configured reducer unavailable, falling back to summarize", undefined, {
+        logSwallowed(ctx, "maybeTriggerReduce: configured reducer unavailable, "
+            + "falling back to summarize", undefined, {
             reducer: task.reducerMember, status: reducer?.status,
         })
         return false
