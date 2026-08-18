@@ -36,12 +36,11 @@ const WORKFLOW_MAX_FANOUT_DEPTH = 8
 // Raw branch array (matrix/foreach expansion is capped separately in lower.ts)
 const WORKFLOW_MAX_BRANCHES_PER_FANOUT = 64
 
-/** Recursively replace ${name} placeholders in value using the provided vars dictionary.
- * Bounded by max depth and cumulative expansion bytes to prevent stack
- * overflow and memory exhaustion from deeply nested or highly repetitive
- * template values in a hostile workflow_file. */
+/** Max template recursion depth (stack-overflow guard for deeply nested values). */
 const TEMPLATE_MAX_DEPTH = 20
-const TEMPLATE_MAX_EXPANSION_BYTES = 512 * 1024 // 512 KiB cumulative output
+
+/** Max cumulative template expansion output (OOM guard for repetitive placeholders). */
+const TEMPLATE_MAX_EXPANSION_BYTES = 512 * 1024
 
 /** Result of loading a workflow_file: parsed steps or an error message. */
 type WorkflowFileResult =
@@ -99,6 +98,12 @@ async function resolveWorkflowFilePath(baseDir: string, relPath: string): Promis
     return { filePath }
 }
 
+/**
+ * Recursively replace ${name} placeholders in value using the provided vars
+ * dictionary. Bounded by max depth and cumulative expansion bytes to prevent
+ * stack overflow and memory exhaustion from deeply nested or highly repetitive
+ * template values in a hostile workflow_file.
+ */
 function applyTemplateVars(value: unknown, vars: Record<string, string>, strict: boolean): unknown {
     return applyTemplateVarsBounded(value, vars, strict, 0, { expansionBytes: 0 })
 }
