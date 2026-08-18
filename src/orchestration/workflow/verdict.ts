@@ -183,6 +183,16 @@ type InvalidVerdictPayload = GateVerdictContext & {
     diff: string;
 };
 
+/**
+ * Handle a FAIL verdict with on_fail=fail (loop-bounded goto or terminate) or
+ * on_fail=skip (mark skipped and advance). The on_fail=retry path is handled
+ * by handleGateRetry.
+ */
+/** Verdict payload for a FAIL verdict. */
+type FailVerdictPayload = GateVerdictContext & {
+    v: ParsedVerdict;
+};
+
 /** Apply the gate's invalid or malformed verdict policy. */
 export async function handleInvalidVerdict(
     ctx: PluginContext,
@@ -443,15 +453,10 @@ export async function handleGatePass(
 }
 
 /**
- * Handle a FAIL verdict with on_fail=fail (loop-bounded goto or terminate) or
- * on_fail=skip (mark skipped and advance). The on_fail=retry path is handled
- * by handleGateRetry.
+ * Handle a FAIL verdict with on_fail=fail (loop-bounded on_fail_goto or
+ * terminate) or on_fail=skip (mark skipped and advance). The on_fail=retry
+ * path is handled by handleGateRetry.
  */
-/** Verdict payload for a FAIL verdict. */
-type FailVerdictPayload = GateVerdictContext & {
-    v: ParsedVerdict;
-};
-
 export async function handleGateFail(
     ctx: PluginContext,
     team: Team,
