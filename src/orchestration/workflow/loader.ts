@@ -7,7 +7,10 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 
-import type { WorkflowFanoutToolStep, WorkflowToolStep } from "../../core/types/workflow.js"
+import type {
+    WorkflowFanoutToolStep,
+    WorkflowToolStep
+} from "../../core/types/workflow.js"
 import { logger } from "../../core/log.js"
 import { assertNoSymlinkTraversal } from "../../state/locks.js"
 
@@ -23,10 +26,22 @@ const SUPPORTED_WORKFLOW_FILE_VERSIONS = new Set([1])
 // or stack (deeply nested fanout). These limits are generous enough for any
 // realistic workflow and tight enough to fail fast on abuse.
 const WORKFLOW_FILE_MAX_BYTES = 1024 * 1024 // 1 MiB raw file
+
 /** Maximum number of workflow steps across linear and nested fanout definitions. */
 export const WORKFLOW_MAX_TOTAL_STEPS = 256 // across linear + nested fanouts
-const WORKFLOW_MAX_FANOUT_DEPTH = 8 // nested fanout levels
-const WORKFLOW_MAX_BRANCHES_PER_FANOUT = 64 // raw branch array (matrix/foreach expansion is capped separately in lower.ts)
+
+// Nested fanout levels
+const WORKFLOW_MAX_FANOUT_DEPTH = 8
+
+// Raw branch array (matrix/foreach expansion is capped separately in lower.ts)
+const WORKFLOW_MAX_BRANCHES_PER_FANOUT = 64
+
+/** Recursively replace ${name} placeholders in value using the provided vars dictionary.
+ * Bounded by max depth and cumulative expansion bytes to prevent stack
+ * overflow and memory exhaustion from deeply nested or highly repetitive
+ * template values in a hostile workflow_file. */
+const TEMPLATE_MAX_DEPTH = 20
+const TEMPLATE_MAX_EXPANSION_BYTES = 512 * 1024 // 512 KiB cumulative output
 
 /** Result of loading a workflow_file: parsed steps or an error message. */
 type WorkflowFileResult =
@@ -83,13 +98,6 @@ async function resolveWorkflowFilePath(baseDir: string, relPath: string): Promis
     }
     return { filePath }
 }
-
-/** Recursively replace ${name} placeholders in value using the provided vars dictionary.
- * Bounded by max depth and cumulative expansion bytes to prevent stack
- * overflow and memory exhaustion from deeply nested or highly repetitive
- * template values in a hostile workflow_file. */
-const TEMPLATE_MAX_DEPTH = 20
-const TEMPLATE_MAX_EXPANSION_BYTES = 512 * 1024 // 512 KiB cumulative output
 
 function applyTemplateVars(value: unknown, vars: Record<string, string>, strict: boolean): unknown {
     return applyTemplateVarsBounded(value, vars, strict, 0, { expansionBytes: 0 })
