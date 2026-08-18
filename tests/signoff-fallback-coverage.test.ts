@@ -61,8 +61,8 @@ async function setupSignoffTeam(opts: {
     return { team: await loadTeamState(opts.root, "signoff-team", opts.masterSid) }
 }
 
-describe("maybeTriggerSignoff: fallback to direct delivery (return false)", () => {
-        test("decider mode + decider member is errored → fail closed", async () => {
+describe("maybeTriggerSignoff: fail closed when reviewers are unavailable", () => {
+    test("decider mode + decider member is errored → fail closed", async () => {
         const root = tmpRoot("signoff-decider-errored")
         const masterSid = "ses_signoff_master_1"
         tracked.push(masterSid)

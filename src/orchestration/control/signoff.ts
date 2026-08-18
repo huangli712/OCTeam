@@ -29,12 +29,11 @@ export function buildSignoffReviewPrompt(summary: string): string {
 }
 
 /**
- * Enter signoff when configured. Returns true when the caller must stop normal
- * completion because signoff is already active or reviewers were dispatched.
- *
- * Reviewer availability is resolved per policy BEFORE any signoff state is
- * committed, so a guard failure leaves no stale event in the timeline and
- * resets signoffStage to false for the caller's direct-delivery fallback.
+ * Enter signoff when configured. Returns false when no active task exists or
+ * signoff is disabled. Returns true when signoff is already active, reviewers
+ * were dispatched, or the run was terminated because no reviewer is available.
+ * Reviewer availability is resolved before signoff state is committed, so a
+ * failed guard leaves no stale signoff event in the timeline.
  */
 export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promise<boolean> {
     const task = team.activeTask
