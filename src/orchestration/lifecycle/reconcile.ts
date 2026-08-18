@@ -36,6 +36,11 @@ import { destroyWorktree, hasUncommittedChanges } from "../../state/worktrees.js
 import { releaseStaleReservations } from "../../messaging/mailbox.js"
 import { logSwallowed } from "../../core/log.js"
 
+/**
+ * Release stale resources for one team and snapshot a busy team's active
+ * task onto lastInterruptedTask (see module header). Runs under the team
+ * mutex; returns collected per-team failures for the caller to aggregate.
+ */
 async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx: PluginContext): Promise<unknown[]> {
     const failures: unknown[] = []
     if (team.status !== "busy" && team.status !== "idle") return failures

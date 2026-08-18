@@ -327,7 +327,7 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
         // Master drain-all: a master session may own MULTIPLE teams. Drain each
         // owned team's master mailbox under that team's own mutex, independent of
         // which team is "active" — activation governs interaction, not delivery.
-        // processIdle's master branch (Step 0) drains queued results; no dispatch.
+        // processIdle's master branch (Step 1) drains queued results; no dispatch.
         if (isMasterSession(sessionID)) {
             for (const e of resolveMasterTeams(sessionID)) {
                 try {
@@ -368,7 +368,7 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
             })
         } catch (err) {
             // processIdle may have partially mutated state (e.g. flipped
-            // member to idle in Step 1) before throwing. Without persisting,
+            // member to idle in Step 2) before throwing. Without persisting,
             // the in-memory state diverges from disk. The sweep timer only
             // re-checks status === "running" members, so a member stuck in
             // idle after a failed processIdle is not retried until wall-clock

@@ -11,16 +11,21 @@
  *   4. Token accounting (recompute, never +=)
  *   5. Identity validation (stray idle does not advance pipeline/loop)
  *   6. Capture output (delegated to records/capture.ts)
- *   6.5. Recurse decompose short-circuit (process <decompose> before wake-hint)
- *   7. Unread-message wake hint (returns; Transform hook injects content next turn)
- *   8. Dispatch by active-task type
- *   9. Termination checks
+ *   7. Recurse decompose short-circuit (process <decompose> before wake-hint)
+ *   8. Unread-message wake hint (returns; Transform hook injects content next turn)
+ *   9. Dispatch by active-task type
+ *   10. Termination checks
  */
 
 import type { PluginContext } from "../../core/context.js"
 import { logger, logSwallowed } from "../../core/log.js"
 import { dispatchToMember } from "../control/dispatch.js"
-import type { ActiveTask, MemberState, OrchestrationType, SdkMessage } from "../../core/types.js"
+import type {
+    ActiveTask,
+    MemberState,
+    OrchestrationType,
+    SdkMessage
+} from "../../core/types.js"
 import { type Team, saveTeamState } from "../../state/store.js"
 import { countUnreadMessages } from "../../messaging/mailbox.js"
 import { sendWakeHint } from "../../messaging/wake-hint.js"
@@ -54,7 +59,15 @@ import { captureMemberOutput, type CaptureMemberOutputResult } from "../records/
  * type error. Wrappers adapt heterogeneous handler signatures (some take
  * member, some don't) to a uniform interface.
  */
-const idleDispatch: Record<OrchestrationType, (ctx: PluginContext, team: Team, member: MemberState, captureResult?: CaptureMemberOutputResult) => Promise<void>> = {
+const idleDispatch: Record<
+    OrchestrationType,
+    (
+        ctx: PluginContext,
+        team: Team,
+        member: MemberState,
+        captureResult?: CaptureMemberOutputResult,
+    ) => Promise<void>
+> = {
     parallel: async (ctx, team) => handleParallelIdle(ctx, team),
     consensus: async (ctx, team, _member, captureResult) => handleConsensusIdle(ctx, team, captureResult),
     pipeline: async (ctx, team, member) => handlePipelineIdle(ctx, team, member),
@@ -123,7 +136,7 @@ export function getExpectedMember(task: ActiveTask): string | null {
         switch (task.tollgatePhase) {
             case "verify":   return s.verifier
             case "escalate": return task.escalateTo ?? null
-            default:         return s.member                  // "produce" (and undefined initial state)
+            default:         return s.member  // "produce" (and undefined initial state)
         }
     }
     return task.stages[task.currentStageIndex]?.member ?? null
@@ -150,11 +163,11 @@ export function buildPrematureIdleReprompt(teamName: string): string {
 // Helpers for processIdle's accounting and recovery stages.
 
 /**
- * Steps 2-3: Fetch session messages, recompute token accounting (always from
- * full history, never +=), and validate the idle member's identity (stray
- * idle must not advance pipeline/loop). Returns the fetched messages for
- * Step 4 (captureMemberOutput) to reuse without a second API call, or null
- * if this is a stray idle (caller must return after persisting).
+ * Fetch session messages, recompute token accounting (always from full
+ * history, never +=), and validate the idle member's identity (stray idle
+ * must not advance pipeline/loop). Returns the fetched messages for
+ * captureMemberOutput to reuse without a second API call, or null if this
+ * is a stray idle (caller must return after persisting).
  */
 async function accountAndValidateIdle(
     ctx: PluginContext,
@@ -165,7 +178,7 @@ async function accountAndValidateIdle(
     const msgs = await ctx.client.session.messages({ path: { id: sessionID } })
     const messages = asSdkMessages(msgs.data)
     if (team.activeTask) {
-        // Step 4: Token accounting keeps the highest full-history observation
+        // Token accounting keeps the highest full-history observation
         // because session compaction can remove messages and lower the total.
         // If compaction crosses the pre-run baseline before the first idle,
         // count the currently visible history instead of pinning the run to zero.
@@ -183,7 +196,7 @@ async function accountAndValidateIdle(
             (a, b) => a + b,
             0,
         )
-        // Step 5: Identity validation — stray idle must not advance pipeline/loop.
+        // Identity validation — stray idle must not advance pipeline/loop.
         const expected = getExpectedMember(team.activeTask)
         if (expected !== null && member.name !== expected) {
             await saveTeamState(team) // persist token tally; do NOT advance
@@ -366,7 +379,7 @@ export async function processIdle(
     // A decider/reviewer idling during signoffStage with NO new output is a
     // stale pre-signoff idle (its dispatch landed but the signoff turn hasn't
     // replied) — advancing the signoff policy on it would read the stale
-    // pre-signoff response and falsely reject. Step 8 gates on this signal.
+    // pre-signoff response and falsely reject. Step 9 gates on this signal.
     const task = team.activeTask
     let captureResult: CaptureMemberOutputResult = { fresh: false, reason: "empty" }
     if (
@@ -390,12 +403,12 @@ export async function processIdle(
     member.status = "idle"
     await saveTeamState(team)
 
-    // Step 6.5: recurse mode — the decomposer may broadcast coordination
+    // Step 7: recurse mode — the decomposer may broadcast coordination
     // messages via team_send_message in the SAME turn as her <decompose> block
     // (the prompt explicitly instructs her to). Those messages land in her
     // teammates' inboxes, who reply BEFORE the decomposer's idle event fires,
-    // so the replies are already in the decomposer's own inbox at step 7.
-    // Without this guard, step 7's wake-hint early-returns and SKIPS
+    // so the replies are already in the decomposer's own inbox at step 8.
+    // Without this guard, step 8's wake-hint early-returns and SKIPS
     // handleRecurseIdle, silently dropping the <decompose> block; the next
     // (wake-hint-triggered) turn captures non-decompose output and overwrites
     // task.responses[decomposer], permanently losing the decomposition intent.
@@ -411,12 +424,12 @@ export async function processIdle(
         return
     }
 
-    // Step 7: Unread messages — wake hint only (Transform hook injects content).
+    // Step 8: Unread messages — wake hint only (Transform hook injects content).
     // Only short-circuit on stale idle (!capturedNew). When this turn
-    // produced fresh output, the handler MUST run first (step 8) — otherwise
+    // produced fresh output, the handler MUST run first (step 9) — otherwise
     // the next turn's capture overwrites task.responses[member] with mailbox
     // reply content, losing the original verdict / reduce output / work.
-    // After step 8, if the task is still active, we wake-hint so the member
+    // After step 9, if the task is still active, we wake-hint so the member
     // drains its mailbox on the next turn.
     let unread: number
     try {
@@ -433,7 +446,7 @@ export async function processIdle(
         return
     }
 
-    // Step 8: Dispatch by active-task type via the handler table.
+    // Step 9: Dispatch by active-task type via the handler table.
     // Record<OrchestrationType, ...> enforces compile-time completeness:
     // a new mode without a table entry is a type error, not a runtime gap.
     if (!team.activeTask) return
@@ -450,7 +463,9 @@ export async function processIdle(
             // (next idle sees same message count → stale → skip). Set
             // retryingSince so sweep re-drives on the next tick.
             member.retryingSince = Date.now()
-            logSwallowed(ctx, "processIdle: reduce handler threw", handlerErr, { member: member.name, team: team.teamName })
+            logSwallowed(ctx, "processIdle: reduce handler threw", handlerErr, {
+                member: member.name, team: team.teamName,
+            })
         }
         await checkTermination(ctx, team)
         return
@@ -462,7 +477,9 @@ export async function processIdle(
             await handleSignoffIdle(ctx, team, member)
         } catch (handlerErr) {
             member.retryingSince = Date.now()
-            logSwallowed(ctx, "processIdle: signoff handler threw", handlerErr, { member: member.name, team: team.teamName })
+            logSwallowed(ctx, "processIdle: signoff handler threw", handlerErr, {
+                member: member.name, team: team.teamName,
+            })
         }
         await checkTermination(ctx, team)
         return
@@ -475,15 +492,17 @@ export async function processIdle(
     } catch (handlerErr) {
         // Apply the same stall prevention as above.
         member.retryingSince = Date.now()
-        logSwallowed(ctx, "processIdle: mode handler threw", handlerErr, { member: member.name, team: team.teamName })
+        logSwallowed(ctx, "processIdle: mode handler threw", handlerErr, {
+            member: member.name, team: team.teamName,
+        })
     }
 
-    // Step 9: Termination checks.
+    // Step 10: Termination checks.
     await checkTermination(ctx, team)
 
     // After dispatch, if the task is still active and there are unread
     // messages, wake-hint so the member drains its mailbox on the next turn.
-    // This runs only when capturedNew=true caused us to skip the step 7
+    // This runs only when capturedNew=true caused us to skip the step 8
     // short-circuit above.
     if (capturedNew && team.activeTask && unread > 0) {
         await sendWakeHint(ctx, sessionID, unread)

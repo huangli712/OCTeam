@@ -130,7 +130,9 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
                 try {
                     await finishRun(ctx, team, "signoff_dispatch_failed:decider", "failed")
                 } catch (finishErr) {
-                    logSwallowed(ctx, "signoff: finishRun failed after decider dispatch failure", finishErr, { team: team.teamName })
+                    logSwallowed(ctx, "signoff: finishRun failed after decider dispatch failure", finishErr, {
+                        team: team.teamName,
+                    })
                 }
                 return true
             }

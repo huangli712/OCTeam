@@ -24,7 +24,8 @@ async function deliverWithRetry(
     teamName: string,
     summary: string,
 ): Promise<void> {
-    const text = `<team_result team="${teamName}">\n${summary}\n</team_result>\n<!-- OMO_INTERNAL_INITIATOR -->`
+    const text = `<team_result team="${teamName}">\n${summary}\n</team_result>\n`
+        + `<!-- OMO_INTERNAL_INITIATOR -->`
     const maxAttempts = 3
     let lastErr: unknown
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -85,7 +86,9 @@ export async function deliverSummaryToLeader(
     const trustedTarget = trustedLeadSessionId(team.directory)
     const deliveryTarget = trustedTarget ?? team.leadSessionId
     if (!trustedTarget) {
-        logSwallowed(ctx, "finishRun: trusted leadSessionId unavailable; falling back to team.leadSessionId (possible tampering risk)", undefined, { team: team.teamName })
+        const message = "finishRun: trusted leadSessionId unavailable; "
+            + "falling back to team.leadSessionId (possible tampering risk)"
+        logSwallowed(ctx, message, undefined, { team: team.teamName })
     }
     await deliverWithRetry(ctx, ctx.client.session, deliveryTarget, team.teamName, summary)
 }

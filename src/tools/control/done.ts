@@ -5,7 +5,7 @@
  * When a parallel orchestration is started with `require_done_ack: true`,
  * the all-idle barrier is replaced by an all-acked barrier: a member only
  * counts as "ready to finish" after calling this tool. Members that go idle
- * without acking receive an automatic re-prompt from processIdle (Step 6).
+ * without acking receive an automatic re-prompt from processIdle (Step 9).
  *
  * No-op (returns an explanatory error) when:
  *   - caller is not a team member
