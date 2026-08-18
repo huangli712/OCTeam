@@ -19,6 +19,8 @@ import { appendJsonl } from "../../state/locks.js"
 import { runEventsPath } from "../../state/paths.js"
 import { logger } from "../../core/log.js"
 
+/** Per-run append chains: serialize events.jsonl writes so file order
+ * matches emission order. Keyed by events file path. */
 const appendChains = new Map<string, Promise<void>>()
 
 /** Fire-and-forget: append one RunEvent to the run's events.jsonl timeline.

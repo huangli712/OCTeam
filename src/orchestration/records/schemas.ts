@@ -15,16 +15,20 @@ import { z } from "zod"
 // Basic enums (mirror core/types enums)
 // ============================================================
 
+/** The twelve orchestration mode discriminants. */
 const OrchestrationTypeSchema = z.enum([
     "parallel", "pipeline", "loop", "delegate", "consensus",
     "route", "arbitrate", "recurse", "tollgate", "workflow", "arena",
     "quorum",
 ])
 
+/** Parallel execution mode: isolated or cooperative. */
 const ParallelModeSchema = z.enum(["isolated", "cooperative"])
 
+/** Terminal run status: completed or failed. */
 const RunStatusSchema = z.enum(["completed", "failed"])
 
+/** Post-completion review gate policy. */
 const SignoffPolicySchema = z.enum(["none", "decider", "peer-quorum"])
 
 // ============================================================
@@ -40,6 +44,7 @@ const DecisionRecordSchema = z.object({
     timestamp: z.number(),
 })
 
+/** Mid-run human approval pause point kind. */
 const ApprovalKindSchema = z.enum([
     "pipeline_stage", "tollgate_gate", "loop_done", "route_decision",
     "recurse_decompose", "arbitrate_ruling", "consensus_deadlock", "workflow_step",
@@ -59,16 +64,22 @@ const ApprovalDecisionRecordSchema = z.object({
 // Workflow step metadata (mirrors runtime WorkflowStep sub-types)
 // ============================================================
 
+/** Workflow step kind: task, gate, fanout, or join. */
 const WorkflowStepKindSchema = z.enum(["task", "gate", "fanout", "join"])
 
+/** Three-valued verification verdict: PASS, FAIL, or INVALID. */
 const VerdictSchema = z.enum(["PASS", "FAIL", "INVALID"])
 
+/** Gate INVALID control: fail, retry the verifier, or escalate. */
 const WorkflowOnInvalidSchema = z.enum(["fail", "retry_verifier", "escalate"])
 
+/** Gate FAIL control: fail, retry, or skip. */
 const WorkflowOnFailSchema = z.enum(["fail", "retry", "skip"])
 
+/** Step timeout control: fail, retry, or skip. */
 const WorkflowOnTimeoutSchema = z.enum(["fail", "retry", "skip"])
 
+/** Fanout branch outcome: pending, completed, skipped, or errored. */
 const WorkflowBranchStatusSchema = z.enum(["pending", "completed", "skipped", "errored"])
 
 /** A structured issue from a gate verifier: severity plus an optional human-readable message. */
@@ -83,6 +94,7 @@ const WorkflowBranchRangeSchema = z.object({
     endIndex: z.number().int().nonnegative(),
 }).refine(range => range.endIndex >= range.startIndex, "branch range endIndex must be >= startIndex")
 
+/** Fanout join semantics. */
 const WorkflowJoinPolicySchema = z.enum([
     "tolerance", "all", "quorum", "any_success", "required_branches", "reduce", "select",
 ])
@@ -441,6 +453,7 @@ const ArenaCandidateScoreSchema = z.object({
     rationale: z.string().optional(),
 })
 
+/** Arena scoreboard: per-candidate scores plus evaluator rationale. */
 const ArenaScoreboardSchema = z.object({
     scores: z.array(ArenaCandidateScoreSchema),
     rationale: z.string().optional(),
@@ -506,7 +519,11 @@ export const RunRecordSchema = z.object({
             const seen = new Set<string>()
             for (const s of arena.scoreboard.scores) {
                 if (seen.has(s.member)) {
-                    ctx.addIssue({ code: "custom", path: ["scoreboard"], message: `duplicate scoreboard entry for member ${s.member}` })
+                    ctx.addIssue({
+                        code: "custom",
+                        path: ["scoreboard"],
+                        message: `duplicate scoreboard entry for member ${s.member}`,
+                    })
                 }
                 seen.add(s.member)
             }
@@ -572,6 +589,7 @@ export const RunRecordSchema = z.object({
     }).optional(),
 })
 
+/** Fields shared by every RunEvent variant, spread into each union member. */
 const RunEventCommonShape = {
     timestamp: z.number().nonnegative(),
     sequence: z.number().int().nonnegative().optional(),

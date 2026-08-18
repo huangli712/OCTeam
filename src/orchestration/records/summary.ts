@@ -62,7 +62,9 @@ export async function buildSummary(
         default: {
             const _exhaustive: never = task
             void _exhaustive
-            throw new Error(`buildSummary: unhandled OrchestrationType: ${String((task as { type: string }).type)}`)
+            throw new Error(
+                `buildSummary: unhandled OrchestrationType: ${String((task as { type: string }).type)}`,
+            )
         }
     }
     if (Buffer.byteLength(body, "utf8") > SUMMARY_BUDGET) {

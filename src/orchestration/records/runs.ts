@@ -22,9 +22,24 @@ import { isEnoent } from "../../core/utils.js"
 
 import type { WorkflowJoinMetadata } from "../../core/types.js"
 import type { Team } from "../../state/store.js"
-import type { RunRecord, RunStatus, WorkflowBranchStatus, WorkflowRunStep, WorkflowStep } from "../../core/types.js"
-import { assertNoSymlinkTraversal, atomicWrite, safeReadFile } from "../../state/locks.js"
-import { runsDir, runDir, runRecordPath, runEventsPath } from "../../state/paths.js"
+import type {
+    RunRecord,
+    RunStatus,
+    WorkflowBranchStatus,
+    WorkflowRunStep,
+    WorkflowStep
+} from "../../core/types.js"
+import {
+    assertNoSymlinkTraversal,
+    atomicWrite,
+    safeReadFile
+} from "../../state/locks.js"
+import {
+    runsDir,
+    runDir,
+    runRecordPath,
+    runEventsPath
+} from "../../state/paths.js"
 import type { RunEvent } from "../../core/types.js"
 import { listAllTasks } from "../../state/tasks.js"
 import { RunRecordSchema, RunEventSchema } from "./schemas.js"
@@ -33,8 +48,13 @@ import { flushRunEvents } from "./events.js"
 /** Keep at most this many run records per team; older ones are pruned. */
 export const DEFAULT_MAX_RUNS = 20
 
+/** Max bytes per events.jsonl line; oversized lines are skipped as invalid to prevent OOM. */
 const MAX_RUN_EVENT_LINE_BYTES = 1_048_576
+
+/** Total byte budget for persisted workflow step outputs in record.json. */
 const WORKFLOW_OUTPUT_BYTE_BUDGET = 512 * 1024
+
+/** Replacement text for step outputs dropped after the byte budget is exhausted. */
 const WORKFLOW_OUTPUT_TRUNCATED_MARKER = "[workflow outputs truncated: 524288-byte budget exceeded]"
 
 /**
@@ -61,12 +81,12 @@ const FAILED_REASON_MARKERS = [
     "workflow_frontier_deadlock", // workflow: no steps ready, all waiting
     "pipeline_failed",    // pipeline: a stage's member has no live session (explicit failure instead of stalling)
     "parallel_failed",    // parallel: reducer member missing on resume of a reduce stage
-    "signoff_rejected",           // signoff: decider/reviewer rejected the work
+    "signoff_rejected",   // signoff: decider/reviewer rejected the work
     "signoff_quorum_not_reached", // signoff: peer-quorum did not get enough approvals
-    "human_rejected",             // HITL: leader rejected a mid-run approval request
-    "arena_failed",               // arena: every arena_failed:* reason (no_survivors, member_error, evaluator_*, eval_invalid); arena_complete matches no marker and stays completed
-    "quorum_no_majority",         // quorum: tally complete but no option reached strict majority
-    "quorum_all_errored",         // quorum: all participants abstained (unreachable via runtime errors alone; only via all-invalid-ballot path)
+    "human_rejected",     // HITL: leader rejected a mid-run approval request
+    "arena_failed",       // arena: every arena_failed:* reason (no_survivors, member_error, evaluator_*, eval_invalid); arena_complete matches no marker and stays completed
+    "quorum_no_majority", // quorum: tally complete but no option reached strict majority
+    "quorum_all_errored", // quorum: all participants abstained (unreachable via runtime errors alone; only via all-invalid-ballot path)
 ] as const
 
 /**
@@ -331,9 +351,15 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
                             onFail: step.onFail,
                             maxRetries: step.maxRetries,
                             maxInvalidRetries: step.maxInvalidRetries,
-                            onPassGoto: step.onPassGoto === undefined || step.onPassGoto < 0 ? undefined : step.onPassGoto + 1,
-                            onFailGoto: step.onFailGoto === undefined || step.onFailGoto < 0 ? undefined : step.onFailGoto + 1,
-                            onInvalidGoto: step.onInvalidGoto === undefined || step.onInvalidGoto < 0 ? undefined : step.onInvalidGoto + 1,
+                            onPassGoto: step.onPassGoto === undefined || step.onPassGoto < 0
+                                ? undefined
+                                : step.onPassGoto + 1,
+                            onFailGoto: step.onFailGoto === undefined || step.onFailGoto < 0
+                                ? undefined
+                                : step.onFailGoto + 1,
+                            onInvalidGoto: step.onInvalidGoto === undefined || step.onInvalidGoto < 0
+                                ? undefined
+                                : step.onInvalidGoto + 1,
                             maxJumps: step.maxJumps,
                             // Persist `where` condition and `loop` config
                             // so the run record reflects the gate's jump
@@ -356,7 +382,9 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
                         return {
                             ...base,
                             join: runJoinMetadata(step.join),
-                            joinedOutputBytes: step.join.joinedOutput === undefined ? undefined : Buffer.byteLength(step.join.joinedOutput, "utf8"),
+                            joinedOutputBytes: step.join.joinedOutput === undefined
+                                ? undefined
+                                : Buffer.byteLength(step.join.joinedOutput, "utf8"),
                         }
                 }
             }),
@@ -448,7 +476,6 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
     try { await flushRunEvents(team.directory, runId) } catch { /* best-effort */ }
 }
 
-
 /**
  * Keep the most recent `keep` runs (by record.finishedAt), deleting older run
  * directories. Best-effort; a prune failure never blocks termination.
@@ -467,7 +494,10 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
     } catch (err) {
         // Distinguish ENOENT (no runs/ yet) from real errors.
         if (!isEnoent(err)) {
-            logger.warn("pruneRuns: readdir failed", { dir: root, error: err instanceof Error ? err.message : String(err) })
+            logger.warn("pruneRuns: readdir failed", {
+                dir: root,
+                error: err instanceof Error ? err.message : String(err),
+            })
         }
         return // no runs/ yet or unreadable
     }
@@ -552,7 +582,10 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
             if (isEnoent(err)) continue // already gone
             // If rename fails (cross-device, permissions), fall back to deletion.
             await fs.rm(target, { recursive: true, force: true }).catch((rmErr) => {
-                logger.warn("pruneRuns: failed to remove invalid run directory after quarantine failed", { runId, error: rmErr instanceof Error ? rmErr.message : String(rmErr) })
+                logger.warn("pruneRuns: failed to remove invalid run directory after quarantine failed", {
+                    runId,
+                    error: rmErr instanceof Error ? rmErr.message : String(rmErr),
+                })
             })
         }
     }
@@ -560,7 +593,9 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
     // or invalid. Do NOT delete: member output .md files and event logs may still
     // be valid and recoverable. Log a warning so operators can investigate.
     for (const runId of corrupted) {
-        logger.warn("pruneRuns: run directory has unreadable/invalid record.json; quarantining (not deleting) to preserve member outputs", { runId })
+        const message = "pruneRuns: run directory has unreadable/invalid record.json; "
+            + "quarantining (not deleting) to preserve member outputs"
+        logger.warn(message, { runId })
     }
     if (dated.length <= keep) return
 
@@ -569,7 +604,10 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
         const target = runDir(teamDirectory, runId)
         await assertNoSymlinkTraversal(teamDirectory, target)
         await fs.rm(target, { recursive: true, force: true }).catch((err) => {
-            logger.warn("pruneRuns: failed to remove run directory", { runId, error: err instanceof Error ? err.message : String(err) })
+            logger.warn("pruneRuns: failed to remove run directory", {
+                runId,
+                error: err instanceof Error ? err.message : String(err),
+            })
         })
     }
 }
@@ -591,7 +629,10 @@ export async function listRunRecords(teamDirectory: string): Promise<RunRecord[]
         // Distinguish ENOENT (no runs/ yet) from storage failures such as
         // EACCES or EIO so disk problems remain visible to operators.
         if (!isEnoent(err)) {
-            logger.warn("listRunRecords: readdir failed", { dir: root, error: err instanceof Error ? err.message : String(err) })
+            logger.warn("listRunRecords: readdir failed", {
+                dir: root,
+                error: err instanceof Error ? err.message : String(err),
+            })
             throw err
         }
         return []
@@ -608,18 +649,27 @@ export async function listRunRecords(teamDirectory: string): Promise<RunRecord[]
             raw = recordContent
         } catch (err) {
             if (isEnoent(err)) continue
-            logger.warn("listRunRecords: failed to read run record", { runId, error: err instanceof Error ? err.message : String(err) })
+            logger.warn("listRunRecords: failed to read run record", {
+                runId,
+                error: err instanceof Error ? err.message : String(err),
+            })
             throw err
         }
         try {
             const parsed = parseRunRecord(raw)
             if (parsed.runId !== runId) {
-                logger.warn("listRunRecords: runId mismatch; skipping run record", { runId, recordRunId: parsed.runId })
+                logger.warn("listRunRecords: runId mismatch; skipping run record", {
+                    runId,
+                    recordRunId: parsed.runId,
+                })
                 continue
             }
             records.push(parsed)
         } catch (err) {
-            logger.warn("listRunRecords: invalid run record; skipping", { runId, error: err instanceof Error ? err.message : String(err) })
+            logger.warn("listRunRecords: invalid run record; skipping", {
+                runId,
+                error: err instanceof Error ? err.message : String(err),
+            })
         }
     }
     records.sort((a, b) => b.finishedAt - a.finishedAt)
@@ -641,7 +691,10 @@ export async function readRunRecord(teamDirectory: string, runId: string): Promi
         raw = content
     } catch (err) {
         if (isEnoent(err)) return null
-        logger.warn("readRunRecord: failed to read run record", { runId, error: err instanceof Error ? err.message : String(err) })
+        logger.warn("readRunRecord: failed to read run record", {
+            runId,
+            error: err instanceof Error ? err.message : String(err),
+        })
         throw err
     }
     try {
@@ -651,7 +704,10 @@ export async function readRunRecord(teamDirectory: string, runId: string): Promi
         }
         return parsed
     } catch (err) {
-        logger.warn("readRunRecord: invalid run record", { runId, error: err instanceof Error ? err.message : String(err) })
+        logger.warn("readRunRecord: invalid run record", {
+            runId,
+            error: err instanceof Error ? err.message : String(err),
+        })
         return null
     }
 }
@@ -676,7 +732,10 @@ export async function readRunEvents(teamDirectory: string, runId: string): Promi
         handle = await fs.open(eventsPath, flags)
     } catch (err) {
         if (isEnoent(err)) return []
-        logger.warn("readRunEvents: failed to read events file", { runId, error: err instanceof Error ? err.message : String(err) })
+        logger.warn("readRunEvents: failed to read events file", {
+            runId,
+            error: err instanceof Error ? err.message : String(err),
+        })
         throw err
     }
     const events: Array<{ event: RunEvent; lineNumber: number }> = []
@@ -733,7 +792,10 @@ export async function readRunEvents(teamDirectory: string, runId: string): Promi
         }
         if (lineBytes > 0 || oversizedLine) finishLine()
     } catch (err) {
-        logger.warn("readRunEvents: failed to read events file", { runId, error: err instanceof Error ? err.message : String(err) })
+        logger.warn("readRunEvents: failed to read events file", {
+            runId,
+            error: err instanceof Error ? err.message : String(err),
+        })
         throw err
     } finally {
         await handle.close()
@@ -797,7 +859,9 @@ function workflowBranchStatusesForStep(
         case "fanout":
             return workflowBranchStatuses(steps, index)
         case "join":
-            return step.join === undefined ? undefined : workflowBranchStatuses(steps, step.join.fanoutIndex)
+            return step.join === undefined
+                ? undefined
+                : workflowBranchStatuses(steps, step.join.fanoutIndex)
         case "task":
         case "gate":
             return undefined
