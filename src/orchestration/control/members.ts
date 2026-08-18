@@ -23,8 +23,10 @@ import {
 import { createWorktree, destroyWorktree } from "../../state/worktrees.js"
 import { buildRolePrompt } from "../protocol/output.js"
 
-// Max milliseconds to wait for all non-master members to reach initialized state.
+/** Max milliseconds to wait for all non-master members to reach initialized state. */
 const ROLE_SETUP_BARRIER_TIMEOUT_MS = 120_000
+
+/** Delay before the single session.delete retry during spawn rollback. */
 const SESSION_DELETE_RETRY_DELAY_MS = 500
 
 /**

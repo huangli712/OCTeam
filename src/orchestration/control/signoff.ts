@@ -17,6 +17,8 @@ import { finishRun } from "./completion.js"
 import { dispatchToMember } from "./dispatch.js"
 import { findMember } from "../../tools/support.js"
 
+/** Malformed-signoff retry cap per reviewer; at cap the parsed verdict
+ * stands as final. */
 const MAX_SIGNOFF_PARSE_FAILURES = 3
 
 /** Build the structured verdict contract shared by live and resumed reviews. */
@@ -130,9 +132,12 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
                 try {
                     await finishRun(ctx, team, "signoff_dispatch_failed:decider", "failed")
                 } catch (finishErr) {
-                    logSwallowed(ctx, "signoff: finishRun failed after decider dispatch failure", finishErr, {
-                        team: team.teamName,
-                    })
+                    logSwallowed(
+                        ctx,
+                        "signoff: finishRun failed after decider dispatch failure",
+                        finishErr,
+                        { team: team.teamName },
+                    )
                 }
                 return true
             }
@@ -144,7 +149,12 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
         try {
             await finishRun(ctx, team, `signoff_dispatch_failed:all_reviewers`, "failed")
         } catch (finishErr) {
-            logSwallowed(ctx, "signoff: finishRun failed after all-reviewers dispatch failure", finishErr, { team: team.teamName })
+            logSwallowed(
+                ctx,
+                "signoff: finishRun failed after all-reviewers dispatch failure",
+                finishErr,
+                { team: team.teamName },
+            )
         }
         return true
     }
