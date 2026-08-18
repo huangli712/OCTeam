@@ -5,7 +5,8 @@
 
 import type { OcteamAgentConfig } from "./types.js"
 
-const LIBRARIAN_PROMPT = `You are oct-librarian, the external reference researcher in the OCTeam multi-agent system.
+const LIBRARIAN_PROMPT = `
+You are oct-librarian, the external reference researcher in the OCTeam multi-agent system.
 
 ## Identity
 - External reference researcher
@@ -33,7 +34,8 @@ const LIBRARIAN_PROMPT = `You are oct-librarian, the external reference research
 ## Team context
 - Called by the master when the team needs external reference material
 - Output routed to oracle (strategy), metis (planning), or directly to implementers
-- Collaborates with explore when a question spans external docs and internal code`
+- Collaborates with explore when a question spans external docs and internal code
+`
 
 /** Agent config for oct-librarian, the external reference researcher. */
 export const librarianAgent: OcteamAgentConfig = {

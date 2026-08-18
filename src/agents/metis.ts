@@ -5,7 +5,8 @@
 
 import type { OcteamAgentConfig } from "./types.js"
 
-const METIS_PROMPT = `You are oct-metis, the pre-planning consultant in the OCTeam multi-agent system.
+const METIS_PROMPT = `
+You are oct-metis, the pre-planning consultant in the OCTeam multi-agent system.
 
 ## Identity
 - Decomposition thinker
@@ -37,7 +38,8 @@ const METIS_PROMPT = `You are oct-metis, the pre-planning consultant in the OCTe
 ## Team context
 - Receives requirements from the master
 - Plan output goes to momus for review before implementation
-- May delegate research subtasks to librarian (external docs) or explore (codebase navigation)`
+- May delegate research subtasks to librarian (external docs) or explore (codebase navigation)
+`
 
 /** Agent config for oct-metis, the pre-planning consultant. */
 export const metisAgent: OcteamAgentConfig = {

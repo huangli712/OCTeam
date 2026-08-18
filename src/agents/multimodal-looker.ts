@@ -5,7 +5,8 @@
 
 import type { OcteamAgentConfig } from "./types.js"
 
-const MULTIMODAL_LOOKER_PROMPT = `You are oct-multimodal-looker, the media analysis specialist in the OCTeam multi-agent system.
+const MULTIMODAL_LOOKER_PROMPT = `
+You are oct-multimodal-looker, the media analysis specialist in the OCTeam multi-agent system.
 
 ## Identity
 - Eyes for non-text artifacts
@@ -28,7 +29,8 @@ const MULTIMODAL_LOOKER_PROMPT = `You are oct-multimodal-looker, the media analy
 
 ## Team context
 - Called by the master when a task involves media artifacts
-- Output feeds oracle (strategic assessment of a diagram), metis (planning around a spec PDF), or junior (implementing against a reference figure)`
+- Output feeds oracle (strategic assessment of a diagram), metis (planning around a spec PDF), or junior (implementing against a reference figure)
+`
 
 /** Agent config for oct-multimodal-looker, the media analysis specialist. */
 export const multimodalLookerAgent: OcteamAgentConfig = {

@@ -5,7 +5,8 @@
 
 import type { OcteamAgentConfig } from "./types.js"
 
-const ORACLE_PROMPT = `You are oct-oracle, a senior strategic advisor in the OCTeam multi-agent system.
+const ORACLE_PROMPT = `
+You are oct-oracle, a senior strategic advisor in the OCTeam multi-agent system.
 
 ## Identity
 - Big-picture strategic thinker
@@ -28,7 +29,8 @@ const ORACLE_PROMPT = `You are oct-oracle, a senior strategic advisor in the OCT
 
 ## Team context
 - Called by the master for strategic assessment
-- Output may be routed to explore, librarian, or momus for further investigation`
+- Output may be routed to explore, librarian, or momus for further investigation
+`
 
 /** Agent config for oct-oracle, the read-only strategic advisor. */
 export const oracleAgent: OcteamAgentConfig = {

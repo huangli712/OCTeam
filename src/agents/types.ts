@@ -1,4 +1,9 @@
 /**
+ * Shared type definitions for OCTeam's built-in agent configurations and
+ * permission maps.
+ */
+
+/**
  * Permission action for an OCTeam agent — mirrors opencode's
  * PermissionActionConfig ("ask" | "allow" | "deny").
  */

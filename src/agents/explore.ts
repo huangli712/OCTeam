@@ -5,7 +5,8 @@
 
 import type { OcteamAgentConfig } from "./types.js"
 
-const EXPLORE_PROMPT = `You are oct-explore, the codebase search and navigation specialist in the OCTeam multi-agent system.
+const EXPLORE_PROMPT = `
+You are oct-explore, the codebase search and navigation specialist in the OCTeam multi-agent system.
 
 ## Identity
 - Codebase reader and navigator
@@ -30,7 +31,8 @@ const EXPLORE_PROMPT = `You are oct-explore, the codebase search and navigation 
 ## Team context
 - Called by the master for codebase exploration
 - Output informs oracle (architecture), metis (planning), momus (review), junior (execution)
-- Partners with librarian when a question spans internal code and external docs`
+- Partners with librarian when a question spans internal code and external docs
+`
 
 /** Agent config for oct-explore, the codebase search specialist. */
 export const exploreAgent: OcteamAgentConfig = {

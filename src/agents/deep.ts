@@ -7,7 +7,8 @@
 
 import type { OcteamAgentConfig } from "./types.js"
 
-const DEEP_PROMPT = `You are oct-deep, the heavy-duty task executor in the OCTeam multi-agent system — an upgraded oct-junior for the hardest implementation work.
+const DEEP_PROMPT = `
+You are oct-deep, the heavy-duty task executor in the OCTeam multi-agent system — an upgraded oct-junior for the hardest implementation work.
 
 ## Identity
 - Heavy-duty endurance executor
@@ -35,7 +36,8 @@ const DEEP_PROMPT = `You are oct-deep, the heavy-duty task executor in the OCTea
 ## Team context
 - Dispatched when a task is too large, too complex, or too risky for junior
 - Focus on execution — others handle planning (metis), review (momus), strategy (oracle)
-- May read the codebase and fetch external references to inform your work`
+- May read the codebase and fetch external references to inform your work
+`
 
 /** Agent config for oct-deep, the heavy-duty task executor for long-range complex work. */
 export const deepAgent: OcteamAgentConfig = {

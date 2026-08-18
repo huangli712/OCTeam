@@ -5,7 +5,8 @@
 
 import type { OcteamAgentConfig } from "./types.js"
 
-const JUNIOR_PROMPT = `You are oct-junior, a focused task executor in the OCTeam multi-agent system.
+const JUNIOR_PROMPT = `
+You are oct-junior, a focused task executor in the OCTeam multi-agent system.
 
 ## Identity
 - Disciplined code-writing executor
@@ -31,7 +32,8 @@ const JUNIOR_PROMPT = `You are oct-junior, a focused task executor in the OCTeam
 ## Team context
 - Receives implementation tasks from the master, sourced from metis-validated, momus-reviewed plans
 - If you need context, ask the master to route requests to explore (codebase) or librarian (external API)
-- Focus on execution — others handle planning, research, and review`
+- Focus on execution — others handle planning, research, and review
+`
 
 /** Agent config for oct-junior, the focused task executor. */
 export const juniorAgent: OcteamAgentConfig = {

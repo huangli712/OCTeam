@@ -18,12 +18,9 @@ import type { OcteamAgentConfig, OcteamAgentPermission, OcteamPermissionAction }
 
 /** A scalar tool action or a per-subtool permission map. */
 export type MergedPermissionValue = OcteamPermissionAction | Record<string, OcteamPermissionAction>
+
 /** Merged permissions keyed by tool name. */
 export type MergedAgentPermission = Record<string, MergedPermissionValue | undefined>
-
-function isPermissionAction(value: unknown): value is OcteamPermissionAction {
-    return value === "allow" || value === "deny" || value === "ask"
-}
 
 /**
  * OCTeam's built-in subagents. No `model` field is pinned here on purpose:
@@ -44,6 +41,11 @@ export const OCTEAM_AGENTS: Record<string, OcteamAgentConfig> = {
     "oct-junior": juniorAgent,
     "oct-deep": deepAgent,
     "oct-ultrabrain": ultrabrainAgent,
+}
+
+/** Return whether a value is a supported scalar permission action. */
+function isPermissionAction(value: unknown): value is OcteamPermissionAction {
+    return value === "allow" || value === "deny" || value === "ask"
 }
 
 /**
