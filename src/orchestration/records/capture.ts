@@ -9,15 +9,31 @@ import crypto from "node:crypto"
 
 import type { Team } from "../../state/store.js"
 import { isEnoent } from "../../core/utils.js"
-import { extractOutputFromParts, truncateOutput } from "../protocol/output.js"
-import { safeReadFile, atomicWrite } from "../../state/locks.js"
-import { runMemberOutputPath, runReduceOutputPath, runSignoffOutputPath } from "../../state/paths.js"
+import {
+    extractOutputFromParts,
+    truncateOutput
+} from "../protocol/output.js"
+import {
+    safeReadFile,
+    atomicWrite
+} from "../../state/locks.js"
+import {
+    runMemberOutputPath,
+    runReduceOutputPath,
+    runSignoffOutputPath
+} from "../../state/paths.js"
 import { recordEvent } from "./events.js"
 import type { MemberState, SdkMessage } from "../../core/types.js"
 
 /** Hard byte cap on the accumulated per-member output file to prevent unbounded
  * growth from multi-turn members (reducer role, re-prompt cycles). */
 const ACCUMULATED_OUTPUT_CAP = 262_144 // 256 KiB
+
+/** Indicates whether a member turn produced fresh output or why it did not. */
+export type CaptureMemberOutputResult =
+    | { fresh: true; output: string }
+    | { fresh: false; reason: "stale" | "empty" }
+
 /**
  * Build the accumulated run-member output by appending the current turn's
  * output to whatever was captured previously.
@@ -29,11 +45,6 @@ export function appendTurnBlock(prev: string, turnOutput: string, capturedIso: s
     const block = `--- captured ${capturedIso} (${Buffer.byteLength(turnOutput, "utf8")} bytes) ---\n\n${turnOutput}`
     return prev === "" ? block : `${prev}\n\n${block}`
 }
-
-/** Indicates whether a member turn produced fresh output or why it did not. */
-export type CaptureMemberOutputResult =
-    | { fresh: true; output: string }
-    | { fresh: false; reason: "stale" | "empty" }
 
 /**
  * Step 4 of processIdle: capture the member's output from the current turn.

@@ -19,8 +19,6 @@ import type { PluginContext } from "../../core/context.js"
 import { type Team, saveTeamState } from "../../state/store.js"
 import type { ActiveTask, GatedStage, MemberState } from "../../core/types.js"
 
-/** Default max INVALID verdict cycles before declaring the gate exhausted. */
-const DEFAULT_MAX_INVALID_CYCLES = 3
 import { buildUpstreamContext } from "./stages.js"
 import { dispatchToMember } from "../control/dispatch.js"
 import { finishRun } from "../control/completion.js"
@@ -30,6 +28,9 @@ import { parseVerdict } from "../protocol/decisions.js"
 import { maybeTriggerSignoff } from "../control/signoff.js"
 import { maybeRequestApproval, forceApprovalRequest } from "../control/approval.js"
 import { findMember } from "../../tools/support.js"
+
+/** Default max INVALID verdict cycles before declaring the gate exhausted. */
+const DEFAULT_MAX_INVALID_CYCLES = 3
 
 /**
  * Build the verifier's dispatch prompt: the producer's output, the criteria,
@@ -192,7 +193,8 @@ async function escalateInvalid(
     const paused = await forceApprovalRequest(ctx, team, {
         kind: "tollgate_gate",
         stage: task.currentStageIndex,
-        summary: `Gate INVALID on stage "${stage.member}": ${reason}. No escalateTo handler configured. Approve to retry verification, or reject to fail the run.`,
+        summary: `Gate INVALID on stage "${stage.member}": ${reason}. No escalateTo handler configured. `
+            + `Approve to retry verification, or reject to fail the run.`,
     })
     if (!paused) {
         // If approval is unavailable, fail closed so the run cannot remain stuck.
@@ -245,7 +247,8 @@ export async function handleTollgateIdle(
         if (await maybeRequestApproval(ctx, team, {
             kind: "tollgate_gate",
             stage: task.currentStageIndex,
-            summary: `Tollgate stage ${task.currentStageIndex} producer output ready. Review before verification dispatch.`,
+            summary: `Tollgate stage ${task.currentStageIndex} producer output ready. `
+                + `Review before verification dispatch.`,
         })) {
             return
         }
@@ -255,8 +258,8 @@ export async function handleTollgateIdle(
 
     // escalate phase: handler fixed the verifier/reference -> re-verify.
     if (phase === "escalate") {
-        if (member.name !== task.escalateTo) return          // stray idle
-        stage.verdict = undefined                            // clear stale verdict, re-evaluate
+        if (member.name !== task.escalateTo) return  // stray idle
+        stage.verdict = undefined                    // clear stale verdict, re-evaluate
         await startVerification(ctx, team, stage)
         return
     }
@@ -291,7 +294,8 @@ export async function handleTollgateIdle(
         if (await maybeRequestApproval(ctx, team, {
             kind: "tollgate_gate",
             stage: task.currentStageIndex,
-            summary: `Tollgate stage ${task.currentStageIndex} passed verification. Review before stage ${next} starts.`,
+            summary: `Tollgate stage ${task.currentStageIndex} passed verification. `
+                + `Review before stage ${next} starts.`,
         })) {
             return
         }
@@ -301,7 +305,7 @@ export async function handleTollgateIdle(
 
     if (v.verdict === "FAIL") {
         stage.attempts++
-        const maxR = task.maxGateRetries ?? 0                // distinct from provider-retry maxRetries
+        const maxR = task.maxGateRetries ?? 0  // distinct from provider-retry maxRetries
         if (stage.attempts > maxR) {
             // Retries exhausted -> fail the run.
             await finishRun(ctx, team, `tollgate_failed:${stage.member}`, "failed")

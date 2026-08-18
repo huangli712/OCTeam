@@ -7,7 +7,7 @@
  */
 
 import type { PluginContext } from "../../core/context.js"
-import { logger } from "../../core/log.js"
+import { logSwallowed } from "../../core/log.js"
 import type { MemberState } from "../../core/types.js"
 import { type Team, loadTeamState, saveTeamStateBounded } from "../../state/store.js"
 import { resolveTeamMember } from "../../state/resolve.js"
@@ -56,10 +56,9 @@ async function escalateMemberToErrored(
     try {
         await saveTeamStateBounded(team)
     } catch (err) {
-        logger.warn("retry escalation state save failed after retries", {
+        logSwallowed(ctx, "retry escalation state save failed after retries", err, {
             team: team.teamName,
             member: live.name,
-            error: err instanceof Error ? err.message : String(err),
         })
         // Save failed after retries — rollback in-memory status so the next
         // sweep re-attempts the escalation.
@@ -112,9 +111,11 @@ async function escalateMemberToErrored(
     try {
         await saveTeamStateBounded(team)
     } catch (err) {
-        logger.warn(
+        logSwallowed(
+            ctx,
             "maybeEscalateRetry: trailing save failed after retries",
-            { team: team.teamName, member: live.name, error: String(err) },
+            err,
+            { team: team.teamName, member: live.name },
         )
         throw err
     }
@@ -141,9 +142,11 @@ export async function handleStatusEvent(
         // ctx.storageRoot, which may point at the plugin's other active scope.
     team = await loadTeamState(member.storageRoot, member.teamName, member.leadSessionId)
     } catch (err) {
-        logger.warn(
+        logSwallowed(
+            ctx,
             "status handler: failed to load team state",
-            { teamName: member.teamName, error: String(err) },
+            err,
+            { teamName: member.teamName },
         )
         return
     }
