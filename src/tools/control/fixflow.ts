@@ -266,9 +266,17 @@ async function applyWorkflowFix(
     toMember: string | undefined,
 ): Promise<string> {
     const target = workflowRepairTarget(team)
-    if (target === null) return team.activeTask === undefined && team.lastInterruptedTask === undefined
-        ? `Error: team "${team.teamName}" has no active or interrupted workflow to fix`
-        : "Error: active task is not a workflow"
+    if (target === null) {
+        // workflowRepairTarget also returns null for a busy workflow with a
+        // pending approval; give that case its own message instead of the
+        // misleading "not a workflow" error.
+        if (isWorkflowTask(team.activeTask) && team.activeTask.approvalStage !== undefined) {
+            return "Error: cannot repair the workflow while an approval is pending; approve or reject it first"
+        }
+        return team.activeTask === undefined && team.lastInterruptedTask === undefined
+            ? `Error: team "${team.teamName}" has no active or interrupted workflow to fix`
+            : "Error: active task is not a workflow"
+    }
 
     const result = await dispatchWorkflowFixOp(ctx, team, target.task, op, step, reason, toMember)
     if (!result.startsWith("Error:")) {

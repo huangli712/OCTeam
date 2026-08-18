@@ -510,6 +510,31 @@ describe("team_fix_workflow", () => {
         expect(result).toContain("active task is not a workflow")
     })
 
+    test("rejects repair while an approval is pending with a specific message", async () => {
+        // Given
+        const root = tmpRoot("fix-wf-approval-pending")
+        const masterSid = "ses_fix_wf_ap_master"
+        const aliceSid = "ses_fix_wf_ap_alice"
+        tracked.push(masterSid, aliceSid)
+        const task = makeWorkflowTask({
+            approvalStage: true,
+            activeStepIndices: [0],
+            steps: [{ kind: "task", member: "alice", task: "pending work", completed: false, dispatchedAt: 1 }],
+        })
+        await setupTeam(root, masterSid, task, [makeMember("alice", aliceSid)])
+        const calls: DispatchCall[] = []
+
+        // When
+        const result = await teamFixWorkflowTool(makeCtx({ storageRoot: root, calls })).execute(
+            { team_id: "alpha", op: "redispatch", step: 1 },
+            makeToolContext(masterSid),
+        )
+
+        // Then
+        expect(result).toContain("while an approval is pending")
+        expect(calls).toBeEmpty()
+    })
+
     test("reassign swaps an active step's actor to another live member and redispatches", async () => {
         // Given
         const root = tmpRoot("fix-wf-reassign")

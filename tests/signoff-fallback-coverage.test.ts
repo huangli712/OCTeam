@@ -62,7 +62,7 @@ async function setupSignoffTeam(opts: {
 }
 
 describe("maybeTriggerSignoff: fallback to direct delivery (return false)", () => {
-    test("decider mode + decider member is errored → fail closed (signoffFailed)", async () => {
+        test("decider mode + decider member is errored → fail closed", async () => {
         const root = tmpRoot("signoff-decider-errored")
         const masterSid = "ses_signoff_master_1"
         tracked.push(masterSid)

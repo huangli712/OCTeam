@@ -41,9 +41,6 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
     if (!task) return false
     if (!task.signoffPolicy || task.signoffPolicy === "none") return false
     if (task.signoffStage) return true
-    // If a previous call set signoffFailed, the run is already
-    // terminated or needs termination. Don't re-enter signoff setup.
-    if (task.signoffFailed) return true
 
     const summary = await buildSummary(team, task, "pending_signoff")
     const reviewPrompt = buildSignoffReviewPrompt(summary)

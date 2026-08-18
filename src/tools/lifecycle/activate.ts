@@ -81,7 +81,7 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
                             .catch(err => {
                                 // Record sibling-load failures for the fail-closed check below
                                 // and log enough context to diagnose transient I/O or permission errors.
-                                logSwallowed(ctx, "team_activate: sibling load failed (treating as inactive)", err, {
+                                logSwallowed(ctx, "team_activate: sibling load failed (fail-closed: activation will be refused)", err, {
                                     siblingTeam: name,
                                     leadSessionId,
                                 })

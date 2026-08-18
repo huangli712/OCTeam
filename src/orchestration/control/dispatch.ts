@@ -56,11 +56,9 @@ export async function dispatchToMember(
     const origPromptDelivered = member.promptDelivered
     const origStatus = member.status
     const origTurnCount = member.turnCount
-    const origPromptSentAt = member.promptSentAt
     member.promptDelivered = true
     member.status = "running"
     member.turnCount++
-    member.promptSentAt = undefined  // clear the stale timestamp from the previous turn
     if (team) {
         recordEvent(team, {
             timestamp: Date.now(),
@@ -75,7 +73,6 @@ export async function dispatchToMember(
             member.status = origStatus
             member.turnCount = origTurnCount
             member.promptDelivered = origPromptDelivered
-            member.promptSentAt = origPromptSentAt
             throw err
         }
     }
@@ -94,10 +91,6 @@ export async function dispatchToMember(
             },
             query: { directory },
         })
-        // Record the successful prompt delivery timestamp. A running member
-        // without promptSentAt means the prompt was never sent (crash between
-        // persist-running and promptAsync); no resume path consumes this yet.
-        member.promptSentAt = Date.now()
     } catch (err) {
         // promptAsync failed after we persisted the dispatch intent. Rollback
         // to idle so the barrier can re-drive, and persist the rollback.

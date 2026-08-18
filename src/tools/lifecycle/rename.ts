@@ -183,16 +183,14 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                     team.teamName = args.team_id
                     team.directory = oldDir
                     // If the spec was written to the new directory with
-                    // the new name, restore the original spec.name and re-write
-                    // it BEFORE moving the directory back. Without this, the
-                    // moved-back directory's config.json would still carry the
-                    // new name, leaving an inconsistent state.json (name=A) /
-                    // config.json (name=B) pair.
-                    if (spec && originalSpecName !== undefined && spec.name !== originalSpecName) {
-                        // Rename the directory before writing the restored spec because
-                        // writeTeamSpec targets oldDir from the restored name. Writing
-                        // first would recreate oldDir and make the rename fail with EEXIST.
-                    }
+                    // the new name, restore the original spec.name after the
+                    // rename below. Writing the restored spec BEFORE the rename
+                    // would recreate oldDir (writeTeamSpec targets oldDir from
+                    // the restored name) and make the rename fail with EEXIST.
+                    // Without the restore, the moved-back directory's
+                    // config.json would still carry the new name, leaving an
+                    // inconsistent state.json (name=A) / config.json (name=B)
+                    // pair.
                     await fs.rename(newDir, oldDir).catch((rollbackErr) => {
                         logSwallowed(ctx, "rename rollback: fs.rename failed", rollbackErr, { oldDir, newDir })
                     })

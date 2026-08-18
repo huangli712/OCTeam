@@ -129,11 +129,9 @@ async function createApprovalPause(
     // resume approval stages. Bounded retries prevent transient session or
     // network failures from silently stranding a paused run.
     const NOTIFY_MAX_ATTEMPTS = 3
-    let notifyOk = false
     for (let attempt = 1; attempt <= NOTIFY_MAX_ATTEMPTS; attempt++) {
         try {
             await notifyLeader(ctx, team, request)
-            notifyOk = true
             break
         } catch (err) {
             if (attempt < NOTIFY_MAX_ATTEMPTS) {
@@ -147,7 +145,6 @@ async function createApprovalPause(
             }
         }
     }
-    void notifyOk
     return true
 }
 
