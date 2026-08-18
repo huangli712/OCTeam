@@ -19,7 +19,6 @@
 
 import { afterAll, describe, expect, mock, test } from "bun:test"
 import { writeFile } from "node:fs/promises"
-import path from "node:path"
 
 import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask, TeamSpec } from "../src/core/types.js"

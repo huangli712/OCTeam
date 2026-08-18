@@ -6,7 +6,7 @@
  *
  *   1. INTERNAL RUNTIME types (WorkflowStep, Verdict, WorkflowIssue, fanout/
  *      join metadata, ...) — consumed by the orchestration engine
- *      (workflow.ts, workflow-handler.ts, dag.ts, gate.ts, fanout.ts, etc.).
+ *      (engine.ts, handler.ts, dag.ts, gate.ts, fanout.ts, etc.).
  *
  *   2. EXTERNAL TOOL API types (WorkflowToolStep, WorkflowToolArgs, ...) —
  *      the format the LLM passes via team_workflow tool args and what a
@@ -19,8 +19,8 @@
 // ============================================================================
 // INTERNAL RUNTIME TYPES
 //
-// Consumed by the orchestration engine (workflow.ts, workflow-handler.ts,
-// dag.ts, gate.ts, fanout.ts, etc.).
+// Consumed by the orchestration engine (engine.ts, handler.ts, dag.ts,
+// gate.ts, fanout.ts, etc.).
 // ============================================================================
 
 // ---------------------------------------------------------------------------
@@ -96,8 +96,16 @@ export type WorkflowBranchRange = {
     readonly endIndex: number
 }
 
-/** Fanout join semantics: tolerance, all, quorum, any_success, required_branches, reduce, or select. */
-export type WorkflowJoinPolicy = "tolerance" | "all" | "quorum" | "any_success" | "required_branches" | "reduce" | "select"
+/** Fanout join semantics: tolerance, all, quorum, any_success,
+ * required_branches, reduce, or select. */
+export type WorkflowJoinPolicy =
+    | "tolerance"
+    | "all"
+    | "quorum"
+    | "any_success"
+    | "required_branches"
+    | "reduce"
+    | "select"
 
 /** Fanout marker metadata — branch ids, ranges, join index, and join policy. */
 export type WorkflowFanoutMetadata = {
@@ -106,10 +114,15 @@ export type WorkflowFanoutMetadata = {
     readonly joinIndex: number
     readonly maxErrored: number
     readonly joinPolicy?: WorkflowJoinPolicy
-    readonly quorum?: number                  // fraction of branches that must succeed (join_policy='quorum'), 0 < quorum <= 1
-    readonly requiredBranchIds?: readonly string[]  // branch ids that must succeed (join_policy='required_branches')
-    readonly reducerMember?: string           // member who aggregates branch outputs at join (join_policy='reduce' or 'select')
-    readonly useSurvivors?: boolean           // when true, strict join policies continue with surviving branches instead of failing on branch errors
+    // Fraction of branches that must succeed (join_policy='quorum'), 0 < quorum <= 1
+    readonly quorum?: number
+    // Branch ids that must succeed (join_policy='required_branches')
+    readonly requiredBranchIds?: readonly string[]
+    // Member who aggregates branch outputs at join (join_policy='reduce' or 'select')
+    readonly reducerMember?: string
+    // When true, strict join policies continue with surviving branches
+    // instead of failing on branch errors
+    readonly useSurvivors?: boolean
 }
 
 /** Per-branch metadata for a task/gate step inside a fanout. */
@@ -245,10 +258,11 @@ export type WorkflowStep =
 // EXTERNAL TOOL API TYPES
 //
 // The format the LLM passes via team_workflow tool args and what a
-// workflow_file JSON contains. lower.ts (tools/lower.ts) converts these into
-// the internal WorkflowStep defined above. Consumed by tools/workflow.ts
-// (tool definition + schema), tools/validate.ts (cross-field validation),
-// and orchestration/workflow/loader.ts (workflow_file JSON loader).
+// workflow_file JSON contains. lower.ts (tools/workflow/lower.ts) converts
+// these into the internal WorkflowStep defined above. Consumed by
+// tools/workflow/engine.ts (team_workflow tool implementation),
+// tools/workflow/validate.ts (cross-field validation), and
+// orchestration/workflow/loader.ts (workflow_file JSON loader).
 // ============================================================================
 
 // ---------------------------------------------------------------------------
@@ -295,7 +309,12 @@ export type WorkflowTaskToolStep = WorkflowToolStepBase & {
     readonly member?: string
     readonly fallback_member?: string
     readonly task?: string
-    readonly retry_on?: { readonly empty?: boolean; readonly output_contains?: string; readonly output_not_contains?: string; readonly regex?: string }
+    readonly retry_on?: {
+        readonly empty?: boolean
+        readonly output_contains?: string
+        readonly output_not_contains?: string
+        readonly regex?: string
+    }
     readonly max_task_retries?: number
 }
 
@@ -382,5 +401,8 @@ export type WorkflowToolArgs = {
     max_retries?: number
 }
 
-/** Resolved workflow args after loading steps from file and expanding matrix/foreach. */
-export type ResolvedWorkflowToolArgs = Omit<WorkflowToolArgs, "steps"> & { steps: readonly WorkflowToolStep[] }
+/** Resolved workflow args after loading steps from file and expanding
+ * matrix/foreach. */
+export type ResolvedWorkflowToolArgs = Omit<WorkflowToolArgs, "steps"> & {
+    steps: readonly WorkflowToolStep[]
+}
