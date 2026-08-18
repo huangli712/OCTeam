@@ -249,10 +249,14 @@ export async function handleSignoffIdle(
         })
         if (failures < MAX_SIGNOFF_PARSE_FAILURES) {
             if (task.signoffApprovals) delete task.signoffApprovals[member.name]
+            const retryPrompt = `[Signoff format retry]\n`
+                + `Your previous signoff was malformed or missing. `
+                + `Emit exactly one `
+                + `<signoff>{"approved": true|false, "rationale": "..."}</signoff> block.`
             await dispatchToMember(
                 ctx,
                 member,
-                `[Signoff format retry]\nYour previous signoff was malformed or missing. Emit exactly one <signoff>{"approved": true|false, "rationale": "..."}</signoff> block.`,
+                retryPrompt,
                 member.worktreePath ?? ctx.directory,
                 team,
             )
