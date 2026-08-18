@@ -154,7 +154,8 @@ export async function handleRouteIdle(
         })
         if (await maybeRequestApproval(ctx, team, {
             kind: "route_decision",
-            summary: `Router ${task.routerMember ?? "unknown"} selected target member(s): ${task.routeTargets.join(", ")}.\n\nRationale: ${decision.rationale}`,
+            summary: `Router ${task.routerMember ?? "unknown"} selected target member(s): `
+                + `${task.routeTargets.join(", ")}.\n\nRationale: ${decision.rationale}`,
         })) {
             return
         }
