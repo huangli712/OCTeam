@@ -25,6 +25,7 @@ import type {
     WorkflowStepKind,
     Verdict,
 } from "./workflow.js"
+
 import type { TaskStatus } from "./task.js"
 
 /** Per-branch status within a workflow fanout. */
@@ -132,7 +133,11 @@ export type RunRecord = {
     // because their basenames are not member names. Paths are relative to
     // runs/<runId>/, like memberOutputs.file. signoff maps each reviewer that
     // contributed a verdict to the shared signoff.md.
-    artifacts?: { reduce?: string; signoff?: Record<string, string>; join?: Record<string, string> }
+    artifacts?: {
+        reduce?: string
+        signoff?: Record<string, string>
+        join?: Record<string, string>
+    }
     // delegate snapshot of the shared task list at completion
     tasks?: Array<{ id: string; subject: string; status: TaskStatus; owner?: string }>
     // workflow snapshot of the step ledger at completion/failure
@@ -165,23 +170,23 @@ export type RunRecord = {
 
 /** Append-only run timeline event kind for events.jsonl. */
 export type RunEventKind =
-    | "dispatched"      // a member was prompted with a task
-    | "captured"        // a member's output was captured
-    | "retry"           // a sustained-retry grace window was consumed
-    | "errored"         // a member was marked terminally errored
-    | "stage_advanced"  // pipeline/loop moved to a new stage
-    | "round"           // consensus/loop incremented the round
-    | "signoff"         // a signoff review stage was triggered
-    | "approval_requested" // a human approval pause was requested
-    | "approval_resolved"  // a human approval request was approved/rejected
-    | "terminated"      // the orchestration ended (any reason)
-    | "routed"          // router selected target branch(es) (route mode)
-    | "arbitrated"      // arbiter issued a binding ruling (arbitrate mode)
-    | "decomposed"      // a task was split into subtasks (recurse mode)
-    | "aggregated"      // the root task was finalized after all subtasks completed (recurse mode)
-    | "aggregation_stalled"  // decomposer failed to claim+aggregate root after dispatch cap (recurse mode)
-    | "verdict"         // a gate produced a PASS/FAIL/INVALID verdict (tollgate mode)
-    | "repaired"        // team_fix_workflow performed a surgical repair op
+    | "dispatched"                     // a member was prompted with a task
+    | "captured"                       // a member's output was captured
+    | "retry"                          // a sustained-retry grace window was consumed
+    | "errored"                        // a member was marked terminally errored
+    | "stage_advanced"                 // pipeline/loop moved to a new stage
+    | "round"                          // consensus/loop incremented the round
+    | "signoff"                        // a signoff review stage was triggered
+    | "approval_requested"             // a human approval pause was requested
+    | "approval_resolved"              // a human approval request was approved/rejected
+    | "terminated"                     // the orchestration ended (any reason)
+    | "routed"                         // router selected target branch(es) (route mode)
+    | "arbitrated"                     // arbiter issued a binding ruling (arbitrate mode)
+    | "decomposed"                     // a task was split into subtasks (recurse mode)
+    | "aggregated"                     // the root task was finalized after all subtasks completed (recurse mode)
+    | "aggregation_stalled"            // decomposer failed to claim+aggregate root after dispatch cap (recurse mode)
+    | "verdict"                        // a gate produced a PASS/FAIL/INVALID verdict (tollgate mode)
+    | "repaired"                       // team_fix_workflow performed a surgical repair op
 
 /** A single entry in the append-only run timeline (events.jsonl). */
 export type RunEvent = {

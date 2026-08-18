@@ -466,12 +466,6 @@ export const DEFAULT_ROLE = "reviewer"
  */
 export const ROLE_NAMES: readonly string[] = Object.freeze(Object.keys(ROLES))
 
-// Freeze each RoleDef because Object.freeze(ROLES) protects only the top-level
-// record; individual role objects would otherwise remain mutable.
-for (const def of Object.values(ROLES)) {
-    Object.freeze(def)
-}
-
 /**
  * All hardened oct-* agent names used by OCTeam roles. Derived from ROLES so
  * the allowlist stays in sync as new roles/agents are added. This is the single
@@ -491,6 +485,12 @@ export const OCTEAM_AGENTS: readonly string[] = Object.freeze(
  * never escalates to a full-capability host agent.
  */
 const SAFE_FALLBACK_AGENT: string = roleAgent(DEFAULT_ROLE)
+
+// Freeze each RoleDef because Object.freeze(ROLES) protects only the top-level
+// record; individual role objects would otherwise remain mutable.
+for (const def of Object.values(ROLES)) {
+    Object.freeze(def)
+}
 
 /**
  * Normalize a role label to a preset role key. Matching is case-insensitive;

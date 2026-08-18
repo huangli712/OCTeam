@@ -282,21 +282,20 @@ export interface ActiveTaskBase {
     runId?: string
 }
 
-// parallel: fan-out then converge. `tasks` is cooperative per-member work.
-/** Fan-out parallel orchestration — all members work in parallel then converge. */
+/** Fan-out parallel orchestration — all members work in parallel then
+ * converge. `tasks` is cooperative per-member work. */
 export interface ParallelTask extends ActiveTaskBase {
     type: "parallel"
     tasks?: Record<string, string>           // cooperative: { memberName: task }
     reduceRetries?: number                   // consecutive empty-output reducer re-dispatches
 }
 
-// pipeline: ordered stages, output prefixed forward.
-/** Linear pipeline — each stage's output feeds the next stage's input. */
+/** Linear pipeline — ordered stages; each stage's output is prefixed onto
+ * the next stage's input. */
 export interface PipelineTask extends ActiveTaskBase {
     type: "pipeline"
 }
 
-// loop: corrective code -> review -> decide cycle.
 /** Corrective loop — code, review, decide, repeat until done. */
 export interface LoopTask extends ActiveTaskBase {
     type: "loop"
@@ -304,13 +303,11 @@ export interface LoopTask extends ActiveTaskBase {
     maxDecisionParseFailures?: number       // override default parse-failure threshold (default 3)
 }
 
-// delegate: shared tasklist, members self-claim.
 /** Delegate mode — publish tasks to a shared tasklist, members self-claim. */
 export interface DelegateTask extends ActiveTaskBase {
     type: "delegate"
 }
 
-// consensus: multi-round debate to agreement.
 /** Multi-round structured debate until all members reach consensus. */
 export interface ConsensusTask extends ActiveTaskBase {
     type: "consensus"
@@ -318,7 +315,6 @@ export interface ConsensusTask extends ActiveTaskBase {
     consensusReached?: boolean               // set when all members emit agreed consensus
 }
 
-// route: content-based routing to selected branches.
 /** Content-based routing — a router inspects input and selects branch(es). */
 export interface RouteTask extends ActiveTaskBase {
     type: "route"
@@ -330,7 +326,6 @@ export interface RouteTask extends ActiveTaskBase {
     maxRouteParseFailures?: number           // override default parse-failure threshold (default 2)
 }
 
-// arbitrate: debate then authoritative ruling.
 /** Binding arbitration — debaters argue, an arbiter issues a ruling. */
 export interface ArbitrateTask extends ActiveTaskBase {
     type: "arbitrate"
@@ -343,7 +338,6 @@ export interface ArbitrateTask extends ActiveTaskBase {
     maxRulingParseFailures?: number          // override default ruling parse-failure threshold (default 2)
 }
 
-// recurse: hierarchical recursive decomposition.
 /** Hierarchical recursive decomposition with a blockedBy DAG. */
 export interface RecurseTask extends ActiveTaskBase {
     type: "recurse"
@@ -361,9 +355,8 @@ export interface RecurseTask extends ActiveTaskBase {
     forcedDirectDecomposeAttempts?: Record<string, number>
 }
 
-// tollgate: verdict-gated pipeline (produce -> verify -> escalate). A gated
-// pipeline where advancing depends on a verifier's verdict, not just completion.
-/** Verdict-gated pipeline — advancing depends on a verifier's verdict, not just completion. */
+/** Verdict-gated pipeline (produce -> verify -> escalate) — advancing
+ * depends on a verifier's verdict, not just completion. */
 export interface TollgateTask extends ActiveTaskBase {
     type: "tollgate"
     gatedStages: GatedStage[]                 // linear stages, each with its own verification gate
@@ -373,22 +366,25 @@ export interface TollgateTask extends ActiveTaskBase {
     maxInvalidCycles?: number                // cap on INVALID/escalate ping-pong per gate (default 3); beyond it the run fails with tollgate_invalid:exhausted instead of looping to wall-clock
 }
 
-// workflow: deterministic, declaratively-composed step engine. Linear workflows
-// remain the degenerate case; fanout/join marker steps allow a persisted active
-// frontier without introducing a separate orchestration primitive.
-/** Declarative workflow orchestration — a task/gate/fanout/join step engine. */
+/**
+ * Declarative workflow orchestration — a task/gate/fanout/join step engine.
+ * Linear workflows remain the degenerate case; fanout/join marker steps
+ * allow a persisted active frontier without a separate orchestration
+ * primitive.
+ */
 export interface WorkflowTask extends ActiveTaskBase {
     type: "workflow"
     steps: WorkflowStep[]                    // declarative step list; currentStageIndex is the cursor
     activeStepIndices?: number[]             // persisted active frontier for fanout/join; legacy readers fall back to [currentStageIndex]
 }
 
-// arena: N candidates implement competing solutions in isolated worktrees
-// (implement phase), then a dedicated evaluator scores every candidate and a
-// deterministic winner is selected over the evaluator-attested scoreboard
-// (evaluate phase). ArenaCandidateScore / ArenaScoreboard are the evaluator's
-// structured report shape.
-/** Competitive arena — N candidates implement competing solutions, one winner selected. */
+/**
+ * Competitive arena — N candidates implement competing solutions in
+ * isolated worktrees (implement phase), then a dedicated evaluator scores
+ * every candidate and a deterministic winner is selected over the
+ * evaluator-attested scoreboard (evaluate phase). ArenaCandidateScore /
+ * ArenaScoreboard are the evaluator's structured report shape.
+ */
 export interface ArenaTask extends ActiveTaskBase {
     type: "arena"
     task: string                             // required: shared implement task (narrows the optional Base field)
@@ -406,10 +402,12 @@ export interface ArenaTask extends ActiveTaskBase {
     winner?: string                          // deterministically selected winner name
 }
 
-// quorum: N members independently vote on a fixed-schema question; the option
-// with strict majority (k > valid_ballots/2) wins. Invalid ballots AND runtime
-// errors both abstain (excluded from the denominator, not counted as no-votes).
-/** Replicated voting — k-of-n majority ballot on a fixed-schema question. */
+/**
+ * Replicated voting — N members independently ballot on a fixed-schema
+ * question; the option with strict majority (k > valid_ballots/2) wins.
+ * Invalid ballots and runtime errors both abstain (excluded from the
+ * denominator, not counted as no-votes).
+ */
 export interface QuorumTask extends ActiveTaskBase {
     type: "quorum"
     task: string                             // required: the voting question (narrows the optional Base field)

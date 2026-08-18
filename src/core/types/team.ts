@@ -83,11 +83,11 @@ export type TeamState = {
     bounds: Bounds                     // resource limits
     createdAt: number
     startedAt?: number                 // when first task started
-    runnerPid?: number                  // PID of the OpenCode process running the
-                                        // active orchestration. Set at startup, cleared
-                                        // by finishRun. Reconciler checks process liveness
-                                        // via this PID to distinguish crashed from live
-                                        // sibling processes.
+    runnerPid?: number                 // PID of the OpenCode process running the
+                                       // active orchestration. Set at startup, cleared
+                                       // by finishRun. Reconciler checks process liveness
+                                       // via this PID to distinguish crashed from live
+                                       // sibling processes.
     activatedAt?: number               // epoch ms; presence ⇒ "available" team for its
                                        // leadSessionId. INVARIANT: ≤1 team per leadSessionId
                                        // has this set. Enforced by team_activate (refuses if a

@@ -14,16 +14,16 @@ export type TaskStatus = "pending" | "claimed" | "in_progress" | "completed" | "
 /** A task in the shared cooperative tasklist with optional blockedBy dependencies. */
 export type Task = {
     version: 1
-    id: string                         // UUID
-    runId?: string                     // orchestration run that created the task
+    id: string                     // UUID
+    runId?: string                 // orchestration run that created the task
     subject: string
     description: string
     status: TaskStatus
-    owner?: string                     // member name who claimed
-    blockedBy: string[]                // task IDs that must complete first
+    owner?: string                 // member name who claimed
+    blockedBy: string[]            // task IDs that must complete first
     createdAt: number
     updatedAt: number
     claimedAt?: number
-    depth?: number                     // recursion level (root = 0; child = parent + 1)
-    result?: string                    // completed-task output (read by aggregating parents)
+    depth?: number                 // recursion level (root = 0; child = parent + 1)
+    result?: string                // completed-task output (read by aggregating parents)
 }

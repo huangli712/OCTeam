@@ -1,5 +1,5 @@
 /**
- * Regression test for C-11: project scope control-state isolation must be
+ * Regression test for project scope control-state isolation: it must be
  * surfaced to operators at startup.
  *
  * The default storage scope is "project": control state lives under
@@ -22,7 +22,7 @@
 
 import { describe, expect, test } from "bun:test"
 
-describe("C-11: project scope startup warning", () => {
+describe("project scope startup warning", () => {
     test("project scope emits a threat-model warning at startup", async () => {
         const warnings: Array<{ level: string; message: string; extra?: Record<string, unknown> }> = []
         const fakeCtx = {

@@ -16,6 +16,7 @@
  * via OCTEAM_LOG_LEVEL env var or setLogLevel()) gates every path so noisy
  * debug calls can be silenced in production without code changes.
  */
+
 import type { PluginContext } from "./context.js"
 
 // ---------------------------------------------------------------------------

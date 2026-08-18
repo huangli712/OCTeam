@@ -30,7 +30,9 @@ export function waitUntil(
     opts: { timeoutMs: number; pollMs?: number; signal?: AbortSignal },
 ): Promise<void> {
     if (!Number.isFinite(opts.timeoutMs) || opts.timeoutMs < 0) {
-        return Promise.reject(new Error(`waitUntil: invalid timeoutMs ${opts.timeoutMs} (must be finite and >= 0)`))
+        return Promise.reject(new Error(
+            `waitUntil: invalid timeoutMs ${opts.timeoutMs} (must be finite and >= 0)`,
+        ))
     }
     // Check AbortSignal for early cancellation.
     if (opts.signal?.aborted) {

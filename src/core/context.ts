@@ -1,8 +1,6 @@
 /**
- * Construct the shared PluginContext from host-provided PluginInput — the
- * single context object passed to every tool handler, event handler, and
- * transform hook. Also defines StorageScope, the storage scope enum consumed
- * by PluginContext.
+ * The shared PluginContext built from host-provided PluginInput, plus the
+ * StorageScope enum and its scope-warning helper.
  */
 
 import os from "node:os"
@@ -17,13 +15,9 @@ import { logEvent } from "./log.js"
 export type StorageScope = "user" | "project"
 
 /**
- * Closure-style context shared by every tool handler, event handler, and the
- * transform hook. Built once per plugin load from the host-provided PluginInput
- * and captured in the server module's Hooks closures.
- *
- * Design note: PluginInput already provides the SDK client directly (no need to
- * construct one or discover the server URL), so PluginContext is a thin capture
- * of client + directory + the resolved storage roots.
+ * Context object shared by every tool handler, event handler, and transform
+ * hook. A thin capture of the host-provided SDK client, project directory,
+ * and resolved storage roots.
  */
 export type PluginContext = {
     readonly client: OpencodeClient
@@ -44,21 +38,11 @@ export type PluginContext = {
 /**
  * Construct a PluginContext from the host-provided PluginInput.
  *
- * Default scope is "project": teams are bound to the project working directory
- * (members operate in that dir, so co-locating state under <dir>/.octeam keeps
- * everything portable and per-repo). Pass "user" to store teams under ~/.octeam
- * instead (shared across projects).
- *
- * Threat-model note: project scope places control state under
- * <input.directory>/.octeam/ — the same project directory that member agents
- * (oct-junior, oct-deep) can write to via their edit/bash tools. A malicious
- * member can tamper with mailbox JSONL, state.json, workflow_file, etc. The
- * plugin's in-process defenses (assertNoSymlinkTraversal, directive auth,
- * master-identity-from-directory, agent-preset hardening, etc.) raise the bar
- * but cannot fully prevent FS-level tampering from a same-process agent. The
- * robust mitigation is host-side: exclude .octeam/ from member write paths
- * via the OpenCode permission layer. When that is not possible, prefer user
- * scope (~/.octeam, outside the project dir) — see {@link warnIfProjectScopeLacksIsolation}.
+ * Default scope is "project": team state co-locates with the project
+ * directory (<dir>/.octeam); pass "user" to store teams under ~/.octeam
+ * instead (shared across projects). Project scope places control state in a
+ * member-writable directory — see {@link warnIfProjectScopeLacksIsolation}
+ * for the threat model and mitigations.
  */
 export function createPluginContext(
     input: PluginInput,
@@ -79,15 +63,9 @@ export function createPluginContext(
 }
 
 /**
- * Emit a one-time startup warning when project scope is active, surfacing the
- * control-state isolation threat model. The warning explains that .octeam/
- * lives inside the project directory that member agents can write to, points
- * to the available mitigations (switch to user scope, or restrict member
- * write paths at the host level), and notes that the plugin's in-process
- * defenses raise the bar but are not a substitute for
- * filesystem-level isolation.
- *
- * No-op for user scope (control state is already outside the project dir).
+ * Emit a one-time startup warning when project scope is active. No-op for
+ * user scope. The full threat model and mitigation guidance live in the
+ * warning text itself (see the logEvent payload below).
  */
 export function warnIfProjectScopeLacksIsolation(
     ctx: PluginContext,
@@ -95,7 +73,7 @@ export function warnIfProjectScopeLacksIsolation(
     projectStorageRoot: string,
 ): void {
     if (scope !== "project") return
-    logEvent(ctx, "warn", "C-11 project scope: control state lives inside the member-writable project directory", {
+    logEvent(ctx, "warn", "project scope: control state lives inside the member-writable project directory", {
         projectStorageRoot,
         threatModel: "Member agents (oct-junior, oct-deep) with edit/bash tools can write to .octeam/. "
             + "A malicious member can tamper with mailbox JSONL, state.json, workflow_file, etc. "
