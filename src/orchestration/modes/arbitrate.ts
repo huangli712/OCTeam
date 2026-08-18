@@ -33,6 +33,8 @@ import type { CaptureMemberOutputResult } from "../records/capture.js"
 
 /** Max consecutive arbiter ruling parse failures before aborting the run. */
 const MAX_RULING_PARSE_FAILURES = 2
+
+/** Byte cap on the arbiter's ruling prompt (prefix + positions + suffix). */
 const ARBITER_PROMPT_TOTAL_CAP = 65_536
 
 /**
@@ -101,7 +103,13 @@ export async function handleArbitrateIdle(
                         const m = team.members.find(mm => mm.name === name)
                         if (m?.sessionId && m.status !== "running") {
                             try {
-                                await dispatchToMember(ctx, m, buildDebatePrompt({ ...task, currentRound: task.currentRound ?? 1 }), m.worktreePath ?? ctx.directory, team)
+                                await dispatchToMember(
+                                    ctx,
+                                    m,
+                                    buildDebatePrompt({ ...task, currentRound: task.currentRound ?? 1 }),
+                                    m.worktreePath ?? ctx.directory,
+                                    team,
+                                )
                             } catch (err) {
                                 logSwallowed(ctx, "arbitrate: re-dispatch failed", err, { member: name })
                             }
@@ -119,7 +127,8 @@ export async function handleArbitrateIdle(
                 const hitlPhase = task.hitlPhase ?? "pre"
                 if ((hitlPhase === "pre" || hitlPhase === "both") && await maybeRequestApproval(ctx, team, {
                     kind: "arbitrate_ruling",
-                    summary: `Arbitration debate complete after ${task.currentRound} round(s) on "${task.task ?? ""}". Review the debate before the arbiter issues a binding ruling.`,
+                    summary: `Arbitration debate complete after ${task.currentRound} round(s) on "${task.task ?? ""}". `
+                        + `Review the debate before the arbiter issues a binding ruling.`,
                 })) {
                     return
                 }
@@ -182,7 +191,12 @@ export async function handleArbitrateIdle(
                     m.status = "errored"
                     m.error = "debate dispatch failed"
                     task.dispatchedParticipants.push(name)
-                    logSwallowed(ctx, "arbitrate: dispatch failed for disputant (marked errored)", err, { member: name, round: nextRound })
+                    logSwallowed(
+                        ctx,
+                        "arbitrate: dispatch failed for disputant (marked errored)",
+                        err,
+                        { member: name, round: nextRound },
+                    )
                 }
             }
             await saveTeamState(team)
