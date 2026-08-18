@@ -38,6 +38,16 @@ export const oracleAgent: OcteamAgentConfig = {
     color: "#ff8c00",
     permission: {
         "*": "deny",
+        // Team collaboration tools. They are instance-global (Hooks.tool);
+        // these explicit allows keep them usable once the host SDK starts
+        // honoring wildcard/unknown permission keys (v1.4.7 silently ignores
+        // them, so "*": "deny" does not block team tools yet — but an SDK
+        // upgrade would cut members off without these entries).
+        team_send_message: "allow",
+        team_task_create: "allow",
+        team_task_list: "allow",
+        team_task_update: "allow",
+        team_task_get: "allow",
         edit: "deny",
         task: "deny",
         bash: "deny",
