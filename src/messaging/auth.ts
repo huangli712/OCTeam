@@ -11,10 +11,6 @@
 import type { Message } from "../core/types.js"
 import { logger } from "../core/log.js"
 
-// Cap on tracked authentications; over-cap entries are evicted oldest-first
-// (aged before fresh). 512 entries ≈ 42 broadcasts to a 12-member team.
-const AUTH_DIRECTIVE_MAP_CAP = 512
-const AUTH_MIN_AGE_MS = 60_000
 /** Authenticated directive content; every field is re-checked against the
  * replayed line on authentication. */
 type AuthDirectiveRecord = {
@@ -27,6 +23,13 @@ type AuthDirectiveRecord = {
     ts: number
 }
 
+/** Max tracked authentications; overflow evicts oldest-first (aged first). */
+const AUTH_DIRECTIVE_MAP_CAP = 512
+
+/** Age beyond which an entry is preferred for eviction under cap pressure. */
+const AUTH_MIN_AGE_MS = 60_000
+
+/** The registry itself: authKey → authenticated directive content. */
 const authenticatedDirectives = new Map<string, AuthDirectiveRecord>()
 
 /** Registry key of team + recipient + id: broadcast recipients authenticate
