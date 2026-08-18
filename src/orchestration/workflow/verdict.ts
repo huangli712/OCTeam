@@ -8,13 +8,20 @@
  */
 
 import type { PluginContext } from "../../core/context.js";
-import { type Team, saveTeamState } from "../../state/store.js";
 import type {
     MemberState,
     WorkflowStep,
     WorkflowGateStep,
     WorkflowTask,
 } from "../../core/types.js";
+import { finishRun } from "../control/completion.js";
+import {
+    forceApprovalRequest,
+    maybeRequestApproval
+} from "../control/approval.js";
+import { type Team, saveTeamState } from "../../state/store.js";
+import { recordEvent } from "../records/events.js";
+import { parseVerdict } from "../protocol/decisions.js";
 import {
     advanceWorkflowStep,
     describeStep,
@@ -38,10 +45,6 @@ import {
     workflowGateFailReason,
     workflowInvalidReason,
 } from "./reasons.js";
-import { finishRun } from "../control/completion.js";
-import { recordEvent } from "../records/events.js";
-import { parseVerdict } from "../protocol/decisions.js";
-import { forceApprovalRequest, maybeRequestApproval } from "../control/approval.js";
 import {
     handleWorkflowDispatchUnavailable,
     markWorkflowStepCompleted,

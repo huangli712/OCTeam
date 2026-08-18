@@ -14,6 +14,7 @@
  * Re-driven by status.ts:escalateMemberToErrored on tolerated runtime errors
  * so the barrier can re-check readiness (otherwise hang until wall-clock).
  */
+
 import { extractTaggedJSON } from "../protocol/decisions.js"
 import type { PluginContext } from "../../core/context.js"
 import { type Team } from "../../state/store.js"
