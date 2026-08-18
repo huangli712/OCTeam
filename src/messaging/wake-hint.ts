@@ -12,6 +12,7 @@ import { logger } from "../core/log.js"
 // Minimum gap between wake hints sent to the same session. Prevents wake loops
 // where a long unread backlog keeps re-triggering promptAsync on every sweep.
 const WAKE_HINT_THROTTLE_MS = 30_000
+
 // Bound the promptAsync call so a hanging host API does not leave
 // an unresolved promise indefinitely. Fire-and-forget wake hints should
 // never block the caller.

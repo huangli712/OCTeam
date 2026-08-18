@@ -16,7 +16,7 @@ const mockedFs = {
     // Mock fs.open to intercept processed.jsonl writes. appendJsonl now uses
     // fd-based open+appendFile (handle.appendFile) instead of fs.appendFile,
     // so the mock must intercept at the open level.
-    open: (async (file: Parameters<typeof realFs.open>[0], flags: Parameters<typeof realFs.open>[1] | Parameters<typeof realFs.open>[1], ...rest: unknown[]) => {
+    open: (async (file: Parameters<typeof realFs.open>[0], flags: Parameters<typeof realFs.open>[1]) => {
         const filePath = String(file)
         const realHandle = await realFs.open(file as Parameters<typeof realFs.open>[0], flags as Parameters<typeof realFs.open>[1])
         if (

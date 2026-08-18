@@ -53,7 +53,7 @@ function workflowFilePath(dir: string): string {
 }
 
 const require = createRequire(import.meta.url)
-const realLocks: typeof import("../src/state/locks.js") = require("../src/state/locks.js")
+const realLocks = require("../src/state/locks.js") as typeof import("../src/state/locks.js")
 const realAtomicWrite = realLocks.atomicWrite
 const atomicWritePaths: string[] = []
 let failingTeamPath: string | undefined

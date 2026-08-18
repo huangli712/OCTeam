@@ -92,7 +92,13 @@ export async function deliverToRecipients(
         // Throw BackpressureError for the first backpressured recipient so the
         // caller (intervene.ts / send_message) can return its specific message.
         // The remaining recipients were still delivered.
-        throw new BackpressureError(backpressureFailures[0], `recipient "${backpressureFailures[0]}" mailbox is full (backpressure)${backpressureFailures.length > 1 ? ` (also: ${backpressureFailures.slice(1).join(", ")})` : ""}`)
+        const also = backpressureFailures.length > 1
+            ? ` (also: ${backpressureFailures.slice(1).join(", ")})`
+            : ""
+        throw new BackpressureError(
+            backpressureFailures[0],
+            `recipient "${backpressureFailures[0]}" mailbox is full (backpressure)${also}`,
+        )
     }
     if (failures.length > 0) {
         throw new Error(`delivery failed for: ${failures.join(", ")}`)

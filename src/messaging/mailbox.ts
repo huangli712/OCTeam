@@ -35,7 +35,12 @@ import path from "node:path"
 import { createInterface } from "node:readline"
 
 import { isEnoent } from "../core/utils.js"
-import { assertNoSymlinkTraversal, RESERVATION_TTL_MS, atomicWrite, withLock } from "../state/locks.js"
+import { 
+    assertNoSymlinkTraversal,
+    RESERVATION_TTL_MS,
+    atomicWrite,
+    withLock
+} from "../state/locks.js"
 import {
     inboxPath,
     mailboxLockPath,
@@ -44,9 +49,33 @@ import {
     reservedPath,
 } from "../state/paths.js"
 import type { Message } from "../core/types.js"
-import { authenticateDirective, consumeDirectiveAuth } from "./auth.js"
-import { appendJsonl, readJsonl, truncateFile } from "./jsonl.js"
+import {
+    authenticateDirective,
+    consumeDirectiveAuth
+} from "./auth.js"
+import {
+    appendJsonl,
+    readJsonl,
+    truncateFile
+} from "./jsonl.js"
 import { logger } from "../core/log.js"
+
+/**
+ * Cap mailbox/{recipient}.processed.jsonl by AGE, not line count. Keeps
+ * entries younger than PROCESSED_RETENTION_MS so the dedup window in
+ * releaseStaleReservations always covers any in-flight reservation whose
+ * TTL is RESERVATION_TTL_MS = 30s, even under high message volume.
+ * Reservations can survive up to ~2× TTL past expiry (the stale-reaper
+ * checks periodically), so four TTL intervals leave room for delayed
+ * reaper cycles.
+ */
+const PROCESSED_RETENTION_MS = RESERVATION_TTL_MS * 4
+
+/** Size ceiling above which processed.jsonl is compacted by bytes. */
+const PROCESSED_MAX_BYTES = 1_048_576
+
+/** Tail window (bytes) kept when compacting an oversized processed.jsonl. */
+const PROCESSED_RETENTION_BYTES = 512 * 1024
 
 /** Raised when a recipient's mailbox exceeds its configured byte limit. */
 export class BackpressureError extends Error {
@@ -275,20 +304,13 @@ export async function ackMessages(
 }
 
 /**
- * Cap mailbox/{recipient}.processed.jsonl by AGE, not line count. Keeps
- * entries younger than PROCESSED_RETENTION_MS so the dedup window in
- * releaseStaleReservations always covers any in-flight reservation whose
- * TTL is RESERVATION_TTL_MS = 30s, even under high message volume.
+ * Prune a recipient's processed.jsonl audit/dedup log. Prunes by age
+ * (see PROCESSED_RETENTION_MS) and, when the file exceeds
+ * PROCESSED_MAX_BYTES, compacts it to the most recent
+ * PROCESSED_RETENTION_BYTES tail window. Lines for messages with an
+ * active reservation are always retained so they cannot be requeued.
  * Caller MUST hold the mailbox lock.
  */
-// Retention must cover the worst-case reservation lifetime.
-// Reservations have TTL = RESERVATION_TTL_MS (30s); the stale-reaper checks
-// periodically, so a reservation can survive up to ~2× TTL past expiry.
-// Four TTL intervals leave room for delayed reaper cycles.
-const PROCESSED_RETENTION_MS = RESERVATION_TTL_MS * 4
-const PROCESSED_MAX_BYTES = 1_048_576
-const PROCESSED_RETENTION_BYTES = 512 * 1024
-
 async function pruneProcessedLogUnlocked(teamDirectory: string, recipient: string): Promise<void> {
     const p = processedPath(teamDirectory, recipient)
     // processedPath is a leaf under <team>/mailbox; the mailbox lock

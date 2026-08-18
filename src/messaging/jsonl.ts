@@ -12,28 +12,6 @@ import { atomicWrite, refuseSymlink, safeReadFile } from "../state/locks.js"
 import { isSafePathSegment } from "../state/paths.js"
 import type { Message } from "../core/types.js"
 
-/** Append a JSON object as a single line to filePath. */
-export async function appendJsonl(filePath: string, obj: unknown, trustedRoot?: string): Promise<void> {
-    await refuseSymlink(filePath, trustedRoot)
-    await fs.mkdir(path.dirname(filePath), { recursive: true })
-    // An fd-based open with O_NOFOLLOW|O_NONBLOCK|O_APPEND rejects leaf
-    // symlinks and FIFOs. stat-on-fd eliminates TOCTOU between check and
-    // write. handle.appendFile uses the same fd for atomic verify+write.
-    const noFollow = (fs.constants as { O_NOFOLLOW?: number }).O_NOFOLLOW ?? 0
-    const nonBlock = (fs.constants as { O_NONBLOCK?: number }).O_NONBLOCK ?? 0
-    const flags = fs.constants.O_WRONLY | fs.constants.O_APPEND | fs.constants.O_CREAT | noFollow | nonBlock
-    const handle = await fs.open(filePath, flags)
-    try {
-        const stat = await handle.stat()
-        if (!stat.isFile()) throw new Error(`appendJsonl: not a regular file: ${filePath}`)
-        await handle.appendFile(Buffer.from(JSON.stringify(obj) + "\n", "utf8"))
-    } finally {
-        await handle.close().catch((err: unknown) => {
-            logger.warn("appendJsonl: failed to close file handle", { filePath, error: err instanceof Error ? err.message : String(err) })
-        })
-    }
-}
-
 /**
  * Schema check for a mailbox Message. Each jsonl line is parsed and cast
  * to Message; a corrupt or tampered line can be valid JSON yet miss the
@@ -95,6 +73,28 @@ function isValidMessage(value: unknown): value is Message {
         m.deliveryStatus = "pending"
     }
     return true
+}
+
+/** Append a JSON object as a single line to filePath. */
+export async function appendJsonl(filePath: string, obj: unknown, trustedRoot?: string): Promise<void> {
+    await refuseSymlink(filePath, trustedRoot)
+    await fs.mkdir(path.dirname(filePath), { recursive: true })
+    // An fd-based open with O_NOFOLLOW|O_NONBLOCK|O_APPEND rejects leaf
+    // symlinks and FIFOs. stat-on-fd eliminates TOCTOU between check and
+    // write. handle.appendFile uses the same fd for atomic verify+write.
+    const noFollow = (fs.constants as { O_NOFOLLOW?: number }).O_NOFOLLOW ?? 0
+    const nonBlock = (fs.constants as { O_NONBLOCK?: number }).O_NONBLOCK ?? 0
+    const flags = fs.constants.O_WRONLY | fs.constants.O_APPEND | fs.constants.O_CREAT | noFollow | nonBlock
+    const handle = await fs.open(filePath, flags)
+    try {
+        const stat = await handle.stat()
+        if (!stat.isFile()) throw new Error(`appendJsonl: not a regular file: ${filePath}`)
+        await handle.appendFile(Buffer.from(JSON.stringify(obj) + "\n", "utf8"))
+    } finally {
+        await handle.close().catch((err: unknown) => {
+            logger.warn("appendJsonl: failed to close file handle", { filePath, error: err instanceof Error ? err.message : String(err) })
+        })
+    }
 }
 
 /** Read and parse all message lines from filePath. Returns [] on ENOENT. */
