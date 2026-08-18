@@ -14,6 +14,9 @@ import type {
 import { logger } from "../../core/log.js"
 import { assertNoSymlinkTraversal } from "../../state/locks.js"
 
+/** Maximum number of workflow steps across linear and nested fanout definitions. */
+export const WORKFLOW_MAX_TOTAL_STEPS = 256 // across linear + nested fanouts
+
 // Supported workflow_file schema versions. When the schema gains a v2, add it
 // here and branch on `version` in loadWorkflowFile. A file with an unlisted
 // version is rejected explicitly so a schema drift fails loudly instead of
@@ -27,9 +30,6 @@ const SUPPORTED_WORKFLOW_FILE_VERSIONS = new Set([1])
 // realistic workflow and tight enough to fail fast on abuse.
 const WORKFLOW_FILE_MAX_BYTES = 1024 * 1024 // 1 MiB raw file
 
-/** Maximum number of workflow steps across linear and nested fanout definitions. */
-export const WORKFLOW_MAX_TOTAL_STEPS = 256 // across linear + nested fanouts
-
 // Nested fanout levels
 const WORKFLOW_MAX_FANOUT_DEPTH = 8
 
@@ -41,6 +41,12 @@ const TEMPLATE_MAX_DEPTH = 20
 
 /** Max cumulative template expansion output (OOM guard for repetitive placeholders). */
 const TEMPLATE_MAX_EXPANSION_BYTES = 512 * 1024
+
+/** Internal accumulator for resource-limit tracking across the recursion. */
+type ValidationBudget = {
+    totalSteps: number // running count of validated steps (linear + nested)
+    depth: number      // current fanout-nesting depth (0 at top level)
+}
 
 /** Result of loading a workflow_file: parsed steps or an error message. */
 type WorkflowFileResult =
@@ -62,20 +68,9 @@ class UnknownTemplateVarError extends Error {
     }
 }
 
-/** Narrow unknown to a non-null non-array object. */
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value)
-}
-
 /** Resolve a directory path to its absolute form. */
 function normalizeBase(baseDir: string): string {
     return path.resolve(baseDir)
-}
-
-/** Check that filePath is strictly inside baseDir. */
-function isInside(baseDir: string, filePath: string): boolean {
-    const rel = path.relative(baseDir, filePath)
-    return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel)
 }
 
 /** Resolve a relative workflow_file path, validating it stays within the workspace. */
@@ -96,6 +91,23 @@ async function resolveWorkflowFilePath(baseDir: string, relPath: string): Promis
         if (code !== "ENOENT") throw err
     }
     return { filePath }
+}
+
+/**
+ * Bound the number of branches a matrix/foreach fanout would expand to,
+ * so a large matrix cannot bypass the total-step budget at validation time.
+ * Returns the product of all matrix array lengths, or foreach length, or 1.
+ */
+function matrixForeachExpansionBound(step: { matrix?: unknown; foreach?: unknown }): number {
+    if (Array.isArray(step.foreach)) return step.foreach.length
+    if (isRecord(step.matrix)) {
+        let product = 1
+        for (const v of Object.values(step.matrix)) {
+            if (Array.isArray(v)) product *= v.length
+        }
+        return product
+    }
+    return 1
 }
 
 /**
@@ -168,12 +180,6 @@ function applyTemplateVarsBounded(
     return value
 }
 
-/** Internal accumulator for resource-limit tracking across the recursion. */
-type ValidationBudget = {
-    totalSteps: number // running count of validated steps (linear + nested)
-    depth: number      // current fanout-nesting depth (0 at top level)
-}
-
 /** Recursive worker that enforces total-step and depth caps. */
 function validateWorkflowStepArrayInternal(
     value: unknown,
@@ -219,23 +225,6 @@ export function validateWorkflowSteps(
     value: unknown, sourcePath = "<workflow>",
 ): { steps: WorkflowToolStep[] } | { error: string } {
     return validateWorkflowStepArrayInternal(value, { filePath: sourcePath, prefix: "step" }, { totalSteps: 0, depth: 0 })
-}
-
-/**
- * Bound the number of branches a matrix/foreach fanout would expand to,
- * so a large matrix cannot bypass the total-step budget at validation time.
- * Returns the product of all matrix array lengths, or foreach length, or 1.
- */
-function matrixForeachExpansionBound(step: { matrix?: unknown; foreach?: unknown }): number {
-    if (Array.isArray(step.foreach)) return step.foreach.length
-    if (isRecord(step.matrix)) {
-        let product = 1
-        for (const v of Object.values(step.matrix)) {
-            if (Array.isArray(v)) product *= v.length
-        }
-        return product
-    }
-    return 1
 }
 
 /** Validate a single workflow step, recursing into fanout branches. */
@@ -528,6 +517,17 @@ function validateWorkflowStepFields(
             + ` where must contain numeric thresholds or a valid issue severity`
     }
     return null
+}
+
+/** Narrow unknown to a non-null non-array object. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+/** Check that filePath is strictly inside baseDir. */
+function isInside(baseDir: string, filePath: string): boolean {
+    const rel = path.relative(baseDir, filePath)
+    return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel)
 }
 
 /** Narrow unknown to a non-empty string. */
