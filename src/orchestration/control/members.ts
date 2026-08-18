@@ -10,9 +10,16 @@ import { logger, logSwallowed } from "../../core/log.js"
 import { safeMemberAgent } from "../../core/role.js"
 import type { MemberSpec, MemberState } from "../../core/types.js"
 import { waitUntil } from "../../core/utils.js"
-import { worktreesDir } from "../../state/paths.js"
+import { safeReadFile } from "../../state/locks.js"
+import { statePath, worktreesDir } from "../../state/paths.js"
 import { indexMember, unindexSession } from "../../state/resolve.js"
-import { type Team, readTeamSpecFromDir, saveTeamState, saveTeamStateBounded } from "../../state/store.js"
+import {
+    isValidTeamState,
+    type Team,
+    readTeamSpecFromDir,
+    saveTeamState,
+    saveTeamStateBounded,
+} from "../../state/store.js"
 import { createWorktree, destroyWorktree } from "../../state/worktrees.js"
 import { buildRolePrompt } from "../protocol/output.js"
 
@@ -23,8 +30,8 @@ const SESSION_DELETE_RETRY_DELAY_MS = 500
 /**
  * Wait outside the mutex for role-setup idle acknowledgements.
  *
- * On timeout, the errored state is persisted under the mutex before aborting
- * startup so a follow-up reconcile observes the terminal member status.
+ * On timeout, persisted readiness is revalidated under the mutex before any
+ * destructive cleanup so a delayed idle acknowledgement can still recover.
  */
 async function waitForRoleSetupBarrier(
     ctx: PluginContext,
@@ -44,9 +51,59 @@ async function waitForRoleSetupBarrier(
         // code ran cleanup outside the mutex; an idle event firing between the
         // barrier timeout and the mutex acquisition would see the member as
         // still having a sessionId and try to process its (non-existent) output.
+        let barrierRecovered = false
         await team.mutex.runExclusive(async () => {
+            let persistedMembers: MemberState[] | undefined
+            let revalidationBlocked = false
+            try {
+                const diskRaw = await safeReadFile(
+                    team.directory,
+                    statePath(team.directory),
+                    { maxBytes: 1024 * 1024 },
+                )
+                if (diskRaw !== undefined) {
+                    const parsed: unknown = JSON.parse(diskRaw)
+                    if (isValidTeamState(parsed, team.directory)) {
+                        if (parsed.teamRunId !== team.teamRunId) {
+                            revalidationBlocked = true
+                            logger.warn("barrier timeout: persisted teamRunId differs from live team; skipping cleanup", {
+                                team: team.teamName,
+                                liveTeamRunId: team.teamRunId,
+                                persistedTeamRunId: parsed.teamRunId,
+                            })
+                        } else {
+                            persistedMembers = parsed.members
+                        }
+                    }
+                }
+            } catch (err) {
+                logSwallowed(ctx, "barrier timeout: persisted state read failed", err, {
+                    team: team.teamName,
+                })
+            }
+            if (revalidationBlocked) return
+
             for (const name of waitNames) {
                 const current = team.members.find(member => member.name === name)
+                const persisted = persistedMembers?.find(member => member.name === name)
+                const currentSessionId = current?.sessionId
+                const persistedSessionId = persisted?.sessionId
+                if (
+                    current
+                    && !current.initialized
+                    && typeof currentSessionId === "string"
+                    && currentSessionId.length > 0
+                    && persisted?.name === current.name
+                    && typeof persistedSessionId === "string"
+                    && persistedSessionId.length > 0
+                    && persistedSessionId === currentSessionId
+                    && persisted.initialized === true
+                    && persisted.status === "idle"
+                ) {
+                    current.initialized = true
+                    current.status = "idle"
+                    current.error = undefined
+                }
                 if (current && !current.initialized && current.sessionId) {
                     const sid = current.sessionId
                     const dir = current.worktreePath ?? ctx.directory
@@ -85,16 +142,20 @@ async function waitForRoleSetupBarrier(
                     current.error = "role-setup barrier timed out"
                 }
             }
-            // Timeout state persisted in the same critical section.
+            barrierRecovered = [...waitNames].every(
+                name => team.members.find(member => member.name === name)?.initialized === true,
+            )
+            // Persist recovered or terminal timeout state in the same critical section.
             await saveTeamState(team).catch(err =>
                 logSwallowed(
                     ctx,
-                    "persist failed before barrier-timeout abort",
+                    "persist failed after barrier-timeout reconciliation",
                     err,
                     { team: team.teamName },
                 ),
             )
         })
+        if (barrierRecovered) return
         throw new Error("ensureMembersReady: role-setup barrier timed out")
     })
 }

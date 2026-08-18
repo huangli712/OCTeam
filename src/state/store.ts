@@ -404,6 +404,7 @@ export async function loadTeamState(
             return cached
         }
         cached._lastCacheCheck = now
+        const startingDiskSnapshot = cached._diskSnapshot
         // MEDIUM: refresh from disk when mtime is equal/newer, or when the
         // filesystem clock moved backwards. Update the cached Team in-place
         // so its mutex and live object references retain their identity.
@@ -421,6 +422,7 @@ export async function loadTeamState(
                     throw new Error(`loadTeamState: cached state.json for team "${teamName}" is unreadable or invalid`)
                 }
                 await cached.mutex.runExclusive(async () => {
+                    if (cached._diskSnapshot !== startingDiskSnapshot) return
                     applyReloadedTeamState(cached, state, diskStat.mtimeMs)
                 })
                 return cached

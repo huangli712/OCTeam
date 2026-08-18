@@ -126,9 +126,10 @@ describe("role-setup timeout unlocked save (finding: role-setup-timeout-unlocked
         //               uses only the file lock → succeeds while mutex is held).
         //               Persists "errored" to disk immediately.
         //       FIXED: tries to acquire team.mutex → BLOCKS (behind pre-hold
-        //             and the queued idle handler). Does NOT persist yet. ---
+        //             and the queued idle handler). Revalidation then sees the
+        //             initialized member and resolves successfully. ---
         const ensureResult = ensureMembersReady(makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}) }, session: { create: async () => ({ data: { id: "ses_mock_alice" } }), promptAsync: async () => ({}) } } } }), team).then(
-            () => "unexpected-success" as const,
+            () => "recovered-success" as const,
             (err: unknown) => err as Error,
         )
 
@@ -148,14 +149,12 @@ describe("role-setup timeout unlocked save (finding: role-setup-timeout-unlocked
         // On FIXED code: the timeout handler hasn't persisted anything yet.
         expect(diskAlice.status).not.toBe("errored")
 
-        // --- 5. Release the mutex: the idle handler runs (flips initialized),
-        //     then the timeout handler (if fixed) runs under the mutex. ---
+        // --- 5. Release the mutex: the idle handler initializes alice first,
+        //     then timeout revalidation observes readiness and resolves. ---
         releaseGate()
         await mutexHold
         await idleHandlerDone
-        // ensureMembersReady throws "barrier timed out" regardless of fix.
         const result = await ensureResult
-        expect(result).toBeInstanceOf(Error)
-        expect((result as Error).message).toContain("barrier timed out")
+        expect(result).toBe("recovered-success")
     })
 })
