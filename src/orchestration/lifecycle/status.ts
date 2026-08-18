@@ -112,7 +112,10 @@ async function escalateMemberToErrored(
     try {
         await saveTeamStateBounded(team)
     } catch (err) {
-        logger.warn("maybeEscalateRetry: trailing save failed after retries", { team: team.teamName, member: live.name, error: String(err) })
+        logger.warn(
+            "maybeEscalateRetry: trailing save failed after retries",
+            { team: team.teamName, member: live.name, error: String(err) },
+        )
         throw err
     }
 }
@@ -138,7 +141,10 @@ export async function handleStatusEvent(
         // ctx.storageRoot, which may point at the plugin's other active scope.
     team = await loadTeamState(member.storageRoot, member.teamName, member.leadSessionId)
     } catch (err) {
-        logger.warn("status handler: failed to load team state", { teamName: member.teamName, error: String(err) })
+        logger.warn(
+            "status handler: failed to load team state",
+            { teamName: member.teamName, error: String(err) },
+        )
         return
     }
     await team.mutex.runExclusive(async () => {
