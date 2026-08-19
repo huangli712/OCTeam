@@ -69,7 +69,8 @@ export function teamRootDirTool(ctx: PluginContext): ToolDefinition {
                 if ((err as NodeJS.ErrnoException).code === "ENOENT") missing = true
                 else {
                     logSwallowed(ctx, "readdir failed (rootdir)", err, { path: absPath })
-                    return `Error: team root directory could not be read: ${err instanceof Error ? err.message : String(err)}`
+                    return `Error: team root directory could not be read: `
+                        + `${err instanceof Error ? err.message : String(err)}`
                 }
             }
 
