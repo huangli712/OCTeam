@@ -42,7 +42,9 @@ import {
 
 /** Truncate the root subject to fit within the 500-char delegate schema limit. */
 const SUBJECT_MAX_LEN = 480
-const SUBJECT_SLICE_LEN = SUBJECT_MAX_LEN - 3 // reserve room for "..."
+
+/** Slice length for truncated subjects; the 3 reserved chars hold the "..." suffix. */
+const SUBJECT_SLICE_LEN = SUBJECT_MAX_LEN - 3
 
 /** Hierarchical recursive decomposition of a root task into subtasks. */
 export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
@@ -177,8 +179,15 @@ export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
                     try {
                         await updateTask(taskDirectory, taskId, { status: "deleted" })
                     } catch (cleanupErr) {
-                        const cleanupError = cleanupErr instanceof Error ? cleanupErr : new Error(String(cleanupErr))
-                        logSwallowed(ctx, "recurse startup: failed to delete created task", cleanupError, { taskId })
+                        const cleanupError = cleanupErr instanceof Error
+                            ? cleanupErr
+                            : new Error(String(cleanupErr))
+                        logSwallowed(
+                            ctx,
+                            "recurse startup: failed to delete created task",
+                            cleanupError,
+                            { taskId },
+                        )
                     }
                 }
                 throw err
