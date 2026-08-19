@@ -12,7 +12,6 @@ import type {
     WorkflowJoinMetadata,
     WorkflowStep,
 } from "../../core/types.js"
-import { parseWorkflowCondition } from "../../orchestration/workflow/gate.js"
 import type {
     WorkflowFanoutBranch,
     WorkflowGateToolStep,
@@ -20,6 +19,12 @@ import type {
     WorkflowStepRef,
     WorkflowToolStep,
 } from "../../core/types/workflow.js"
+import { parseWorkflowCondition } from "../../orchestration/workflow/gate.js"
+
+/** Maximum branches a matrix fanout may expand to. Bounds memory for large
+ * cartesian products and surfaces authoring mistakes (e.g. a 100x100 matrix)
+ * at validation time rather than at dispatch time. */
+const MAX_MATRIX_BRANCHES = 64
 
 // --- lowered types ---
 
@@ -51,7 +56,10 @@ export type LoweredWorkflowJoinStep = {
 }
 
 /** Union of all lowered workflow step kinds. */
-export type LoweredWorkflowStep = LoweredWorkflowLinearStep | LoweredWorkflowFanoutStep | LoweredWorkflowJoinStep
+export type LoweredWorkflowStep =
+    | LoweredWorkflowLinearStep
+    | LoweredWorkflowFanoutStep
+    | LoweredWorkflowJoinStep
 
 // --- invariant guard ---
 
@@ -74,6 +82,7 @@ export function assertNever(value: never): never {
 export function isLinearToolStep(step: WorkflowToolStep): step is WorkflowLinearToolStep {
     return step.kind === "task" || step.kind === "gate"
 }
+
 // --- ref resolution (lowered) ---
 
 /** Whether a lowered step kind is a valid gate target (task or join). */
@@ -96,7 +105,10 @@ export function resolveGateTargetRef(
 }
 
 /** Resolve a gate's implicit or explicit target to a lowered step index. */
-export function resolveGateTargetIndex(steps: readonly LoweredWorkflowStep[], gateIndex: number): number {
+export function resolveGateTargetIndex(
+    steps: readonly LoweredWorkflowStep[],
+    gateIndex: number,
+): number {
     const gate = steps[gateIndex]
     if (gate?.kind !== "gate") return -1
     const target = gate.target_step
@@ -110,7 +122,10 @@ export function resolveGateTargetIndex(steps: readonly LoweredWorkflowStep[], ga
 }
 
 /** Resolve a gate's targets array to a sorted list of lowered step indices. */
-export function resolveGateTargetIndices(steps: readonly LoweredWorkflowStep[], gateIndex: number): number[] {
+export function resolveGateTargetIndices(
+    steps: readonly LoweredWorkflowStep[],
+    gateIndex: number,
+): number[] {
     const gate = steps[gateIndex]
     if (gate?.kind !== "gate") return []
     if (gate.targets !== undefined) {
@@ -164,7 +179,8 @@ export function canConsumeWorkflowInput(
     const inputBranch = input.kind === "task" ? input.branch : undefined
     if (consumerBranch === undefined) return inputBranch === undefined
     if (inputBranch === undefined) return inputIndex < consumerBranch.fanoutIndex
-    return inputBranch.fanoutIndex === consumerBranch.fanoutIndex && inputBranch.branchId === consumerBranch.branchId
+    return inputBranch.fanoutIndex === consumerBranch.fanoutIndex
+        && inputBranch.branchId === consumerBranch.branchId
 }
 
 /** Return the first index from a list, or undefined if empty. */
@@ -216,7 +232,10 @@ export function resolvesToMarkerStep(
 // --- ref conversion (public → flat) ---
 
 /** Convert a public 1-based step ref to a flat lowered index. */
-export function convertTopLevelRef(ref: WorkflowStepRef, publicToFlat: readonly number[]): WorkflowStepRef {
+export function convertTopLevelRef(
+    ref: WorkflowStepRef,
+    publicToFlat: readonly number[],
+): WorkflowStepRef {
     if (typeof ref === "string") return ref
     const flatIndex = publicToFlat[ref - 1]
     return flatIndex === undefined ? ref : flatIndex + 1
@@ -230,7 +249,9 @@ export function convertBranchRef(
 ): WorkflowStepRef {
     if (typeof ref === "string") return ref
     const localIndex = ref - 1
-    return localIndex >= 0 && localIndex < branchStepCount ? branchStartIndex + localIndex + 1 : ref
+    return localIndex >= 0 && localIndex < branchStepCount
+        ? branchStartIndex + localIndex + 1
+        : ref
 }
 
 /** Resolve a gate's target ref in the public (pre-lowering) step array. */
@@ -243,14 +264,20 @@ export function resolvePublicTaskRef(
         const idx = target - 1
         return idx >= 0 && idx < gateIndex && steps[idx]?.kind === "task" ? idx : -1
     }
-    return steps.findIndex((step, index) => index < gateIndex && step.kind === "task" && step.id === target)
+    return steps.findIndex((step, index) =>
+        index < gateIndex && step.kind === "task" && step.id === target)
 }
 
 /** Resolve a gate's implicit or explicit target in the public step array. */
-export function resolvePublicGateTargetIndex(steps: readonly WorkflowToolStep[], gateIndex: number): number {
+export function resolvePublicGateTargetIndex(
+    steps: readonly WorkflowToolStep[],
+    gateIndex: number,
+): number {
     const gate = steps[gateIndex]
     if (gate?.kind !== "gate") return -1
-    if (gate.target_step !== undefined) return resolvePublicTaskRef(steps, gateIndex, gate.target_step)
+    if (gate.target_step !== undefined) {
+        return resolvePublicTaskRef(steps, gateIndex, gate.target_step)
+    }
     for (let index = gateIndex - 1; index >= 0; index -= 1) {
         if (steps[index]?.kind === "task") return index
     }
@@ -322,10 +349,10 @@ function computePublicToFlat(steps: readonly WorkflowToolStep[]): number[] {
             case "fanout": {
                 const branches = step.branches ?? []
                 const totalBranchSteps = branches.reduce((sum, branch) => sum + branch.steps.length, 0)
-                publicToFlat[publicIndex] = flatIndex              // fanout marker
+                publicToFlat[publicIndex] = flatIndex       // fanout marker
                 flatIndex += 1
-                flatIndex += totalBranchSteps                       // branch steps
-                publicToFlat[publicIndex + 1] = flatIndex            // join marker
+                flatIndex += totalBranchSteps               // branch steps
+                publicToFlat[publicIndex + 1] = flatIndex   // join marker
                 flatIndex += 1
                 publicIndex += 1  // skip the companion join step (already mapped above)
                 break
@@ -340,7 +367,9 @@ function computePublicToFlat(steps: readonly WorkflowToolStep[]): number[] {
 /** Lower a full public WorkflowToolStep array into the flat LoweredWorkflowStep array.
  * Two-phase: first build the complete publicToFlat index map (so forward
  * references resolve), then lower each step using the complete map. */
-export function lowerWorkflowSteps(steps: readonly WorkflowToolStep[]): readonly LoweredWorkflowStep[] {
+export function lowerWorkflowSteps(
+    steps: readonly WorkflowToolStep[],
+): readonly LoweredWorkflowStep[] {
     // Phase 1: compute the complete public→flat index mapping.
     const publicToFlat = computePublicToFlat(steps)
 
@@ -584,11 +613,6 @@ export function expandMatrixForeachFanout(steps: readonly WorkflowToolStep[]): W
     })
 }
 
-/** Maximum branches a matrix fanout may expand to. Bounds memory for large
- * cartesian products and surfaces authoring mistakes (e.g. a 100x100 matrix)
- * at validation time rather than at dispatch time. */
-const MAX_MATRIX_BRANCHES = 64
-
 /** Expand matrix vars into cartesian product branches from template steps. */
 function expandMatrix(
     matrix: Readonly<Record<string, readonly string[]>>,
@@ -648,12 +672,18 @@ function cartesianProduct(arrays: readonly (readonly string[])[]): readonly (rea
 }
 
 /** Substitute template variables across all steps in an array. */
-function substituteVarsInSteps(steps: readonly WorkflowToolStep[], vars: Record<string, string>): WorkflowToolStep[] {
+function substituteVarsInSteps(
+    steps: readonly WorkflowToolStep[],
+    vars: Record<string, string>,
+): WorkflowToolStep[] {
     return steps.map(step => substituteVarsInStep(step, vars))
 }
 
 /** Substitute ${var} placeholders in every string field of a step, including nested objects. */
-function substituteVarsInStep(step: WorkflowToolStep, vars: Record<string, string>): WorkflowToolStep {
+function substituteVarsInStep(
+    step: WorkflowToolStep,
+    vars: Record<string, string>,
+): WorkflowToolStep {
     const f = step as Record<string, unknown>
     const out: Record<string, unknown> = { ...step }
     // Substitute EVERY string field on the step object, regardless of kind.
@@ -694,6 +724,7 @@ function sanitizeBranchId(value: string): string {
 }
 
 // --- validation error labels ---
+
 // (dry-run preview formatting lives in format.ts; these two helpers
 // serve validation error messages and stay with the lowering engine.)
 
