@@ -6,10 +6,18 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
-import { loadTeamState, saveTeamState, type Team } from "../../state/store.js"
 import { logSwallowed } from "../../core/log.js"
 import { isEnoent } from "../../core/utils.js"
-import { clearActiveTeam, isIndexedMasterOf, setActiveTeam } from "../../state/resolve.js"
+import {
+    loadTeamState,
+    saveTeamState,
+    type Team
+} from "../../state/store.js"
+import {
+    clearActiveTeam,
+    isIndexedMasterOf,
+    setActiveTeam
+} from "../../state/resolve.js"
 import { withLock } from "../../state/locks.js"
 import { teamLifecycleLockPath } from "../../state/paths.js"
 

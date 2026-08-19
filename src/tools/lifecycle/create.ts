@@ -10,16 +10,34 @@ import fs from "node:fs/promises"
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
-import { initTeamState, writeTeamSpec } from "../../state/store.js"
+import type {
+    MemberSpec,
+    MemberState,
+    TeamSpec
+} from "../../core/types.js"
+import {
+    normalizeRole,
+    roleAgent
+} from "../../core/role.js"
+import { logSwallowed } from "../../core/log.js"
+import {
+    initTeamState,
+    writeTeamSpec
+} from "../../state/store.js"
 import { isIndexedMember } from "../../state/resolve.js"
-import { teamDir, teamsDir } from "../../state/paths.js"
+import {
+    teamDir,
+    teamsDir
+} from "../../state/paths.js"
 import { assertNoSymlinkTraversal } from "../../state/locks.js"
 import { masterSentinelPath } from "../../state/paths.js"
-import { normalizeRole, roleAgent } from "../../core/role.js"
-import { logSwallowed } from "../../core/log.js"
-import type { MemberSpec, MemberState, TeamSpec } from "../../core/types.js"
 import { pickName } from "../../state/naming.js"
-import { defaultBounds, validateMemberAgent, validateMemberName } from "../support.js"
+//
+import {
+    defaultBounds,
+    validateMemberAgent,
+    validateMemberName
+} from "../support.js"
 
 /**
  * Best-effort model resolution for team_create. Resolves, in order:
