@@ -16,8 +16,10 @@ import type {
 } from "../../core/types.js";
 import { isWorkflowIssueSeverity } from "../protocol/decisions.js";
 import { truncateOutput } from "../protocol/output.js";
+//
 import { isSameWorkflowBranch } from "./dag.js";
 import { MAX_UPSTREAM_OUTPUT_BYTES } from "./upstream.js";
+
 // Gate target resolution lives in gate-targets.ts to
 // break the dag→invariants→gate→dag import cycle. Re-export to preserve
 // the public API for existing consumers (engine.ts, verdict.ts, etc.).
@@ -30,6 +32,17 @@ export type WorkflowJumpTransition = {
     rationale?: string;
     diff?: string;
 };
+
+/**
+ * Tri-state evaluation result for a WorkflowCondition.
+ * - "matches": condition is satisfied.
+ * - "does_not_match": condition is not satisfied (verifier provided the
+ *   required field; the threshold simply was not met).
+ * - "unevaluable": the verifier OMITTED a required field, so the condition
+ *   cannot be evaluated. Callers MUST route this to INVALID (a verifier
+ *   contract violation) rather than silently treating it as "did not match".
+ */
+export type WorkflowConditionEvaluation = "matches" | "does_not_match" | "unevaluable"
 
 /** Input values for evaluating a where condition: score, confidence, and issues from the verdict. */
 type ConditionInput = {
@@ -447,17 +460,6 @@ export function matchesWorkflowCondition(condition: WorkflowCondition, input: Co
             return assertNeverCondition(condition)
     }
 }
-
-/**
- * Tri-state evaluation result for a WorkflowCondition.
- * - "matches": condition is satisfied.
- * - "does_not_match": condition is not satisfied (verifier provided the
- *   required field; the threshold simply was not met).
- * - "unevaluable": the verifier OMITTED a required field, so the condition
- *   cannot be evaluated. Callers MUST route this to INVALID (a verifier
- *   contract violation) rather than silently treating it as "did not match".
- */
-export type WorkflowConditionEvaluation = "matches" | "does_not_match" | "unevaluable"
 
 /**
  * Tri-state condition evaluator. Distinguishes "verifier omitted required
