@@ -14,8 +14,16 @@ import {
     signoffTaskFields,
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
-import { commonOrchestrationFields, signoffSchemaFields } from "../schema.js"
-import { assertMember, validateSignoff, nonMasterMembers } from "../support.js"
+//
+import {
+    commonOrchestrationFields,
+    signoffSchemaFields
+} from "../schema.js"
+import {
+    assertMember,
+    validateSignoff,
+    nonMasterMembers
+} from "../support.js"
 
 /** Run a task across all team members in parallel with isolated or cooperative mode. */
 export function teamParallelTool(ctx: PluginContext): ToolDefinition {
