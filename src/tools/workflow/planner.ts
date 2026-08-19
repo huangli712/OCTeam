@@ -79,6 +79,15 @@ type RunPlannerOptions = {
 /** Result of evaluating a planner session output: either a parsed result or an error message. */
 type EvaluatedOutput = { value: PlannerResult } | { error: string }
 
+/** Request shape for the revise planner operation. */
+type ReviseRequest = {
+    readonly teamId: string
+    readonly goal: string
+    readonly previousTeam: unknown
+    readonly previousWorkflow: unknown
+    readonly feedback: string
+}
+
 /** Type guard: check if a value is a non-null, non-array object. */
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -476,15 +485,6 @@ function buildProposePrompt(teamId: string, goal: string, constraints: string | 
     }
     lines.push("", plannerContract(teamId))
     return lines.join("\n")
-}
-
-/** Request shape for the revise planner operation. */
-type ReviseRequest = {
-    readonly teamId: string
-    readonly goal: string
-    readonly previousTeam: unknown
-    readonly previousWorkflow: unknown
-    readonly feedback: string
 }
 
 /** Build the revise prompt: goal, feedback, and previous team/workflow as context. */
