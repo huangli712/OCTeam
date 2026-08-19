@@ -175,7 +175,9 @@ async function applyRedispatch(
     if (index === null) return "Error: workflow has no active step to redispatch"
     const workflowStep = task.steps?.[index]
     if (workflowStep === undefined) return `Error: step ${index + 1} does not exist`
-    if (!isActiveWorkflowStep(task, index)) return `Error: step ${index + 1} is not in the active workflow frontier`
+    if (!isActiveWorkflowStep(task, index)) {
+        return `Error: step ${index + 1} is not in the active workflow frontier`
+    }
     if (workflowStep.completed) return `Error: step ${index + 1} is already completed`
     const invariantError = validateWorkflowAfterFix(task)
     if (invariantError !== null) return invariantError
@@ -195,7 +197,8 @@ async function applyRedispatch(
                 const abortError = err instanceof Error ? err : new Error(String(err))
                 // Return an error if abort fails so the previous turn cannot run
                 // alongside the new dispatch and the caller can retry.
-                return `Error: cannot abort previous turn for member "${oldActor.name}" before redispatch. `
+                return `Error: cannot abort previous turn for member "${oldActor.name}" `
+                    + `before redispatch. `
                     + `${abortError.message}`
             }
         }
@@ -391,7 +394,11 @@ async function applyReassign(
 }
 
 /** Check whether a candidate member is already active in a sibling branch of a fanout step. */
-function activeBranchActorConflict(task: WorkflowTask, candidateMember: string, excludeIndex: number): string | null {
+function activeBranchActorConflict(
+    task: WorkflowTask,
+    candidateMember: string,
+    excludeIndex: number,
+): string | null {
     for (const activeIndex of getActiveWorkflowStepIndices(task)) {
         if (activeIndex === excludeIndex) continue
         const step = task.steps?.[activeIndex]

@@ -4,24 +4,41 @@
  */
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
-import { isEnoent } from "../../core/utils.js"
-import { logSwallowed } from "../../core/log.js"
 
 import type { PluginContext } from "../../core/context.js"
-import type { ApprovalDecisionRecord, ApprovalRequest } from "../../core/types.js"
+import type {
+    ApprovalDecisionRecord,
+    ApprovalRequest
+} from "../../core/types.js"
+import { isEnoent } from "../../core/utils.js"
+import { logSwallowed } from "../../core/log.js"
+import { maybeTriggerSignoff } from "../../orchestration/control/signoff.js"
+import { dispatchToMember } from "../../orchestration/control/dispatch.js"
 import { finishRun } from "../../orchestration/control/completion.js"
 import { recordEvent } from "../../orchestration/records/events.js"
-import { advancePipelineAfterStage } from "../../orchestration/modes/pipeline.js"
-import { advanceTollgateAfterPass, startVerification } from "../../orchestration/modes/tollgate.js"
-import { buildArbiterPrompt } from "../../orchestration/modes/arbitrate.js"
-import { approveLoopDone, rejectLoopDone } from "../../orchestration/modes/loop.js"
+import { 
+    advanceTollgateAfterPass,
+    startVerification
+} from "../../orchestration/modes/tollgate.js"
+import { 
+    approveLoopDone,
+    rejectLoopDone
+} from "../../orchestration/modes/loop.js"
+import {
+    approveRecurseDecompose,
+    rejectRecurseDecompose
+} from "../../orchestration/modes/recurse.js"
 import { advanceRouteAfterDecision } from "../../orchestration/modes/route.js"
-import { approveRecurseDecompose, rejectRecurseDecompose } from "../../orchestration/modes/recurse.js"
+import { buildArbiterPrompt } from "../../orchestration/modes/arbitrate.js"
+import { advancePipelineAfterStage } from "../../orchestration/modes/pipeline.js"
 import { advanceWorkflowStep } from "../../orchestration/workflow/engine.js"
-import { maybeTriggerSignoff } from "../../orchestration/control/signoff.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
-import { loadTeamState, saveTeamStateBounded, type Team } from "../../state/store.js"
-import { dispatchToMember } from "../../orchestration/control/dispatch.js"
+import { 
+    loadTeamState,
+    saveTeamStateBounded,
+    type Team
+} from "../../state/store.js"
+//
 import { findMember } from "../support.js"
 
 /** Result of a human approval decision: approved boolean with optional feedback. */
