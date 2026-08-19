@@ -7,10 +7,15 @@
  * reference resolution and step flattening.
  */
 
+import type {
+    WorkflowStepRef,
+    ResolvedWorkflowToolArgs
+} from "../../core/types/workflow.js"
 import {
     parseWorkflowCondition,
     formatWorkflowCondition
 } from "../../orchestration/workflow/gate.js"
+//
 import type {
     LoweredWorkflowLinearStep,
     LoweredWorkflowStep,
@@ -21,7 +26,6 @@ import {
     resolveGotoIndex,
     resolveWorkflowInputIndices,
 } from "./lower.js"
-import type { WorkflowStepRef, ResolvedWorkflowToolArgs } from "../../core/types/workflow.js"
 
 /** Format the target step label (with optional id) for a gate in dry-run output. */
 function stepTargetLabel(steps: readonly LoweredWorkflowStep[], gateIndex: number): string {
@@ -136,10 +140,12 @@ export function formatWorkflowDryRun(args: ResolvedWorkflowToolArgs): string {
                 // Include ensemble policy and verifier details so reviewers see
                 // the complete gate configuration.
                 const verifierLabel = step.verifiers !== undefined && step.verifiers.length > 0
-                    ? `${step.verifiers.join("+")} (${step.ensemble_policy ?? "majority"}${step.ensemble_quorum !== undefined ? ` quorum=${step.ensemble_quorum}` : ""})`
+                    ? `${step.verifiers.join("+")} (${step.ensemble_policy ?? "majority"}`
+                        + `${step.ensemble_quorum !== undefined ? ` quorum=${step.ensemble_quorum}` : ""})`
                     : step.verifier ?? "?"
                 const malformedTag = step.on_malformed && step.on_malformed !== "fail"
-                    ? `; on_malformed=${step.on_malformed}${step.max_malformed_retries !== undefined ? ` max_malformed_retries=${step.max_malformed_retries}` : ""}`
+                    ? `; on_malformed=${step.on_malformed}`
+                        + `${step.max_malformed_retries !== undefined ? ` max_malformed_retries=${step.max_malformed_retries}` : ""}`
                     : ""
                 lines.push(
                     `${indent}${i + 1}. [gate]${idTag} ${verifierLabel} verifies ${target}:`
