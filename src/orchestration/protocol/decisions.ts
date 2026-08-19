@@ -551,6 +551,8 @@ export function allReadOnlyStagesReportNoIssues(task: ActiveTask): boolean {
     return roStages.every(s => NO_ISSUES_TAG.test(task.responses[s.member] ?? ""))
 }
 
+/** Outcome of parsing a consensus turn: either a valid agreed flag or a
+ *  classified parse failure (tag missing, bad JSON, or agreed not boolean). */
 type ConsensusParseResult =
     | { readonly agreed: boolean; readonly parseFailed: false }
     | {

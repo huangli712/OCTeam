@@ -147,8 +147,8 @@ export function createCompactingHook(): NonNullable<Hooks["experimental.session.
             ? (input as Record<string, unknown>).sessionID
             : undefined
         if (typeof sid === "string" && sid) {
-            // Enforce COMPACTING_MAP_CAP on insert by evicting the
-            // oldest expired entry before adding a new one.
+            // Enforce COMPACTING_MAP_CAP on insert: evict expired entries
+            // first, then the oldest entry if still at capacity.
             if (compacting.size >= COMPACTING_MAP_CAP) {
                 const now = Date.now()
                 for (const [k, exp] of compacting) {
@@ -384,7 +384,7 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
                 }
             } catch (recoveryErr) {
                 // Recovery itself failed — nothing more we can do. The original
-                // error is already logged; log the recovery failure too.
+                // error is logged below; log the recovery failure too.
                 logSwallowed(ctx, "member-idle error recovery persist failed", recoveryErr, { sessionID })
             }
             logSwallowed(ctx, "member-idle handler failed", err, { sessionID })
@@ -486,8 +486,9 @@ export function createTransformHook(
             }
 
             // Empty-injection guard: when every polled message was filtered out
-            // (e.g. all stale directives), inject no text part — but still ack the
-            // FULL reserved set below so the stale directives are dropped.
+            // (e.g. all stale directives), inject no text part — but still ack
+            // the reserved set below so the stale directives are dropped (when
+            // team state is unreadable, directives are retained for retry).
             if (toInject.length > 0) {
                 const injection = formatMailboxInjection(toInject, activeRunIdForAuth, member.directory)
 

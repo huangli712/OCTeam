@@ -337,7 +337,8 @@ export async function updateTask(
                 )
             }
         }
-        // Enforce the 64 KiB result limit to match the reader's cap.
+        // Enforce the 60,000-byte result limit to keep the task file under
+        // the reader's 64 KiB whole-file cap.
         if (patch.result !== undefined && typeof patch.result === "string"
             && Buffer.byteLength(patch.result, "utf8") > 60_000) {
             // Truncate by UTF-8 bytes, not UTF-16 code units.

@@ -6,7 +6,7 @@
  *
  * Steps:
  *   1. Master special case — drain queued results, return (master never dispatches)
- *   2. Flip member to idle
+ *   2. Flip member to idle (deferred until after Step 6 capture — see body)
  *   3. Role-setup barrier — first idle of uninitialized member marks it ready, returns
  *   4. Token accounting (recompute, never +=)
  *   5. Identity validation (stray idle does not advance pipeline/loop)

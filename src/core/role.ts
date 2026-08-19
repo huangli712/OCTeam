@@ -24,11 +24,12 @@
  * PERMISSION ENFORCEMENT. All roles map to OCTeam's hardened `oct-*` agents
  * (agents/*.ts), not bare host agent names. The `oct-*` agents carry
  * mode:"subagent" and hardened permission maps: oct-junior/oct-deep permit
- * edit (write-capable executors), oct-oracle/oct-explore/oct-multimodal-looker
- * deny edit/task/bash/webfetch (fully read-only), oct-librarian/oct-ultrabrain
- * deny edit/task/bash but allow webfetch (reference lookup is their job),
- * oct-metis/oct-momus deny edit/bash/webfetch but allow task (planning/review
- * agents need subagent delegation).
+ * edit (write-capable executors); oct-oracle, oct-explore,
+ * oct-multimodal-looker, and oct-ultrabrain deny edit/task/bash/webfetch
+ * (fully read-only); oct-librarian denies edit/task/bash but allows
+ * webfetch (reference lookup is its job); oct-metis/oct-momus deny
+ * edit/bash/webfetch but allow task (planning/review agents need
+ * subagent delegation).
  * The underlying sessions have been verified to support the persistent,
  * multi-dispatch member lifecycle (OCTeam dispatches via session.create +
  * promptAsync, which does not consult agent mode -- see dispatch.ts).

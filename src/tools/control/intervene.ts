@@ -13,16 +13,17 @@
  */
 
 import crypto from "node:crypto"
-import { isEnoent } from "../../core/utils.js"
-import { logSwallowed } from "../../core/log.js"
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
+import type { Message } from "../../core/types.js"
+import { isEnoent } from "../../core/utils.js"
+import { logSwallowed } from "../../core/log.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
 import { loadTeamState } from "../../state/store.js"
 import { BackpressureError } from "../../messaging/mailbox.js"
 import { deliverToRecipients } from "../../messaging/deliver.js"
-import type { Message } from "../../core/types.js"
+//
 import { nonMasterMembers } from "../support.js"
 
 /** Inject a high-priority directive into member mailboxes during a run. */
@@ -72,7 +73,8 @@ export function teamInterveneTool(ctx: PluginContext): ToolDefinition {
                     return `Error: team "${args.team_id}" has no active run to intervene on.`
                 }
                 if (args.to === "master") {
-                    return `Error: team_intervene cannot target "master"; directives are delivered to member mailboxes only.`
+                    return `Error: team_intervene cannot target "master"; `
+                        + `directives are delivered to member mailboxes only.`
                 }
 
                 // Resolve recipients: a single member, or every non-master member on
@@ -119,11 +121,13 @@ export function teamInterveneTool(ctx: PluginContext): ToolDefinition {
                     await deliverToRecipients(ctx, team, recipients, base, team.bounds.messageUnreadMaxBytes)
                 } catch (err) {
                     if (err instanceof BackpressureError) {
-                        return `Error: recipient "${err.recipient}" mailbox is full (backpressure). Try later.`
+                        return `Error: recipient "${err.recipient}" mailbox is full (backpressure). `
+                            + `Try later.`
                     }
                     throw err
                 }
-                return `Directive delivered to ${recipients.length === 1 ? recipients[0] : `${recipients.length} members`}.`
+                const recipientLabel = recipients.length === 1 ? recipients[0] : `${recipients.length} members`
+                return `Directive delivered to ${recipientLabel}.`
             })
         },
     })

@@ -27,7 +27,7 @@ export const RESERVED_NAMES = [MASTER_NAME, ORCHESTRATOR_NAME] as const
 
 /**
  * Pick a random name from MEMBER_NAME_POOL not present in `taken`. Falls back to
- * "member-N" (N = taken.size + 1) if every pool name is already taken.
+ * the first unused "member-N" (scanning from 1) if every pool name is taken.
  */
 export function pickName(taken: Set<string>): string {
     const available = MEMBER_NAME_POOL.filter(n => !taken.has(n))

@@ -193,6 +193,8 @@ function formatSnapshot(team: Team): string[] {
     return lines
 }
 
+/** A run-event stream result: retained event window, total matched count,
+ *  and count of malformed lines skipped whole. */
 type RunEventWindow = {
     events: RunEvent[]
     total: number

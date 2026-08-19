@@ -239,7 +239,14 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 // doesn't hit EEXIST.
                 await fs.rm(newTeamDir, {
                     recursive: true, force: true,
-                }).catch((err) => logSwallowed(ctx, "team_create: cleanup of just-created directory failed", err, { dir: newTeamDir }, "debug"))
+                }).catch((err) =>
+                    logSwallowed(
+                        ctx,
+                        "team_create: cleanup of just-created directory failed",
+                        err,
+                        { dir: newTeamDir },
+                        "debug",
+                    ))
                 return `Error: bounds.maxMembers (${bounds.maxMembers}) is less than the number of initial `
                     + `members (${resolved.length}). Set maxMembers to at least ${resolved.length}.`
             }
@@ -280,18 +287,24 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                     // file. O_EXCL fails if the file already exists (fresh team).
                     // O_NOFOLLOW fails if the leaf is a symlink.
                     const O_NOFOLLOW = (await import("node:fs")).constants.O_NOFOLLOW ?? 0x20000
-                    const fh = await fs.open(sentinelPath, fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY | O_NOFOLLOW, 0o644)
+                    const fh = await fs.open(
+                        sentinelPath,
+                        fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY | O_NOFOLLOW,
+                        0o644,
+                    )
                     try {
                         await fh.writeFile(context.sessionID + "\n", "utf8")
                     } finally {
                         await fh.close()
                     }
-                    await fs.chmod(sentinelPath, 0o444).catch((err) => logSwallowed(ctx, "team_create: chmod sentinel failed", err, {}, "debug"))
+                    await fs.chmod(sentinelPath, 0o444).catch((err) =>
+                        logSwallowed(ctx, "team_create: chmod sentinel failed", err, {}, "debug"))
                 } catch (err) {
                     // Sentinel creation failed (symlink detected, EEXIST, or I/O).
                     // This is a security signal — do NOT continue with a team
                     // that lacks its trust anchor.
-                    throw new Error(`team_create: failed to create master.sentinel securely: ${err instanceof Error ? err.message : String(err)}`)
+                    throw new Error(`team_create: failed to create master.sentinel securely: `
+                        + `${err instanceof Error ? err.message : String(err)}`)
                 }
 
                 await initTeamState(ctx.storageRoot, {
@@ -312,7 +325,8 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 // failure does not orphan it and permanently reserve the name.
                 await fs.rm(newTeamDir, {
                     recursive: true, force: true,
-                }).catch((err) => logSwallowed(ctx, "team_create: rollback rm failed", err, { dir: newTeamDir }, "debug"))
+                }).catch((err) =>
+                    logSwallowed(ctx, "team_create: rollback rm failed", err, { dir: newTeamDir }, "debug"))
                 throw err
             }
 

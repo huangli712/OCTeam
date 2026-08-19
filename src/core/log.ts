@@ -9,8 +9,8 @@
  *      holds a PluginContext (tools/, hooks/, orchestration/).
  *   2. logger.warn(message, ...) — a global object for bottom-layer modules
  *      (state/, messaging/) that do NOT carry ctx. The sink is set at server
- *      startup via initLogger(ctx); before that, logger falls back
- *      to console.warn so unit tests of those modules still see output.
+ *      startup via initLogger(ctx); before that, logger falls back to the
+ *      matching console level so unit tests of those modules still see output.
  *
  * Level filtering: a module-level minLevel (default "info", overridable
  * via OCTEAM_LOG_LEVEL env var or setLogLevel()) gates every path so noisy

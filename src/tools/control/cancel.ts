@@ -5,13 +5,18 @@
  */
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
-import { isEnoent } from "../../core/utils.js"
-import { logSwallowed } from "../../core/log.js"
 
 import type { PluginContext } from "../../core/context.js"
-import { loadTeamState, saveTeamState, type Team } from "../../state/store.js"
-import { isIndexedMasterOf } from "../../state/resolve.js"
+import { isEnoent } from "../../core/utils.js"
+import { logSwallowed } from "../../core/log.js"
 import { finishRun } from "../../orchestration/control/completion.js"
+import {
+    loadTeamState,
+    saveTeamState,
+    type Team
+} from "../../state/store.js"
+import { isIndexedMasterOf } from "../../state/resolve.js"
+//
 import { abortAndResetMembers } from "../support.js"
 
 /** Cancel the active orchestration on a busy team, resetting it to idle. */
@@ -60,7 +65,8 @@ export function teamCancelTool(ctx: PluginContext): ToolDefinition {
                 // d. Persist.
                 await saveTeamState(team)
                 result = abortFailureCount > 0
-                    ? `Team "${args.team_id}" orchestration cancelled, but ${abortFailureCount} member${abortFailureCount === 1 ? "" : "s"} may still be running.`
+                    ? `Team "${args.team_id}" orchestration cancelled, but ${abortFailureCount} member`
+                        + `${abortFailureCount === 1 ? "" : "s"} may still be running.`
                     : `Team "${args.team_id}" orchestration cancelled. Team is idle and reusable.`
             })
             return result

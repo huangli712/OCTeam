@@ -26,6 +26,7 @@ import { safeReadFile } from "../../state/locks.js"
 import { runMemberOutputPath, isSafePathSegment } from "../../state/paths.js"
 import type { RunRecord, WorkflowGateStep, WorkflowRunStep } from "../../core/types.js"
 
+/** WorkflowRunStep widened with gate malformed-verdict fields for display. */
 type DisplayWorkflowRunStep = WorkflowRunStep & {
     onMalformed?: WorkflowGateStep["onMalformed"]
     malformedAttempts?: number

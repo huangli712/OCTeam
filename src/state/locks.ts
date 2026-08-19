@@ -36,9 +36,10 @@ const LOCK_HEARTBEAT_MS = LOCK_TTL_MS / 3
  * single process.
  *
  * The mutex instance MUST be a process-level singleton keyed by
- * teamName (see teamRegistry in store.ts). If loadTeamState returned a fresh
- * object with a fresh mutex each call, concurrent idles would grab different
- * mutexes and serialization would silently break, corrupting state.
+ * the resolved team directory (see teamRegistry in store.ts). If
+ * loadTeamState returned a fresh object with a fresh mutex each call,
+ * concurrent idles would grab different mutexes and serialization would
+ * silently break, corrupting state.
  */
 export class AsyncMutex {
     private chain: Promise<void> = Promise.resolve()

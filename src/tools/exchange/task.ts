@@ -308,8 +308,7 @@ export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
             // task completed-but-resultless. Reject so the orchestrator stays
             // the single writer of terminal status in recurse mode. Only fires
             // for status="completed"; other statuses (in_progress/deleted) are
-            // unaffected. loadTeamState is only called on this path (not the
-            // claim path), so the guard adds zero overhead to hot operations.
+            // unaffected. The guard adds a state load only on this path.
             if (args.status === "completed") {
                 let team
                 try {

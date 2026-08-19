@@ -14,6 +14,7 @@
 
 import type { WorkflowJoinMetadata } from "../../core/types.js"
 
+/** Alias: join-policy evaluates the persisted join metadata directly. */
 type Join = WorkflowJoinMetadata
 
 /**

@@ -1,7 +1,6 @@
 /**
  * Dry-run formatting for lowered workflow steps. Produces the human-readable
- * preview shown by `team_workflow --dry_run` and the "resolved steps" section
- * of error messages.
+ * preview shown by `team_workflow --dry_run`.
  *
  * This module owns presentation so the lowering engine stays focused on
  * reference resolution and step flattening.

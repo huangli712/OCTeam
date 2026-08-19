@@ -10,7 +10,8 @@
  *   Phase A: router_dispatch → parse_route → fan_out_to_targets
  *   Phase B: target_barrier → [signoff →] deliver
  *   - All targets complete → check signoff → deliver (idle: route_complete)
- *   - Route parse failure / no branches selected → deliver (failed: route_complete:decision_parse_failure)
+ *   - Route parse failure → deliver (failed: route_complete:decision_parse_failure)
+ *   - Valid decision but zero matching branches → deliver (failed: route_complete:no_matching_branch)
  */
 
 import type { PluginContext } from "../../core/context.js"
@@ -84,8 +85,9 @@ export async function advanceRouteAfterDecision(ctx: PluginContext, team: Team):
 
 /**
  * No default route: a parse failure or zero matching branches fails the run
- * with a reason containing "decision_parse_failure" so runStatusFromReason
- * classifies it as failed.
+ * with an explicit "failed" status. Only the parse-failure reason contains
+ * "decision_parse_failure" (also mapped to failed by runStatusFromReason's
+ * fallback); a valid-but-unmatched decision fails as "no_matching_branch".
  */
 export async function handleRouteIdle(
     ctx: PluginContext,

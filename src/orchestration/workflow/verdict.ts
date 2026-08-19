@@ -178,7 +178,7 @@ function collectEnsembleVerdicts(
  *   parse_failure -> routes through on_malformed (with fallback to on_invalid):
  *     fail          -> terminate as workflow_invalid:<reason>:<verifier>
  *     retry_verifier-> re-dispatch THIS gate's verifier (bounded by
- *                      max_malformed_retries, falling back to max_invalid_retries)
+ *                      max_malformed_retries, default 0 when unset)
  *     skip          -> mark the gate skipped and advance (on_malformed only)
  *     escalate      -> force a human-approval pause
  *   INVALID       -> routes through on_invalid:

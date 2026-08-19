@@ -38,6 +38,7 @@ import { ensureMembersReady } from "../../orchestration/control/members.js"
 import { loadTeamState, saveTeamState } from "../../state/store.js"
 import { resumeDispatch } from "../../orchestration/lifecycle/resume.js"
 
+/** Timeout for probing a member session's reachability before resuming it. */
 const SESSION_REACHABILITY_TIMEOUT_MS = 5_000
 
 /** Resume an interrupted orchestration from its preserved checkpoint. */

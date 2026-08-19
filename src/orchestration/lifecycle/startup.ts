@@ -9,7 +9,8 @@
  * ALL workflow tools share the same three-phase lock order via
  * startOrchestration (team_resume follows the same Phase 2 contract too — see
  * resume.ts):
- *   1. Pre-checks UNDER team.mutex (reject if already orchestrating; validate)
+ *   1. Pre-checks (auth, load, validate); the busy pre-check runs UNDER
+ *      team.mutex (reject if already orchestrating)
  *   2. ensureMembersReady OUTSIDE the mutex (the role-setup barrier needs the
  *      event handler to flip member.initialized, which it does inside the
  *      mutex — holding it here would deadlock)

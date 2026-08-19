@@ -500,8 +500,8 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                     changes.push("session: cleared for re-initialization with new role/prompt")
                 }
                 // Destroy the old worktree only after persistence succeeds. A
-                // failure leaves the renamed member consistent, and cleanWorktree
-                // can remove the stale worktree during team_delete.
+                // failure leaves the renamed member consistent, and team_delete's
+                // destroyWorktree pass can remove the stale worktree later.
                 if (renaming && liveMember.worktreePath) {
                     let destroyed = true
                     // Check for uncommitted changes before force-destroying.
