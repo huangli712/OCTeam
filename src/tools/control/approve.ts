@@ -54,7 +54,8 @@ function validateApproval(team: Team, approvalId: string): ApprovalRequest | str
         return `Error: team "${team.teamName}" has no pending human approval.`
     }
     if (approvalId !== task.approvalRequest.id) {
-        return `Error: approval_id "${approvalId}" does not match pending approval "${task.approvalRequest.id}".`
+        return `Error: approval_id "${approvalId}" does not match pending approval `
+            + `"${task.approvalRequest.id}".`
     }
     return task.approvalRequest
 }
@@ -70,7 +71,9 @@ function validateApprovalPayload(req: ApprovalRequest): string | null {
         case "recurse_decompose":
             if (!req.taskId) return "missing required field 'taskId'"
             if (!req.member) return "missing required field 'member'"
-            if (!Array.isArray(req.subtasks) || req.subtasks.length === 0) return "missing or empty required field 'subtasks'"
+            if (!Array.isArray(req.subtasks) || req.subtasks.length === 0) {
+                return "missing or empty required field 'subtasks'"
+            }
             return null
         case "tollgate_gate":
             if (req.stage === undefined) return "missing required field 'stage'"
@@ -108,7 +111,9 @@ export async function applyApprovalDecision(
     // leaving the run stuck in approval limbo. Reject early with a clear error.
     const payloadErr = validateApprovalPayload(request)
     if (payloadErr) {
-        return `Error: approval request ${request.id} has an incomplete payload for kind "${request.kind}": ${payloadErr}`
+        return `Error: approval request ${request.id} has an incomplete payload `
+            + `for kind "${request.kind}": `
+            + `${payloadErr}`
     }
     const resolvedAt = Date.now()
     const pausedMs = Math.max(0, resolvedAt - request.requestedAt)
@@ -198,7 +203,8 @@ export async function applyApprovalDecision(
             await advanceRouteAfterDecision(ctx, team)
             return `Approved ${request.kind} for team "${team.teamName}"; resuming.`
         case "arbitrate_ruling":
-            if (task.type === "arbitrate" && task.arbitrationStage && !task.responses[task.arbiterMember ?? ""]) {
+            if (task.type === "arbitrate" && task.arbitrationStage
+                && !task.responses[task.arbiterMember ?? ""]) {
                 // Pre-ruling pause approved: dispatch the arbiter to issue the ruling.
                 const arbiter = findMember(team, task.arbiterMember ?? "")
                 if (arbiter?.sessionId) {
