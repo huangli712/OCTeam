@@ -46,6 +46,19 @@ export type WorkflowFanoutErrorResult =
     | { readonly kind: "within_tolerance" }
     | { readonly kind: "failed"; readonly reason: string };
 
+/** Outcome of attempting to advance a join step. Returned by completeWorkflowJoinStep:
+ *  - completed: join is satisfied and marked done; ready for downstream consumers.
+ *  - dispatched: reducer/selector member just got dispatched; awaiting response.
+ *  - waiting: reducer/selector already in flight (dispatchedAt set); still awaiting response.
+ *  - failed: reducer could not be dispatched (no live session) -> run terminated.
+ *  - noop: not a join step, or already completed -> nothing to do. */
+type WorkflowJoinAdvanceResult =
+    | "completed"
+    | "dispatched"
+    | "waiting"
+    | "failed"
+    | "noop";
+
 // --- shared step helpers ---
 
 /** Mark a workflow step as dispatched with a timestamp. */
@@ -343,19 +356,6 @@ function joinWithBranchStatus(
 }
 
 // --- join advance ---
-
-/** Outcome of attempting to advance a join step. Returned by completeWorkflowJoinStep:
- *  - completed: join is satisfied and marked done; ready for downstream consumers.
- *  - dispatched: reducer/selector member just got dispatched; awaiting response.
- *  - waiting: reducer/selector already in flight (dispatchedAt set); still awaiting response.
- *  - failed: reducer could not be dispatched (no live session) -> run terminated.
- *  - noop: not a join step, or already completed -> nothing to do. */
-type WorkflowJoinAdvanceResult =
-    | "completed"
-    | "dispatched"
-    | "waiting"
-    | "failed"
-    | "noop";
 
 /** Complete a join step: dispatch reducer if needed, mark completed, or return waiting. */
 export async function completeWorkflowJoinStep(
