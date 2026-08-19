@@ -5,10 +5,10 @@
  */
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
-import { isEnoent } from "../../core/utils.js"
-import { logSwallowed } from "../../core/log.js"
 
 import type { PluginContext } from "../../core/context.js"
+import { isEnoent } from "../../core/utils.js"
+import { logSwallowed } from "../../core/log.js"
 import {
     clearActiveTask,
     deleteQuarantinedTeamStorage,
@@ -17,12 +17,24 @@ import {
     quarantineTeamStorage,
     type Team,
 } from "../../state/store.js"
-import { unindexMasterTeam, unindexSession, isIndexedMasterOf } from "../../state/resolve.js"
-import { clearWakeHint } from "../../messaging/wake-hint.js"
-import { abortAndResetMembers } from "../support.js"
-import { hasUncommittedChanges, destroyWorktree } from "../../state/worktrees.js"
-import { worktreesDir, teamLifecycleLockPath, teamNamespaceLockPath } from "../../state/paths.js"
+import {
+    unindexMasterTeam,
+    unindexSession,
+    isIndexedMasterOf
+} from "../../state/resolve.js"
+import {
+    hasUncommittedChanges,
+    destroyWorktree
+} from "../../state/worktrees.js"
+import {
+    worktreesDir,
+    teamLifecycleLockPath,
+    teamNamespaceLockPath
+} from "../../state/paths.js"
 import { withLock } from "../../state/locks.js"
+import { clearWakeHint } from "../../messaging/wake-hint.js"
+//
+import { abortAndResetMembers } from "../support.js"
 
 /** Delete a team, with optional force mode to skip safety checks. */
 export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
