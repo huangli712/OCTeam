@@ -103,7 +103,9 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                 invalidateTeam(team.directory)
             }
             try {
-                await withLock(teamNamespaceLockPath(ctx.storageRoot), async () => withLock(teamLifecycleLockPath(team.directory), async () => team.mutex.runExclusive(async () => {
+                await withLock(teamNamespaceLockPath(ctx.storageRoot), async () =>
+                    withLock(teamLifecycleLockPath(team.directory), async () =>
+                        team.mutex.runExclusive(async () => {
                 // Revalidate inside the mutex: a concurrent
                 // startOrchestration may have flipped status to "busy" since
                 // the outside-mutex check at line 53. For non-force, refuse
@@ -183,11 +185,13 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                     const wtMsg = worktreeErrors.length > 0
                         ? ` Worktree cleanup completed: ${worktreeErrors.join("; ")}`
                         : " Worktrees were destroyed before quarantine failure."
-                    throw new Error(`team_delete: quarantine failed for team "${args.team_id}" after worktree cleanup: ${quarantineErr.message}.${wtMsg}`)
+                    throw new Error(`team_delete: quarantine failed for team "${args.team_id}" `
+                        + `after worktree cleanup: ${quarantineErr.message}.${wtMsg}`)
                 }
                 }), team.directory), ctx.storageRoot)
                 if (staleSpawning) {
-                    return `Error: team "${args.team_id}" is initializing (session/worktree creation in progress). Retry in a few seconds.`
+                    return `Error: team "${args.team_id}" is initializing (session/worktree creation in progress). `
+                        + `Retry in a few seconds.`
                 }
                 if (staleBusy) {
                     return `Error: team "${args.team_id}" is busy with an active orchestration. `
