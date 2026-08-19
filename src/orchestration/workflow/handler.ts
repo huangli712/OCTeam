@@ -6,8 +6,6 @@
  */
 
 import type { PluginContext } from "../../core/context.js";
-import { logger } from "../../core/log.js";
-import { type Team, saveTeamState } from "../../state/store.js";
 import type {
     MemberState,
     WorkflowJoinStep,
@@ -15,31 +13,46 @@ import type {
     WorkflowTask,
     WorkflowTaskStep,
 } from "../../core/types.js";
+import { logger } from "../../core/log.js";
+import {
+    type Team,
+    saveTeamState
+} from "../../state/store.js";
+import { finishRun } from "../control/completion.js";
+import { maybeRequestApproval } from "../control/approval.js";
+import { recordEvent } from "../records/events.js";
+import { truncateOutput } from "../protocol/output.js";
+import { parseSelection } from "../protocol/decisions.js";
+//
 import {
     advanceWorkflowStep,
     describeStep,
     dispatchTaskStep,
+    resetWorkflowStepTiming,
     maybePauseAfterWorkflowStep,
     maybePauseBeforeWorkflowStep,
 } from "./engine.js";
-import { workflowInvalidReason } from "./reasons.js";
-import { finishRun } from "../control/completion.js";
-import { recordEvent } from "../records/events.js";
-import { truncateOutput } from "../protocol/output.js";
 import {
     findActiveWorkflowStepIndexForMember,
+    assertNeverWorkflowStepKind,
     readyWorkflowStepIndices,
 } from "./dag.js";
-import { parseSelection } from "../protocol/decisions.js";
-import { maybeRequestApproval } from "../control/approval.js";
 import {
     buildBranchWorkflowOutput,
     handleWorkflowDispatchUnavailable,
     selectableBranchIdsForJoin,
 } from "./fanout.js";
 import { handleGateVerdict, resetStepAfterCompletion } from "./verdict.js";
-import { resetWorkflowStepTiming } from "./engine.js";
-import { assertNeverWorkflowStepKind } from "./dag.js";
+import { workflowInvalidReason } from "./reasons.js";
+
+/** Max input size passed to a retry_on regex. The 10KB cap limits the worst-case
+ * wall time of a backtracking pattern that slips through the heuristic below
+ * while leaving ample room for legitimate output-content checks. */
+const REDOS_INPUT_CAP = 10_000
+
+/** Max regex pattern length. A pattern longer than this is almost certainly
+ * either a mistake or an attempt to overflow the regex compiler. */
+const REDOS_PATTERN_MAX_LEN = 256
 
 /** Check whether a task step's output matches its retry_on condition. */
 export function shouldRetryTask(step: WorkflowTaskStep, output: string): boolean {
@@ -59,15 +72,6 @@ export function shouldRetryTask(step: WorkflowTaskStep, output: string): boolean
         }
     }
 }
-
-/** Max input size passed to a retry_on regex. The 10KB cap limits the worst-case
- * wall time of a backtracking pattern that slips through the heuristic below
- * while leaving ample room for legitimate output-content checks. */
-const REDOS_INPUT_CAP = 10_000
-
-/** Max regex pattern length. A pattern longer than this is almost certainly
- * either a mistake or an attempt to overflow the regex compiler. */
-const REDOS_PATTERN_MAX_LEN = 256
 
 /**
  * Detect nested quantifiers — the canonical ReDoS signature. Patterns like
@@ -157,15 +161,19 @@ function testRegexSafely(pattern: string, output: string): boolean {
         return false
     }
     if (hasNestedQuantifier(pattern)) {
-        logger.warn("shouldRetryTask: regex pattern contains nested quantifiers (ReDoS risk), treating as no-retry", {
-            pattern,
-        })
+        logger.warn(
+            "shouldRetryTask: regex pattern contains nested quantifiers (ReDoS risk), treating as no-retry",
+            { pattern },
+        )
         return false
     }
     // Reject patterns with three or more consecutive wildcard quantifiers.
     // ^.*.*.*.*X$ on 1000 chars blocks 5s+ in V8.
     if (/(?:\.[*+]){3,}/.test(pattern.replace(/\\[+*?]/g, ""))) {
-        logger.warn("shouldRetryTask: regex pattern has 3+ consecutive wildcard quantifiers (ReDoS risk)", { pattern })
+        logger.warn(
+            "shouldRetryTask: regex pattern has 3+ consecutive wildcard quantifiers (ReDoS risk)",
+            { pattern },
+        )
         return false
     }
     try {
