@@ -15,8 +15,15 @@ import {
     signoffTaskFields,
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
-import { commonOrchestrationFields, signoffSchemaFields } from "../schema.js"
-import { validateSignoff, nonMasterMembers } from "../support.js"
+//
+import {
+    commonOrchestrationFields,
+    signoffSchemaFields
+} from "../schema.js"
+import {
+    validateSignoff,
+    nonMasterMembers
+} from "../support.js"
 
 /**
  * Detect a cycle in the blocked_by dependency graph declared by a delegate
@@ -82,10 +89,17 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
             tasks: tool.schema
                 .array(
                     tool.schema.object({
-                        ref: tool.schema.string().max(256).optional().describe("human-readable id for blockedBy references"),
+                        ref: tool.schema
+                            .string()
+                            .max(256)
+                            .optional()
+                            .describe("human-readable id for blockedBy references"),
                         subject: tool.schema.string().min(1).max(500),
                         description: tool.schema.string().min(1).max(8192),
-                        blocked_by: tool.schema.array(tool.schema.string().max(256)).max(50).optional(),
+                        blocked_by: tool.schema
+                            .array(tool.schema.string().max(256))
+                            .max(50)
+                            .optional(),
                     }),
                 )
                 .min(1)
@@ -223,8 +237,15 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                     try {
                         await updateTask(taskDirectory, taskId, { status: "deleted" })
                     } catch (cleanupErr) {
-                        const cleanupError = cleanupErr instanceof Error ? cleanupErr : new Error(String(cleanupErr))
-                        logSwallowed(ctx, "delegate startup: failed to delete created task", cleanupError, { taskId })
+                        const cleanupError = cleanupErr instanceof Error
+                            ? cleanupErr
+                            : new Error(String(cleanupErr))
+                        logSwallowed(
+                            ctx,
+                            "delegate startup: failed to delete created task",
+                            cleanupError,
+                            { taskId },
+                        )
                     }
                 }
                 throw err
