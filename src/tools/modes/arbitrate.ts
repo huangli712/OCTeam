@@ -16,9 +16,19 @@ import {
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
 import { DEFAULT_ARBITRATE_ROUNDS } from "../../orchestration/modes/defaults.js"
-import { commonOrchestrationFields, humanApprovalSchemaFields, parseThresholdFields, signoffSchemaFields } from "../schema.js"
-import { assertMember, validateSignoff, findMember } from "../support.js"
 import { MASTER_NAME } from "../../state/naming.js"
+//
+import {
+    commonOrchestrationFields,
+    humanApprovalSchemaFields,
+    parseThresholdFields,
+    signoffSchemaFields
+} from "../schema.js"
+import {
+    assertMember,
+    validateSignoff,
+    findMember
+} from "../support.js"
 
 /** Run a binding arbitration with structured debate between members and a ruling arbiter. */
 export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
@@ -29,8 +39,15 @@ export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
             + "The arbiter must not be one of the debaters.",
         args: {
             team_id: tool.schema.string().min(1),
-            task: tool.schema.string().min(1).max(8192).describe("the dispute / subject under arbitration"),
-            arbiter: tool.schema.string().min(1).describe("member name of the arbiter (NOT \"master\", NOT a debater)"),
+            task: tool.schema
+                .string()
+                .min(1)
+                .max(8192)
+                .describe("the dispute / subject under arbitration"),
+            arbiter: tool.schema
+                .string()
+                .min(1)
+                .describe("member name of the arbiter (NOT \"master\", NOT a debater)"),
             debaters: tool.schema
                 .array(tool.schema.string().min(1).max(64))
                 .max(12)
@@ -102,7 +119,13 @@ export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
                     for (const name of args.debaters) {
                         const m = findMember(team, name)
                         if (!m) continue
-                        await dispatchToMember(ctx, m, buildDebatePrompt(task), m.worktreePath ?? ctx.directory, team)
+                        await dispatchToMember(
+                            ctx,
+                            m,
+                            buildDebatePrompt(task),
+                            m.worktreePath ?? ctx.directory,
+                            team,
+                        )
                     }
                 },
                 // successMessage
