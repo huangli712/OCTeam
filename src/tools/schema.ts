@@ -1,4 +1,18 @@
 /**
+ * Shared tool-schema field builders used by the workflow tools.
+ *
+ * These builders keep the orchestration runtime independent of the
+ * @opencode-ai/plugin tool-framework value API. Its ToolContext type import
+ * is erased at runtime and creates no behavioral coupling.
+ *
+ * The matching ActiveTask field builders (signoffTaskFields /
+ * humanApprovalTaskFields) live in orchestration/lifecycle/startup.ts
+ * because they depend on runtime types (SignoffPolicy, Team).
+ */
+
+import { tool } from "@opencode-ai/plugin"
+
+/**
  * Optional parse-failure threshold fields for modes with bounded
  * decision/verdict parse recovery. Each mode tool selects only its matching
  * field (loop, arbitrate, route, recurse).
@@ -45,20 +59,6 @@ export const parseThresholdFields = {
             "Default 3.",
         ),
 }
-
-/**
- * Shared tool-schema field builders used by the workflow tools.
- *
- * These builders keep the orchestration runtime independent of the
- * @opencode-ai/plugin tool-framework value API. Its ToolContext type import
- * is erased at runtime and creates no behavioral coupling.
- *
- * The matching ActiveTask field builders (signoffTaskFields /
- * humanApprovalTaskFields) live in orchestration/lifecycle/startup.ts
- * because they depend on runtime types (SignoffPolicy, Team).
- */
-
-import { tool } from "@opencode-ai/plugin"
 
 /**
  * The three signoff schema fields shared by every workflow tool that supports
