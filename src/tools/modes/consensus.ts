@@ -14,7 +14,11 @@ import {
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
 import { DEFAULT_CONSENSUS_ROUNDS } from "../../orchestration/modes/defaults.js"
-import { commonOrchestrationFields, humanApprovalSchemaFields } from "../schema.js"
+//
+import {
+    commonOrchestrationFields,
+    humanApprovalSchemaFields
+} from "../schema.js"
 import { nonMasterMembers } from "../support.js"
 
 /** Run a multi-round structured debate until all members reach consensus. */
@@ -27,8 +31,18 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
             + "or fails when max_rounds is hit without consensus.",
         args: {
             team_id: tool.schema.string().min(1),
-            topic: tool.schema.string().min(1).max(4096).describe("the debate topic"),
-            max_rounds: tool.schema.number().int().min(1).max(20).optional().describe("round limit (default 3)"),
+            topic: tool.schema
+                .string()
+                .min(1)
+                .max(4096)
+                .describe("the debate topic"),
+            max_rounds: tool.schema
+                .number()
+                .int()
+                .min(1)
+                .max(20)
+                .optional()
+                .describe("round limit (default 3)"),
             ...commonOrchestrationFields,
             ...humanApprovalSchemaFields,
         },
