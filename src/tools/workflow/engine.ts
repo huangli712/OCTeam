@@ -12,8 +12,10 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
-import type { WorkflowStep, WorkflowTask } from "../../core/types.js"
-import { WORKFLOW_MAX_TOTAL_STEPS } from "../../orchestration/workflow/loader.js"
+import type {
+    WorkflowStep,
+    WorkflowTask
+} from "../../core/types.js"
 import {
     advanceWorkflowStep,
     dispatchTaskStep,
@@ -26,13 +28,24 @@ import {
     signoffTaskFields,
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
+import { WORKFLOW_MAX_TOTAL_STEPS } from "../../orchestration/workflow/loader.js"
 import { activationError } from "../../state/activation.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
 import { loadTeamState } from "../../state/store.js"
-import { humanApprovalSchemaFields, signoffSchemaFields } from "../schema.js"
-import { lowerWorkflowSteps, toWorkflowStep } from "./lower.js"
+//
+import {
+    humanApprovalSchemaFields,
+    signoffSchemaFields
+} from "../schema.js"
+import {
+    lowerWorkflowSteps,
+    toWorkflowStep
+} from "./lower.js"
+import {
+    resolveWorkflowArgs,
+    validateWorkflowArgs
+} from "./validate.js"
 import { formatWorkflowDryRun } from "./format.js"
-import { resolveWorkflowArgs, validateWorkflowArgs } from "./validate.js"
 
 // --- tool definition ---
 
