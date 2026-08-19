@@ -72,6 +72,7 @@ export function activationError(
     activatedAt: number | undefined,
 ): string | null {
     return activatedAt === undefined
-        ? `Error: team "${teamName}" is not the active team. Call team_activate(team_id="${teamName}") first.`
+        ? `Error: team "${teamName}" is not the active team. `
+            + `Call team_activate(team_id="${teamName}") first.`
         : null
 }
