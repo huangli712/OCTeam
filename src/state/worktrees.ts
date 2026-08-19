@@ -5,13 +5,17 @@
  */
 
 import { execFile } from "node:child_process"
+import { promisify } from "node:util"
 import fs from "node:fs/promises"
 import path from "node:path"
-import { promisify } from "node:util"
 
 import { logger } from '../core/log.js';
+//
 import { assertNoSymlinkTraversal } from "./locks.js";
-import { worktreePath, worktreesDir } from "./paths.js";
+import {
+    worktreePath,
+    worktreesDir
+} from "./paths.js";
 
 /** Promisified child_process.execFile for git operations. */
 const execFileP = promisify(execFile)
@@ -49,9 +53,14 @@ export async function hasUncommittedChanges(worktreePath: string): Promise<boole
                 await fs.access(worktreePath)
                 // Path exists but we got ENOENT — the git binary is likely
                 // missing or the cwd is inaccessible. Fail-closed.
-                logger.warn("hasUncommittedChanges: ENOENT from git but path exists (git binary missing or cwd issue), treating as dirty (fail-closed)", {
-                    worktreePath, error: msg,
-                })
+                logger.warn(
+                    "hasUncommittedChanges: ENOENT from git but path exists "
+                        + "(git binary missing or cwd issue), "
+                        + "treating as dirty (fail-closed)",
+                    {
+                        worktreePath, error: msg,
+                    },
+                )
                 return true
             } catch (accessErr) {
                 // Only ENOENT means the path doesn't exist. EACCES,
@@ -59,16 +68,26 @@ export async function hasUncommittedChanges(worktreePath: string): Promise<boole
                 // treat as dirty (fail-closed) to protect uncommitted work.
                 const code = (accessErr as NodeJS.ErrnoException).code
                 if (code === "ENOENT") {
-                    logger.debug("hasUncommittedChanges: path does not exist (no work to lose)", { worktreePath })
+                    logger.debug(
+                        "hasUncommittedChanges: path does not exist (no work to lose)",
+                        { worktreePath },
+                    )
                     return false
                 }
-                logger.warn("hasUncommittedChanges: access error, treating as dirty (fail-closed)", { worktreePath, error: String(accessErr) })
+                logger.warn(
+                    "hasUncommittedChanges: access error, treating as dirty (fail-closed)",
+                    { worktreePath, error: String(accessErr) },
+                )
                 return true
             }
         }
-        logger.warn("hasUncommittedChanges: git status failed (including corrupted .git), treating as dirty (fail-closed)", {
-            worktreePath, error: msg,
-        })
+        logger.warn(
+            "hasUncommittedChanges: git status failed (including corrupted .git), "
+                + "treating as dirty (fail-closed)",
+            {
+                worktreePath, error: msg,
+            },
+        )
         return true
     }
 }
