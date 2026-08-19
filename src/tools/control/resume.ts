@@ -29,14 +29,20 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
-import type { ActiveTask, MemberStatus } from "../../core/types.js"
+import type {
+    ActiveTask,
+    MemberStatus
+} from "../../core/types.js"
 import { isEnoent } from "../../core/utils.js"
 import { logSwallowed } from "../../core/log.js"
+import { ensureMembersReady } from "../../orchestration/control/members.js"
+import { resumeDispatch } from "../../orchestration/lifecycle/resume.js"
 import { activationError } from "../../state/activation.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
-import { ensureMembersReady } from "../../orchestration/control/members.js"
-import { loadTeamState, saveTeamState } from "../../state/store.js"
-import { resumeDispatch } from "../../orchestration/lifecycle/resume.js"
+import {
+    loadTeamState,
+    saveTeamState
+} from "../../state/store.js"
 
 /** Timeout for probing a member session's reachability before resuming it. */
 const SESSION_REACHABILITY_TIMEOUT_MS = 5_000
@@ -81,7 +87,14 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
 
             let restored: ActiveTask | undefined
             let resumeRaced = false
-            const memberSnapshot: Array<{ name: string; error?: string; declaredDone?: boolean; retryingSince?: number; turnCount?: number; status?: string }> = []
+            const memberSnapshot: Array<{
+                name: string
+                error?: string
+                declaredDone?: boolean
+                retryingSince?: number
+                turnCount?: number
+                status?: string
+            }> = []
 
             try {
                 // --- Phase 1 (mutex): snapshot + reset, DO NOT commit activeTask. ---
@@ -113,7 +126,14 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                     // before a later failure. Rollback uses this list to abort those
                     // members and restore their status.
                     for (const m of team.members) {
-                        memberSnapshot.push({ name: m.name, error: m.error, declaredDone: m.declaredDone, retryingSince: m.retryingSince, turnCount: m.turnCount, status: m.status })
+                        memberSnapshot.push({
+                            name: m.name,
+                            error: m.error,
+                            declaredDone: m.declaredDone,
+                            retryingSince: m.retryingSince,
+                            turnCount: m.turnCount,
+                            status: m.status,
+                        })
                         if (m.status === "errored") {
                             if (
                                 arenaTask
@@ -236,7 +256,12 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                                             query: { directory: m.worktreePath ?? ctx.directory },
                                         })
                                     } catch (abortErr) {
-                                        logSwallowed(ctx, "resume rollback: session.abort failed (best-effort)", abortErr, { member: m.name })
+                                        logSwallowed(
+                                            ctx,
+                                            "resume rollback: session.abort failed (best-effort)",
+                                            abortErr,
+                                            { member: m.name },
+                                        )
                                     }
                                 }
                                 m.status = "errored"
