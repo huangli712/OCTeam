@@ -9,8 +9,11 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { PluginContext } from "../../core/context.js"
 import { logSwallowed } from "../../core/log.js"
 import { dispatchToMember } from "../../orchestration/control/dispatch.js"
-import { createTask, listAllTasks, updateTask } from "../../state/tasks.js"
 import { buildRecursePrompt } from "../../orchestration/modes/recurse.js"
+import {
+    DEFAULT_RECURSE_DEPTH,
+    DEFAULT_RECURSE_SUBTASKS,
+} from "../../orchestration/modes/defaults.js"
 import {
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
@@ -19,12 +22,23 @@ import {
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
 import {
-    DEFAULT_RECURSE_DEPTH,
-    DEFAULT_RECURSE_SUBTASKS,
-} from "../../orchestration/modes/defaults.js"
-import { commonOrchestrationFields, humanApprovalSchemaFields, parseThresholdFields, signoffSchemaFields } from "../schema.js"
-import { assertMember, validateSignoff, findMember } from "../support.js"
+    createTask,
+    listAllTasks,
+    updateTask
+} from "../../state/tasks.js"
 import { MASTER_NAME } from "../../state/naming.js"
+//
+import {
+    commonOrchestrationFields,
+    humanApprovalSchemaFields,
+    parseThresholdFields,
+    signoffSchemaFields
+} from "../schema.js"
+import {
+    assertMember,
+    validateSignoff,
+    findMember
+} from "../support.js"
 
 /** Truncate the root subject to fit within the 500-char delegate schema limit. */
 const SUBJECT_MAX_LEN = 480
