@@ -15,8 +15,13 @@ import {
     baseTaskFields,
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
+//
 import { commonOrchestrationFields } from "../schema.js"
-import { assertMember, findMember, nonMasterMembers } from "../support.js"
+import {
+    assertMember,
+    findMember,
+    nonMasterMembers
+} from "../support.js"
 
 /** Competitive arena with multiple candidates and a dedicated evaluator. */
 export function teamArenaTool(ctx: PluginContext): ToolDefinition {
@@ -29,7 +34,11 @@ export function teamArenaTool(ctx: PluginContext): ToolDefinition {
             + "with worktree:true.",
         args: {
             team_id: tool.schema.string().min(1),
-            task: tool.schema.string().min(1).max(8192).describe("the shared implement task every candidate works on"),
+            task: tool.schema
+                .string()
+                .min(1)
+                .max(8192)
+                .describe("the shared implement task every candidate works on"),
             evaluator: tool.schema
                 .string()
                 .min(1)
