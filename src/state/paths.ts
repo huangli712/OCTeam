@@ -20,7 +20,8 @@ export function teamsDir(storageRoot: string, leadSessionId?: string): string {
     // but validate it as defense-in-depth so a malformed value can never escape
     // the storage root via path traversal.
     if (leadSessionId !== undefined && !isSafePathSegment(leadSessionId)) {
-        throw new Error(`teamsDir: unsafe leadSessionId segment: ${JSON.stringify(leadSessionId)}`)
+        throw new Error(`teamsDir: unsafe leadSessionId segment: `
+            + `${JSON.stringify(leadSessionId)}`)
     }
     return leadSessionId
         ? path.join(storageRoot, leadSessionId, "teams")
@@ -28,7 +29,11 @@ export function teamsDir(storageRoot: string, leadSessionId?: string): string {
 }
 
 /** <storageRoot>[/<leadSessionId>]/teams/{teamName} */
-export function teamDir(storageRoot: string, teamName: string, leadSessionId?: string): string {
+export function teamDir(
+    storageRoot: string,
+    teamName: string,
+    leadSessionId?: string,
+): string {
     assertSafeSegment(teamName, "teamDir", "teamName")
     return path.join(teamsDir(storageRoot, leadSessionId), teamName)
 }
@@ -96,6 +101,12 @@ export function mailboxDir(teamDirectory: string): string {
     return path.join(teamDirectory, "mailbox")
 }
 
+/** mailbox/{recipient}.lock — file lock for atomic read-and-reserve */
+export function mailboxLockPath(teamDirectory: string, recipient: string): string {
+    assertSafeSegment(recipient, "mailboxLockPath", "recipient")
+    return path.join(mailboxDir(teamDirectory), `${recipient}.lock`)
+}
+
 /** mailbox/{recipient}.jsonl — pending inbox (append-only) */
 export function inboxPath(teamDirectory: string, recipient: string): string {
     assertSafeSegment(recipient, "inboxPath", "recipient")
@@ -124,12 +135,6 @@ export function reservedPath(
     return path.join(reservedDir(teamDirectory, recipient), messageId)
 }
 
-/** mailbox/{recipient}.lock — file lock for atomic read-and-reserve */
-export function mailboxLockPath(teamDirectory: string, recipient: string): string {
-    assertSafeSegment(recipient, "mailboxLockPath", "recipient")
-    return path.join(mailboxDir(teamDirectory), `${recipient}.lock`)
-}
-
 // --- tasks/ ---
 
 /** Tasks directory path for a team: `<teamDirectory>/tasks`. */
@@ -143,6 +148,12 @@ export function taskPath(teamDirectory: string, taskId: string): string {
     return path.join(tasksDir(teamDirectory), `${taskId}.json`)
 }
 
+/** tasks/claims/{taskId}.update.lock — short-lived lock serializing updateTask read-modify-write */
+export function taskUpdateLockPath(teamDirectory: string, taskId: string): string {
+    assertSafeSegment(taskId, "taskUpdateLockPath", "taskId")
+    return path.join(claimsDir(teamDirectory), `${taskId}.update.lock`)
+}
+
 /** Claims directory path: `<teamDirectory>/tasks/claims`. */
 export function claimsDir(teamDirectory: string): string {
     return path.join(tasksDir(teamDirectory), "claims")
@@ -152,12 +163,6 @@ export function claimsDir(teamDirectory: string): string {
 export function claimLockPath(teamDirectory: string, taskId: string): string {
     assertSafeSegment(taskId, "claimLockPath", "taskId")
     return path.join(claimsDir(teamDirectory), `${taskId}.lock`)
-}
-
-/** tasks/claims/{taskId}.update.lock — short-lived lock serializing updateTask read-modify-write */
-export function taskUpdateLockPath(teamDirectory: string, taskId: string): string {
-    assertSafeSegment(taskId, "taskUpdateLockPath", "taskId")
-    return path.join(claimsDir(teamDirectory), `${taskId}.update.lock`)
 }
 
 /** tasks/claims/claim-mutex.lock — team-level mutex serializing the
@@ -231,7 +236,11 @@ export function runRecordPath(teamDirectory: string, runId: string): string {
  * its turns in this run (appended per idle; NOT just the last turn). Excludes
  * reduce-stage output, which goes to runReduceOutputPath.
  */
-export function runMemberOutputPath(teamDirectory: string, runId: string, memberName: string): string {
+export function runMemberOutputPath(
+    teamDirectory: string,
+    runId: string,
+    memberName: string,
+): string {
     assertSafeSegment(memberName, "runMemberOutputPath", "memberName")
     return path.join(runDir(teamDirectory, runId), `${memberName}.md`)
 }
@@ -254,7 +263,11 @@ export function runReduceOutputPath(teamDirectory: string, runId: string): strin
  * so neither overwrites the other. Picked up automatically by persistRun's
  * .md readdir scan, mirroring runReduceOutputPath.
  */
-export function runSignoffOutputPath(teamDirectory: string, runId: string, reviewer?: string): string {
+export function runSignoffOutputPath(
+    teamDirectory: string,
+    runId: string,
+    reviewer?: string,
+): string {
     // Per-reviewer signoff files provide clear attribution.
     if (reviewer) {
         assertSafeSegment(reviewer, "runSignoffOutputPath", "reviewer")
