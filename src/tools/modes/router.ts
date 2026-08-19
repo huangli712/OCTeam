@@ -7,8 +7,10 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
 import type { RouteBranch } from "../../core/types.js"
+//
 import { dispatchToMember } from "../../orchestration/control/dispatch.js"
 import { buildRouterPrompt } from "../../orchestration/modes/route.js"
+import { MASTER_NAME } from "../../state/naming.js"
 import {
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
@@ -16,9 +18,15 @@ import {
     signoffTaskFields,
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
-import { commonOrchestrationFields, humanApprovalSchemaFields, parseThresholdFields, signoffSchemaFields } from "../schema.js"
+//
+import {
+    commonOrchestrationFields, 
+    humanApprovalSchemaFields,
+    parseThresholdFields,
+    signoffSchemaFields
+} from "../schema.js"
 import { validateSignoff } from "../support.js"
-import { MASTER_NAME } from "../../state/naming.js"
+
 /** Content-based routing: a router inspects input and dispatches to matching branches. */
 export function teamRouteTool(ctx: PluginContext): ToolDefinition {
     return tool({
@@ -43,7 +51,11 @@ export function teamRouteTool(ctx: PluginContext): ToolDefinition {
             routes: tool.schema
                 .array(
                     tool.schema.object({
-                        name: tool.schema.string().min(1).max(64).describe("branch label the router selects by (unique)"),
+                        name: tool.schema
+                            .string()
+                            .min(1)
+                            .max(64)
+                            .describe("branch label the router selects by (unique)"),
                         member: tool.schema
                             .string()
                             .min(1)
@@ -58,7 +70,11 @@ export function teamRouteTool(ctx: PluginContext): ToolDefinition {
                                 "per-branch task; if omitted, the branch member "
                                 + "receives the routing `input`",
                             ),
-                        description: tool.schema.string().max(1024).optional().describe("hint shown to the router"),
+                        description: tool.schema
+                            .string()
+                            .max(1024)
+                            .optional()
+                            .describe("hint shown to the router"),
                     }),
                 )
                 .min(1),
