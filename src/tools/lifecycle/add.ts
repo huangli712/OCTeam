@@ -64,7 +64,8 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
                 logSwallowed(ctx, "loadTeamState failed", err, { team: args.team_id })
                 return `Error: team "${args.team_id}" could not be loaded (state file unreadable)`
             }
-            if (team.leadSessionId !== context.sessionID || !isIndexedMasterOf(context.sessionID, team.directory)) {
+            if (team.leadSessionId !== context.sessionID
+                || !isIndexedMasterOf(context.sessionID, team.directory)) {
                 return "Error: team_add_member is master-only (only the team's leader can add members)"
             }
             if (args.name) {
@@ -89,11 +90,18 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
             let specError = false
             let stateError = false
             let nameError: string | undefined
-            await withLock(teamLifecycleLockPath(team.directory), async () => team.mutex.runExclusive(async () => {
+            await withLock(
+                teamLifecycleLockPath(team.directory),
+                async () => team.mutex.runExclusive(async () => {
                 try {
                     await reloadTeamStateLocked(team)
                 } catch (err) {
-                    logSwallowed(ctx, "team_add_member: team state reload failed", err, { team: args.team_id })
+                    logSwallowed(
+                        ctx,
+                        "team_add_member: team state reload failed",
+                        err,
+                        { team: args.team_id },
+                    )
                     stateError = true
                     return
                 }
@@ -110,14 +118,17 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
                 const existingNames = new Set(team.members.map(member => member.name))
                 if (args.name) {
                     if (existingNames.has(args.name)) {
-                        nameError = `Error: name "${args.name}" already exists in team "${args.team_id}"`
+                        nameError = `Error: name "${args.name}" already exists in team `
+                            + `"${args.team_id}"`
                         return
                     }
                     memberName = args.name
                 } else {
-                    const pool = (MEMBER_NAME_POOL as readonly string[]).filter(name => !existingNames.has(name))
+                    const pool = (MEMBER_NAME_POOL as readonly string[])
+                        .filter(name => !existingNames.has(name))
                     if (pool.length === 0) {
-                        nameError = "Error: no available names left in the pool (all taken by existing members)"
+                        nameError = "Error: no available names left in the pool "
+                            + "(all taken by existing members)"
                         return
                     }
                     memberName = pool[Math.floor(Math.random() * pool.length)]
@@ -158,7 +169,12 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
                 team.members.push(newState)
 
                 try {
-                    await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId, ctx.storageRoot)
+                    await writeTeamSpec(
+                        ctx.storageRoot,
+                        spec,
+                        pathLeadSessionId,
+                        ctx.storageRoot,
+                    )
                 } catch (err) {
                     // Config write failed — nothing on disk, full rollback.
                     spec.members.pop()
@@ -174,9 +190,19 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
                     spec.members.pop()
                     team.members.pop()
                     try {
-                        await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId, ctx.storageRoot)
+                        await writeTeamSpec(
+                            ctx.storageRoot,
+                            spec,
+                            pathLeadSessionId,
+                            ctx.storageRoot,
+                        )
                     } catch (compensateErr) {
-                        logSwallowed(ctx, "add: compensating spec revert failed after state save failure", compensateErr, { team: args.team_id })
+                        logSwallowed(
+                            ctx,
+                            "add: compensating spec revert failed after state save failure",
+                            compensateErr,
+                            { team: args.team_id },
+                        )
                     }
                     throw err
                 }
@@ -198,7 +224,8 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
             if (nameError) return nameError
             if (!memberName) return `Error: team "${args.team_id}" changed while adding member`
 
-            return `Member "${memberName}" added to team "${args.team_id}" (${team.members.length} members).`
+            return `Member "${memberName}" added to team "${args.team_id}" `
+                + `(${team.members.length} members).`
         },
     })
 }

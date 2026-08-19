@@ -6,11 +6,23 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
-import { listTeamNames, loadTeamState, saveTeamState, type Team } from "../../state/store.js"
 import { logSwallowed } from "../../core/log.js"
 import { isEnoent } from "../../core/utils.js"
-import { clearActiveTeam, isIndexedMasterOf, setActiveTeam } from "../../state/resolve.js"
-import { decideActivate, withOrderedLocks } from "../../state/activation.js"
+import { 
+    listTeamNames,
+    loadTeamState,
+    saveTeamState,
+    type Team
+} from "../../state/store.js"
+import {
+    clearActiveTeam,
+    isIndexedMasterOf,
+    setActiveTeam
+} from "../../state/resolve.js"
+import {
+    decideActivate,
+    withOrderedLocks
+} from "../../state/activation.js"
 
 // A process-level activation mutex keyed by sessionID prevents two
 // concurrent team_activate calls from the same session from both scanning
@@ -60,7 +72,8 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
                 logSwallowed(ctx, "loadTeamState failed", err, { team: args.team_id })
                 return `Error: team "${args.team_id}" could not be loaded (state file unreadable)`
             }
-            if (target.leadSessionId !== context.sessionID || !isIndexedMasterOf(context.sessionID, target.directory)) {
+            if (target.leadSessionId !== context.sessionID
+                || !isIndexedMasterOf(context.sessionID, target.directory)) {
                 return "Error: team_activate is master-only (only the team's leader session can activate it)"
             }
 
@@ -81,10 +94,15 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
                             .catch(err => {
                                 // Record sibling-load failures for the fail-closed check below
                                 // and log enough context to diagnose transient I/O or permission errors.
-                                logSwallowed(ctx, "team_activate: sibling load failed (fail-closed: activation will be refused)", err, {
-                                    siblingTeam: name,
-                                    leadSessionId,
-                                })
+                                logSwallowed(
+                                    ctx,
+                                    "team_activate: sibling load failed (fail-closed: activation will be refused)",
+                                    err,
+                                    {
+                                        siblingTeam: name,
+                                        leadSessionId,
+                                    },
+                                )
                                 return { ok: false as const }
                             }),
                     ),
@@ -94,7 +112,9 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
             // and surface the I/O issue to the operator.
             const failedSiblings = loaded.filter(r => !r.ok)
             if (failedSiblings.length > 0) {
-                return `Error: cannot verify sibling team states (unreadable: ${failedSiblings.length}). Refusing to activate to prevent concurrent activation. Check .octeam/ permissions and retry.`
+                return `Error: cannot verify sibling team states (unreadable: ${failedSiblings.length}). `
+                    + `Refusing to activate to prevent concurrent activation. `
+                    + `Check .octeam/ permissions and retry.`
             }
             for (const r of loaded) {
                 if (
