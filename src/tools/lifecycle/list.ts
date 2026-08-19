@@ -6,7 +6,11 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
 import { logSwallowed } from "../../core/log.js"
-import { listTeamNames, loadTeamState, readTeamSpec } from "../../state/store.js"
+import {
+    listTeamNames,
+    loadTeamState,
+    readTeamSpec
+} from "../../state/store.js"
 import { isIndexedMasterOf } from "../../state/resolve.js"
 import { teamDir } from "../../state/paths.js"
 

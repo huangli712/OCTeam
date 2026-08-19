@@ -4,10 +4,10 @@
  */
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
-import { isEnoent } from "../../core/utils.js"
-import { logSwallowed } from "../../core/log.js"
 
 import type { PluginContext } from "../../core/context.js"
+import { isEnoent } from "../../core/utils.js"
+import { logSwallowed } from "../../core/log.js"
 import { loadTeamState } from "../../state/store.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
 import { countUnreadMessages } from "../../messaging/mailbox.js"
