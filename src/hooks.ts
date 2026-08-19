@@ -10,24 +10,50 @@
 import type { Hooks } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "./core/context.js"
-import type { Team } from "./state/store.js"
-import { activeTeams, loadTeamState, saveTeamState } from "./state/store.js"
-import { safeReadFile } from "./state/locks.js"
-import { statePath } from "./state/paths.js"
-import { resolveMasterTeams, resolveTeamMember, isMasterSession } from "./state/resolve.js"
-import { AckMessagesError, ackMessages, pollMailbox, releaseStaleReservations } from "./messaging/mailbox.js"
-import { formatMailboxInjection } from "./messaging/format.js"
-import { reapStaleClaims } from "./state/tasks.js"
-import { handleStatusEvent, maybeEscalateRetry } from "./orchestration/lifecycle/status.js"
-import { processErrorRecovery, processIdle, retryIdleHandler } from "./orchestration/lifecycle/idle.js"
+import type { MemberState } from "./core/types.js"
+import {
+    logEvent,
+    logger,
+    logSwallowed
+} from "./core/log.js"
+import { 
+    handleStatusEvent,
+    maybeEscalateRetry } from "./orchestration/lifecycle/status.js"
+import { handleSessionDeleted } from "./orchestration/lifecycle/reconcile.js"
+import { 
+    processErrorRecovery,
+    processIdle,
+    retryIdleHandler
+} from "./orchestration/lifecycle/idle.js"
 import { checkTermination } from "./orchestration/lifecycle/termination.js"
 import { finishRun } from "./orchestration/control/completion.js"
 import { handleSignoffIdle } from "./orchestration/control/signoff.js"
 import { recordEvent } from "./orchestration/records/events.js"
-import type { MemberState } from "./core/types.js"
-import { asSdkMessages, extractSessionStatusEntry } from "./orchestration/protocol/output.js"
-import { logEvent, logger, logSwallowed } from "./core/log.js"
-import { handleSessionDeleted } from "./orchestration/lifecycle/reconcile.js"
+import {
+    asSdkMessages,
+    extractSessionStatusEntry
+} from "./orchestration/protocol/output.js"
+import type { Team } from "./state/store.js"
+import {
+    activeTeams,
+    loadTeamState,
+    saveTeamState
+} from "./state/store.js"
+import { safeReadFile } from "./state/locks.js"
+import { statePath } from "./state/paths.js"
+import { reapStaleClaims } from "./state/tasks.js"
+import {
+    resolveMasterTeams,
+    resolveTeamMember,
+    isMasterSession
+} from "./state/resolve.js"
+import {
+    AckMessagesError,
+    ackMessages,
+    pollMailbox,
+    releaseStaleReservations
+} from "./messaging/mailbox.js"
+import { formatMailboxInjection } from "./messaging/format.js"
 
 // Period between sweep-timer ticks (missed-idle reconciliation, termination enforcement).
 const SWEEP_INTERVAL_MS = 15_000
@@ -37,6 +63,20 @@ const SAVE_MAX_ATTEMPTS = 3
 
 // Backoff between persistTeamState retry attempts.
 const SAVE_BACKOFF_MS = 100
+
+// TTL for compacting flags; bounds a stuck flag if compaction aborts before transform.
+const COMPACTING_FLAG_TTL_MS = 15_000
+
+/** Max tracked compacting flags; insert-time eviction enforces it (see below). */
+const COMPACTING_MAP_CAP = 256
+
+// ACK happens before the downstream LLM turn. Retain enough in-process state
+// to count explicit session.error turns that can no longer redeliver their
+// injected mailbox messages.
+const earlyAckedMessageCountBySession = new Map<string, number>()
+
+// Cumulative count of mailbox turns dropped after transform ACK, since plugin startup.
+let droppedMailboxTurnsSinceStartup = 0
 
 /**
  * Compaction-context suppression. The `experimental.chat.messages.transform`
@@ -49,17 +89,6 @@ const SAVE_BACKOFF_MS = 100
  * flag (if compaction aborts before transform) to a single delayed turn.
  */
 const compacting = new Map<string, number>() // sessionID -> expiresAt
-
-// TTL for compacting flags; bounds a stuck flag if compaction aborts before transform.
-const COMPACTING_FLAG_TTL_MS = 15_000
-/** Max tracked compacting flags; insert-time eviction enforces it (see below). */
-const COMPACTING_MAP_CAP = 256
-
-// ACK happens before the downstream LLM turn. Retain enough
-// in-process state to count explicit session.error turns that can no longer
-// redeliver their injected mailbox messages.
-const earlyAckedMessageCountBySession = new Map<string, number>()
-let droppedMailboxTurnsSinceStartup = 0
 
 /** Narrow an unknown SDK event into a type+properties shape, or null. */
 function narrowSdkEvent(event: unknown): { type?: string; properties?: Record<string, unknown> } | null {
@@ -174,7 +203,10 @@ export function createCompactingHook(): NonNullable<Hooks["experimental.session.
                     if (oldest) {
                         const stillValid = Date.now() < oldest[1]
                         if (stillValid) {
-                            logger.error("compacting flag map at CAP; evicting still-valid flag — possible message loss", { sessionID: oldest[0], cap: COMPACTING_MAP_CAP })
+                            logger.error(
+                                "compacting flag map at CAP; evicting still-valid flag — possible message loss",
+                                { sessionID: oldest[0], cap: COMPACTING_MAP_CAP },
+                            )
                         }
                         compacting.delete(oldest[0])
                     }
@@ -319,7 +351,12 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
                         // mode handler directly so it can advance the barrier.
                         await processErrorRecovery(ctx, team, live)
                     }
-                    await persistTeamState(ctx, team, "persist team state failed (session.error)", { team: team.teamName, member: live.name })
+                    await persistTeamState(
+                        ctx,
+                        team,
+                        "persist team state failed (session.error)",
+                        { team: team.teamName, member: live.name },
+                    )
                 })
             } catch (err) {
                 logSwallowed(ctx, "session.error handler failed", err, { sessionID })
@@ -376,7 +413,12 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
                 // under the mutex. processIdle's internal save runs before dispatch while
                 // status is still "busy"; without this the idle/failed status never reaches
                 // disk and the sidebar (which reads state.json directly) stays stale.
-                await persistTeamState(ctx, team, "persist team state failed (member idle)", { team: team.teamName, member: live.name })
+                await persistTeamState(
+                    ctx,
+                    team,
+                    "persist team state failed (member idle)",
+                    { team: team.teamName, member: live.name },
+                )
             })
         } catch (err) {
             // processIdle may have partially mutated state (e.g. flipped
@@ -390,7 +432,12 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
                 if (member) {
                     const team = await loadTeamState(member.storageRoot, member.teamName, member.leadSessionId)
                     await team.mutex.runExclusive(async () => {
-                        await persistTeamState(ctx, team, "persist team state failed (member idle error recovery)", { team: team.teamName, member: member.name })
+                        await persistTeamState(
+                            ctx,
+                            team,
+                            "persist team state failed (member idle error recovery)",
+                            { team: team.teamName, member: member.name },
+                        )
                     })
                 }
             } catch (recoveryErr) {
@@ -474,7 +521,12 @@ export function createTransformHook(
                 } catch (err) {
                     // Without readable team state no directive can be bound to
                     // the current run, including directives without a runId.
-                    logSwallowed(ctx, "transform: team state unreadable for directive filter; dropping directives", err, { teamName: member.teamName })
+                    logSwallowed(
+                        ctx,
+                        "transform: team state unreadable for directive filter; dropping directives",
+                        err,
+                        { teamName: member.teamName },
+                    )
                     teamStateUnreadable = true
                 }
                 toInject = unread.filter(m => {
@@ -638,7 +690,12 @@ export async function sweepTeamOnce(
                 // Isolate each member's release so one corrupt mailbox does not
                 // block subsequent members or stale-claim cleanup.
                 await releaseStaleReservations(team.directory, m.name).catch(err =>
-                    logSwallowed(ctx, "sweepTeamOnce: member reservation release failed", err, { team: team.teamName, member: m.name }),
+                    logSwallowed(
+                        ctx,
+                        "sweepTeamOnce: member reservation release failed",
+                        err,
+                        { team: team.teamName, member: m.name },
+                    ),
                 )
             }
             // Reap stale claims for both delegate and recurse modes.
@@ -697,7 +754,12 @@ export async function sweepTeamOnce(
                 : []
         })
         if (idleCandidates.length === 0) {
-            await persistTeamState(ctx, team, "persist team state failed (sweep)", { team: team.teamName ?? "(unknown)" })
+            await persistTeamState(
+                ctx,
+                team,
+                "persist team state failed (sweep)",
+                { team: team.teamName ?? "(unknown)" },
+            )
         }
     })
 
@@ -736,7 +798,12 @@ export async function sweepTeamOnce(
                 if (!team.activeTask) break
             }
         }
-        await persistTeamState(ctx, team, "persist team state failed (sweep)", { team: team.teamName ?? "(unknown)" })
+        await persistTeamState(
+            ctx,
+            team,
+            "persist team state failed (sweep)",
+            { team: team.teamName ?? "(unknown)" },
+        )
     })
 }
 
@@ -778,7 +845,10 @@ export function startSweepTimer(ctx: PluginContext): { stop: () => void } {
                 try {
                     const sweepPromise = sweepTeamOnce(ctx, team, statusMap)
                     const teamTimeout = new Promise<never>((_, reject) => {
-                        const t = setTimeout(() => reject(new Error(`sweep timeout for team ${team.teamName}`)), SWEEP_PER_TEAM_TIMEOUT_MS)
+                        const t = setTimeout(
+                            () => reject(new Error(`sweep timeout for team ${team.teamName}`)),
+                            SWEEP_PER_TEAM_TIMEOUT_MS,
+                        )
                         t.unref()
                     })
                     await Promise.race([sweepPromise, teamTimeout])
@@ -790,7 +860,9 @@ export function startSweepTimer(ctx: PluginContext): { stop: () => void } {
                 }
             }
         } catch (err) {
-            logEvent(ctx, "error", "sweep iteration failed", { error: err instanceof Error ? err.message : String(err) })
+            logEvent(ctx, "error", "sweep iteration failed", {
+                error: err instanceof Error ? err.message : String(err),
+            })
         }
         // Schedule the next sweep after this one completes, preventing
         // overlapping intervals.
