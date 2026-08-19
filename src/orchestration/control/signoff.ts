@@ -17,8 +17,8 @@ import { finishRun } from "./completion.js"
 import { dispatchToMember } from "./dispatch.js"
 import { findMember } from "../../tools/support.js"
 
-/** Malformed-signoff retry cap per reviewer; at cap the parsed verdict
- * stands as final. */
+/** Malformed-signoff retry cap per reviewer; at cap the failure is recorded
+ * as a final rejection (approved=false). */
 const MAX_SIGNOFF_PARSE_FAILURES = 3
 
 /** Build the structured verdict contract shared by live and resumed reviews. */
@@ -265,8 +265,8 @@ export async function handleSignoffIdle(
     } else if (task.signoffParseFailures) {
         delete task.signoffParseFailures[member.name]
     }
-    // signoffApprovals is initialized to {} in maybeTriggerSignoff before
-    // signoffStage is set. Guard against undefined for robustness.
+    // signoffApprovals is initialized to {} in maybeTriggerSignoff when
+    // signoff is triggered. Guard against undefined for robustness.
     if (!task.signoffApprovals) task.signoffApprovals = {}
     task.signoffApprovals[member.name] = signoff?.approved === true
 

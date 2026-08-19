@@ -110,7 +110,7 @@ export async function handleReduceIdle(
                 task._reducerMapperSnapshot = undefined
             }
             // Honor signoff on the fallback path, matching the normal
-            // reduce completion path (line 158). Without this, a parallel
+            // reduce completion path below. Without this, a parallel
             // task configured with signoffPolicy + a reducer could deliver
             // unreviewed raw mapper outputs when the reducer errors.
             if (await maybeTriggerSignoff(ctx, team)) return

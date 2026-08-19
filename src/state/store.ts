@@ -33,8 +33,8 @@ import { indexMasterTeam } from "./resolve.js"
 /**
  * Runtime team object: TeamState plus non-persisted handles.
  *
- * `mutex` is a per-teamName process-level singleton (see teamRegistry) — it
- * serializes event-handler state mutations. `directory` is the resolved team
+ * `mutex` is a per-team process-level singleton keyed by resolved directory
+ * (see teamRegistry) — it serializes event-handler state mutations. `directory` is the resolved team
  * working directory on disk. `deleted` is the runtime tombstone set by
  * team_delete inside the mutex: once true, processIdle/saveTeamState skip
  * persistence so a racing handler holding the same in-memory reference cannot
@@ -314,6 +314,13 @@ async function readJsonOrNull<T>(
     }
 }
 
+/**
+ * Apply a freshly-read disk state onto a cached Team via three-way merge
+ * (disk vs last-known disk snapshot vs current runtime fields): stale keys
+ * and removed members are dropped, disk member fields overwrite live ones,
+ * and runtime-only fields (mutex, tombstone, spawn state, caches) survive.
+ * `diskMtime` restamps the cache-invalidation watermark.
+ */
 function applyReloadedTeamState(cached: Team, state: TeamState, diskMtime: number): void {
     const currentState = stripRuntimeFields(cached)
     const mergedState = mergeTeamState(state, cached._diskSnapshot ?? state, currentState)
@@ -693,6 +700,7 @@ function mergeMembers(
     return result
 }
 
+/** Bounded-retry knobs for saveTeamStateBounded (attempts and backoff between them). */
 const SAVE_RETRY_ATTEMPTS = 3
 const SAVE_RETRY_BACKOFF_MS = 50
 /**

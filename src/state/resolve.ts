@@ -433,10 +433,10 @@ async function indexScope(storageRoot: string, segmented: boolean, ctx?: PluginC
                     teamName, diskLeadSessionId: team.leadSessionId, dirLeadSessionId: leadSessionId,
                 })
             }
-            indexMasterTeam(trustedLeadSessionId ?? "", team.teamName, leadSessionId, storageRoot, team.directory)
             // Restart invariant: never auto-activate. The active pointer is NOT
             // restored from persisted activatedAt — reconcileActivation clears
             // all on-disk activatedAt, and the user must team_activate explicitly.
+            indexMasterTeam(trustedLeadSessionId ?? "", team.teamName, leadSessionId, storageRoot, team.directory)
             for (const m of team.members) {
                 if (m.sessionId) {
                     indexMember(m.sessionId, team.teamName, m.name, leadSessionId, storageRoot)

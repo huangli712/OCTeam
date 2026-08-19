@@ -86,6 +86,12 @@ export async function countMailbox(teamDirectory: string, recipient: string): Pr
     }
 }
 
+/**
+ * Enumerate a session's teams directory, reading each team's state/config
+ * through symlink-safe bounded reads and mapping them to sidebar rows.
+ * Skips entries that vanished mid-read (ENOENT); other read failures mark
+ * the result as a partial error with the teams that did load.
+ */
 async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promise<LoadState<TeamSummary[]>> {
     const teamsPath = teamsDir(storageRoot, leadSessionId)
     let entries: import("node:fs").Dirent[]

@@ -137,12 +137,13 @@ function deepFreeze<T>(obj: T): T {
 /**
  * Create the config hook that registers OCTeam's built-in subagents into
  * opencode's agent registry. For oct-* names (security-hardened presets)
- * the security-critical fields — mode, prompt, permission, description — are
- * ALWAYS overridden with OCTeam's definitions; user values for these fields
- * are ignored because a user (or attacker with config write access) could
- * otherwise replace `permission: { edit: "allow", bash: "allow" }` or inject
- * a malicious prompt, completely bypassing the hardened permission map that
- * role.ts promises. Non-security fields (model, temperature, color, ...) are
+ * the security-critical fields — mode, prompt, description — are ALWAYS
+ * overridden with OCTeam's definitions and user values for them are ignored,
+ * because a user (or attacker with config write access) could otherwise
+ * inject a malicious prompt. Permission is always rebuilt from OCTeam's
+ * preset; user permission entries are honored only where they TIGHTEN the
+ * preset (monotonic merge via mergePermissionsMonotonic — never loosen).
+ * Non-security fields (model, temperature, color, ...) are
  * preserved so users can still pin a model or tune cosmetic values.
  */
 export function createConfigHook(): NonNullable<Hooks["config"]> {
@@ -164,9 +165,9 @@ export function createConfigHook(): NonNullable<Hooks["config"]> {
                 continue
             }
             // User pre-defined an oct-* entry. Preserve ONLY the non-security
-            // fields users may legitimately tune (model, temperature, color).
-            // The explicit allowlist excludes unknown user-defined fields that
-            // could weaken the hardened preset.
+            // fields users may legitimately tune (e.g. model, temperature,
+            // color). The explicit allowlist excludes unknown user-defined
+            // fields that could weaken the hardened preset.
             const allowed: Record<string, unknown> = {}
             if (typeof existing.model === "string") allowed.model = existing.model
             if (typeof existing.temperature === "number") allowed.temperature = existing.temperature
@@ -187,9 +188,9 @@ export function createConfigHook(): NonNullable<Hooks["config"]> {
                 // reason as mode/description/prompt below.
                 permission: deepFreeze(mergePermissionsMonotonic(def.permission, existing?.permission)),
                 ...allowed,
-                // Security-critical overrides (OCTeam wins) — re-asserted AFTER
-                // the allowed merge above so a stray `mode` in `existing` (which
-                // we did not copy) cannot sneak in via the spread of `def`.
+                // Security-critical overrides (OCTeam wins) — re-asserted LAST
+                // so no user-derived value (now or via future allowlist
+                // additions) can override OCTeam's definitions.
                 mode: def.mode,
                 description: def.description,
                 prompt: def.prompt,

@@ -92,6 +92,7 @@ const compacting = new Map<string, number>() // sessionID -> expiresAt
 
 // TTL for compacting flags; bounds a stuck flag if compaction aborts before transform.
 const COMPACTING_FLAG_TTL_MS = 15_000
+/** Max tracked compacting flags; insert-time eviction enforces it (see below). */
 const COMPACTING_MAP_CAP = 256
 
 // ACK happens before the downstream LLM turn. Retain enough

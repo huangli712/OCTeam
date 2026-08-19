@@ -40,7 +40,8 @@ function levelFromEnv(): LogLevel {
 }
 
 // ---------------------------------------------------------------------------
-// Module-level state (initialized once at server startup via initLogger)
+// Module-level state (minLevel comes from the env at module load; the sink
+// is initialized once at server startup via initLogger)
 // ---------------------------------------------------------------------------
 
 let minLevel: LogLevel = levelFromEnv()
@@ -163,8 +164,8 @@ export function logSwallowed(
             error: err instanceof Error ? err.message : String(err),
         })
     } catch {
-        // logSwallowed must never throw — it is used exclusively in catch
-        // blocks where throwing would mask the original error.
+        // logSwallowed must never throw — it is called from catch blocks and
+        // post-retry failure paths where throwing would mask the original error.
     }
 }
 

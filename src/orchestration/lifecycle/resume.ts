@@ -124,10 +124,10 @@ export async function resumeDispatch(
  * the mode-specific `text`, count real dispatches, and re-drive `barrier` when
  * zero members were dispatched (prevents a no-op resume from stalling the run).
  *
- * Used by parallel, consensus, route Phase B, arbitrate Phase A, and arena
- * implement phase. Modes with fundamentally different shapes (sequential stage
- * advance, delegate/recurse unconditional fan-out, tollgate multi-phase,
- * workflow multi-step) keep their own handlers.
+ * Used by parallel, consensus, route Phase B, arbitrate Phase A, arena
+ * implement phase, and quorum. Modes with fundamentally different shapes
+ * (sequential stage advance, delegate/recurse unconditional fan-out,
+ * tollgate multi-phase, workflow multi-step) keep their own handlers.
  */
 async function resumeConcurrentDispatch(
     ctx: PluginContext,
@@ -159,9 +159,9 @@ async function resumeSignoffReduceStage(
 ): Promise<boolean> {
     // Mirrors processIdle priority ordering. A crash can occur while these
     // special stages are in flight. On resume, restore the reviewers/reducer
-    // by re-triggering the same maybeTrigger* idempotent entry points the
-    // live path uses, then bail — the type switch below is for the per-mode
-    // MAP work, not these sub-stages.
+    // with the same idempotent re-dispatch/replay logic the live path uses
+    // (mirroring maybeTriggerSignoff), then bail — the type switch below is
+    // for the per-mode MAP work, not these sub-stages.
     if (task.reduceStage) {
         const reducer = team.members.find(
             (m) => m.name === task.reducerMember && !m.isMaster,
@@ -481,8 +481,9 @@ async function resumeRecurseMode(
 /**
  * Tollgate resume across its three phases. verify: replay the verdict parse if
  * the verifier's output is captured, else re-dispatch the verifier.
- * escalate: re-dispatch the escalation handler. produce: re-dispatch the
- * current gate's producer.
+ * escalate: replay the captured escalation-handler output if present, else
+ * re-dispatch the handler. produce: replay the captured producer output if
+ * present, else re-dispatch the current gate's producer.
  */
 async function resumeTollgateMode(
     ctx: PluginContext,
@@ -774,8 +775,8 @@ async function resumeQuorumMode(
             && task.responses[m.name] === undefined,
         () => `[Quorum vote — resumed]\n${task.task}`,
         async () => {
-            // Zero real dispatch -> re-drive the barrier with the FIRST
-            // participant regardless of status (errored counts as terminal-ready).
+            // Zero real dispatch -> re-drive the barrier via handleQuorumIdle
+            // (any participant existing suffices; errored counts as terminal-ready).
             const first = team.members.find((m) => task.participants.includes(m.name));
             if (first) await handleQuorumIdle(ctx, team);
         },

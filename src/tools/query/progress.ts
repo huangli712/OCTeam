@@ -199,6 +199,7 @@ type RunEventWindow = {
     malformed: number
 }
 
+/** Byte cap for a single events.jsonl line; longer lines are skipped whole. */
 const MAX_RUN_EVENT_LINE_BYTES = 1024 * 1024
 // Cap total formatted output so limit=200 lines × large detail fields
 // cannot produce multi-hundred-MB responses. 256 KiB matches the

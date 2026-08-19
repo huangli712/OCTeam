@@ -1,6 +1,6 @@
 /**
  * General-purpose primitives with no team-orchestration domain knowledge:
- * polling, array batching, and fs error classification. Domain-specific helpers
+ * polling and fs error classification. Domain-specific helpers
  * (output extraction, role prompts, activation gates) live in their respective
  * layers — see orchestration/protocol/output.ts and state/activation.ts.
  */

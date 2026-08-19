@@ -555,10 +555,10 @@ export function markWorkflowFanoutBranchErrored(
                 v => activeStep.ensembleResults?.[v] !== undefined,
             );
             if (allResolved) {
-                activeStep.dispatchedAt = undefined;
                 // Clearing dispatchedAt lets the next sweep
                 // detect allResolved and advance. Direct call would need
                 // ctx/team which aren't available in this pure function.
+                activeStep.dispatchedAt = undefined;
             }
         }
         return { kind: "within_tolerance" };

@@ -391,7 +391,7 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
                 const memberOutputFile = runMemberOutputPath(caller.directory, record.runId, name)
                 try {
                     // Refuse to read through a symlinked member output
-                    // file. See team_result_get for the same guard.
+                    // file. See the member= branch above for the same guard.
                     // Use fd-based safeReadFile to shrink the TOCTOU window.
                     const content = await safeReadFile(caller.directory, memberOutputFile, { maxBytes: 256 * 1024 })
                     if (content === undefined) continue

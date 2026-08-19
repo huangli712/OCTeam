@@ -40,6 +40,7 @@ const PLANNER_POLL_MS = 2_000
 
 /** Number of correction rounds before failing the planner session. */
 const PLANNER_MAX_RETRIES = 2
+/** Bounded attempts (and delay between them) for deleting the child session in finally. */
 const PLANNER_DELETE_ATTEMPTS = 3
 const PLANNER_DELETE_RETRY_MS = 500
 

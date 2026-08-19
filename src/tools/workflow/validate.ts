@@ -83,11 +83,13 @@ function validateStepId(ids: Map<string, number>, id: string | undefined, displa
     return null
 }
 
+/** Field names allowed on EVERY workflow step kind regardless of its `kind`. */
 const COMMON_STEP_FIELDS = [
     "kind", "id", "inputs", "expose_output", "approval_before", "approval_after",
     "max_output_bytes", "timeout_ms", "on_timeout", "max_timeout_retries",
 ] as const
 
+/** Field names allowed only on a specific step kind (its exclusive fields). */
 const STEP_KIND_FIELDS: Record<WorkflowToolStep["kind"], readonly string[]> = {
     task: ["member", "fallback_member", "task", "retry_on", "max_task_retries"],
     gate: [
@@ -103,6 +105,8 @@ const STEP_KIND_FIELDS: Record<WorkflowToolStep["kind"], readonly string[]> = {
     join: ["join_policy", "quorum", "required_branches", "reducer_member", "use_survivors"],
 }
 
+/** Reject a field that belongs to another step kind; the error names the
+ * owning kind when the field is known, else flags it as unknown for this kind. */
 function validateStepKindFields(step: WorkflowToolStep, location: string): string | null {
     const allowed = new Set<string>([...COMMON_STEP_FIELDS, ...STEP_KIND_FIELDS[step.kind]])
     const unexpected = Object.keys(step).find(field => !allowed.has(field))

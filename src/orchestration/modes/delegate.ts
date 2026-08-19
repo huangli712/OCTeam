@@ -68,9 +68,9 @@ export async function runDelegateStyleTail(
             // Skip already-errored members — they're terminal, no need to
             // re-check the status API.
             if (m.status === "errored") continue
-            // Verify the member's session is still live before treating it as
-            // complete. A member whose cached status is
-            // "idle" but whose session has actually errored/crashed would
+            // Verify the member's session is not still working before treating
+            // it as complete. A member whose cached status is "idle" but whose
+            // session is actually mid-turn (retry/busy/running) would otherwise
             // pass the incomplete.length === 0 check and finish the run
             // prematurely.
             try {

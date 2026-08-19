@@ -28,6 +28,8 @@ function renameRecordKey<T>(record: Record<string, T> | undefined, oldName: stri
     delete record[oldName]
 }
 
+/** Rename every member reference in a persisted workflow step (actor, verifier,
+ * ensemble list/results, reducer) from oldName to newName. */
 function migrateWorkflowStepMemberRefs(step: WorkflowStep, oldName: string, newName: string): void {
     if (step.dispatchedActor === oldName) step.dispatchedActor = newName
     switch (step.kind) {
@@ -58,6 +60,8 @@ function migrateWorkflowStepMemberRefs(step: WorkflowStep, oldName: string, newN
     }
 }
 
+/** Rename every member reference in an active task's per-member records
+ * (tokens, responses, signoff state) plus reducer/decider/reviewer fields. */
 function migrateActiveTaskMemberRefs(task: ActiveTask, oldName: string, newName: string): void {
     renameRecordKey(task.tokensByMember, oldName, newName)
     renameRecordKey(task.tokenBaselineByMember, oldName, newName)

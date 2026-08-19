@@ -356,9 +356,6 @@ export async function processIdle(
         })
         return
     }
-    // Defer the status flip to "idle" until output capture succeeds. Keeping
-    // the member "running" during session reads lets the sweep retry after a
-    // transient host error instead of leaving output uncaptured.
     // Step 3: Role-setup barrier — first idle of an uninitialized member
     // marks it ready and returns WITHOUT capturing output or advancing.
     if (!member.initialized) {
@@ -373,7 +370,10 @@ export async function processIdle(
     const messages = await accountAndValidateIdle(ctx, team, member, sessionID)
     if (messages === null) return // stray idle
 
-    // Step 6: Capture output (mode-aware; delegate skips, signoff always captures).
+    // Step 6: Capture output. Mode-aware gate: workflow members without an
+    // active step skip capture — their branch was skipped (e.g. any_success
+    // cancelled it) and a late idle must not pollute task.responses with
+    // output from a cancelled branch. Signoff always captures.
     // capturedNew signals whether this turn produced fresh assistant output.
     // A decider/reviewer idling during signoffStage with NO new output is a
     // stale pre-signoff idle (its dispatch landed but the signoff turn hasn't

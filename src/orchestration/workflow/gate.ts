@@ -338,12 +338,13 @@ export function aggregateEnsembleVerdict(step: WorkflowGateStep): {
     if (total === 0) {
         return ensembleResult("INVALID", "No verifier results");
     }
-    // Aggregate metadata and feedback only from results that support the final
-    // verdict. Dissenting scores or issues must not trigger an incorrect `where` jump.
     const ensemblePolicy = step.ensemblePolicy;
     if (ensemblePolicy === undefined) {
         throw new Error("Missing workflow ensemble policy");
     }
+    // Aggregate metadata and feedback only from results that support the final
+    // verdict (resultFromVerdict). Dissenting scores or issues must not trigger
+    // an incorrect `where` jump.
     switch (ensemblePolicy) {
         case "majority":
             if (passCount > total / 2) {

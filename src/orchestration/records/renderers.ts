@@ -23,7 +23,9 @@ import { formatWorkflowLedgerLines, formatWorkflowOutputSections } from "./ledge
 import type { ActiveTask, ArenaCandidateScore } from "../../core/types.js"
 import type { Task } from "../../core/types.js"
 
+/** Total byte budget for workflow step outputs in a run summary (ledger + sections). */
 const WORKFLOW_OUTPUT_BYTE_BUDGET = 512 * 1024
+/** Appended when the budget is exceeded; keep its byte count in sync with the budget. */
 const WORKFLOW_OUTPUT_TRUNCATED_MARKER = "[workflow outputs truncated: 524288-byte budget exceeded]"
 
 /**

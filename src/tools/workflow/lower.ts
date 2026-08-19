@@ -70,7 +70,7 @@ export function assertNever(value: never): never {
 
 // --- type guards ---
 
-/** Test whether a workflow step is a linear (non-fanout) kind. */
+/** Test whether a workflow step is a linear (task or gate) kind. */
 export function isLinearToolStep(step: WorkflowToolStep): step is WorkflowLinearToolStep {
     return step.kind === "task" || step.kind === "gate"
 }

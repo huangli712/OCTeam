@@ -170,7 +170,7 @@ export function extractSessionStatusEntry(
 }
 
 /**
- * Truncate output to maxBytes (default 8KB) of UTF-8 to prevent context-window
+ * Truncate output to maxBytes (default 64 KiB) of UTF-8 to prevent context-window
  * blowups. Counts and cuts on UTF-8 byte length (not UTF-16 code units), and
  * backs each cut up to a complete-character boundary so a multibyte sequence is
  * never split (CJK / emoji safe).

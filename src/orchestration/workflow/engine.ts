@@ -548,6 +548,9 @@ export async function maybePauseAfterWorkflowStep(
     return false;
 }
 
+/** Settle a gate reached by a FORWARD goto: mark it complete and clear its
+ * dispatch bookkeeping and cached verifier/actor responses so find-next-
+ * incomplete does not loop back to it. */
 function settleForwardGotoGate(task: WorkflowTask, gate: WorkflowGateStep): void {
     markWorkflowStepCompleted(gate);
     gate.completed = true;

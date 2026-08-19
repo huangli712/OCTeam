@@ -29,6 +29,7 @@ import type {
 // trimmed. This makes it the decider's final declaration rather than a
 // mid-text reference.
 const NO_ISSUES_TAG = /<(?:no_issues|无问题)\s*\/?>\s*$/
+/** Length caps for decomposed subtask fields, mirrored from the task schema. */
 const TASK_SUBJECT_MAX_LENGTH = 500
 const TASK_DESCRIPTION_MAX_LENGTH = 8_192
 

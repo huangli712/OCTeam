@@ -60,7 +60,9 @@ export function teamRootDirTool(ctx: PluginContext): ToolDefinition {
 
             // Best-effort entry listing. Distinguish ENOENT (directory gone)
             // from other read errors so callers can tell a missing dir apart
-            // from a transient IO problem; both still surface the resolved path.
+            // from a transient IO problem. A missing dir still surfaces the
+            // resolved path (with a warning); other read errors return early
+            // without it (the path goes to the server log).
             let entries: string[] = []
             let missing = false
             try {

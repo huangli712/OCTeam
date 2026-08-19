@@ -90,7 +90,7 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                     team.mutex.runExclusive(async () => {
                 // Revalidate inside the mutex: a concurrent
                 // startOrchestration may have flipped status live→busy since
-                // the outside-mutex check at line 51. Refuse rather than
+                // the outside-mutex check at line 65. Refuse rather than
                 // renaming during an active run.
                 if (team.status !== "live" || team.spawning) {
                     staleState = true

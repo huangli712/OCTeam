@@ -47,7 +47,7 @@ export function appendTurnBlock(prev: string, turnOutput: string, capturedIso: s
 }
 
 /**
- * Step 4 of processIdle: capture the member's output from the current turn.
+ * Step 6 of processIdle: capture the member's output from the current turn.
  *
  * Persistence is ACCUMULATIVE across turns (not last-turn overwrite): a member
  * may idle multiple times in one run (reducer role, re-prompt, multi-turn
@@ -71,12 +71,9 @@ export async function captureMemberOutput(
 ): Promise<CaptureMemberOutputResult> {
     const task = team.activeTask
     if (!task) return { fresh: false, reason: "empty" }
-    // Do not capture output for a member whose workflow step has been
-    // skipped (e.g. any_success cancelled their branch). Late idle events
-    // from such members would pollute task.responses with output from a
-    // cancelled branch. This guard checks member status; the workflow
-    // step-status gate is applied by the caller (processIdle) before capture
-    // is invoked.
+    // Refuse stale capture for an errored member: its late idle must not
+    // write output into task.responses. (The skipped-workflow-step gate is
+    // applied by the caller — processIdle — before capture is invoked.)
     if (member.status === "errored") return { fresh: false, reason: "stale" }
     // Find the start of the current turn (last user message).
     let turnStart = 0

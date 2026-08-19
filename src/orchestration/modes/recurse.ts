@@ -29,6 +29,7 @@ import { findMember } from "../../tools/support.js"
 
 /** Cap on root re-dispatch attempts before declaring the run stalled. */
 const MAX_AGGREGATION_DISPATCHES = 3
+/** Retry cap for a task that keeps re-emitting <decompose> after being forced to solve directly. */
 const MAX_FORCED_DIRECT_DECOMPOSE_RETRIES = 3
 
 /**
@@ -56,6 +57,8 @@ export function buildRecursePrompt(): string {
     )
 }
 
+/** Prompt for a member whose decomposition was refused (or re-emitted after
+ * forcing): solve the task directly and do not emit another <decompose> block. */
 function buildDirectSolvePrompt(subject: string): string {
     return (
         `[Direct solve required]\n`
@@ -66,7 +69,7 @@ function buildDirectSolvePrompt(subject: string): string {
 
 /**
  * Aggregation-phase dispatch prompt for the decomposer. Stronger than the
- * generic buildRecursePrompt(): names the completed sub-tasks, forbids
+ * generic buildRecursePrompt(): states the completed sub-task count, forbids
  * waiting on teammate messages or re-decomposing, and prescribes the exact
  * claim-root -> read -> synthesize -> idle sequence. Output FORMAT (markers
  * like D4_FINAL) stays scene-defined — this prompt reinforces BEHAVIOR only.
@@ -178,7 +181,9 @@ export async function rejectRecurseDecompose(
  *     pending aggregator blocked by those subtasks (re-claim aggregation); or
  *   • leaf -- finalizes the task as completed with the member's output as result.
  * Aggregators (blockedBy non-empty), depth/width-capped tasks, and no-tag
- * responses are always leaves -- preventing infinite recursion/oscillation.
+ * responses never branch — they are finalized as leaves directly, or (when
+ * they still emit a <decompose> block) forced into a direct solve —
+ * preventing infinite recursion/oscillation.
  * The tail reuses delegate's task-pool termination engine.
  */
 export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: MemberState): Promise<void> {
@@ -449,9 +454,9 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
     }
 
     // Shared delegate-style tail: all-complete / deadlock / re-prompt.
-    // Before entering the tail, verify the root task exists and is
-    // completed. If root is deleted/missing, the delegate tail's
-    // incomplete.length === 0 check would falsely succeed.
+    // Before entering the tail, verify the root task still exists. If root
+    // is deleted/missing, the delegate tail's incomplete.length === 0 check
+    // would falsely succeed.
     if (task.rootTaskId) {
         const rootTask = await getTask(team.directory, task.rootTaskId)
         if (!rootTask || rootTask.status === "deleted") {

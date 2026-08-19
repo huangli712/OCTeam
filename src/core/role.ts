@@ -29,15 +29,16 @@
  * deny edit/task/bash but allow webfetch (reference lookup is their job),
  * oct-metis/oct-momus deny edit/bash/webfetch but allow task (planning/review
  * agents need subagent delegation).
- * sessions have been verified to support the persistent, multi-dispatch member
- * lifecycle (OCTeam dispatches via session.create + promptAsync, which does
- * not consult agent mode -- see dispatch.ts). Permissions are therefore fixed
- * by the oct-* definitions in this repo, not by host configuration.
+ * The underlying sessions have been verified to support the persistent,
+ * multi-dispatch member lifecycle (OCTeam dispatches via session.create +
+ * promptAsync, which does not consult agent mode -- see dispatch.ts).
+ * Permissions are therefore fixed by the oct-* definitions in this repo,
+ * not by host configuration.
  */
 
 /** A role's fixed agent and preset instruction text.
- * Fields are readonly to prevent runtime mutation of the frozen
- * role catalogue entries. */
+ * Readonly fields plus module-init freezing keep catalogue entries
+ * immutable at compile time and at runtime. */
 export type RoleDef = { readonly agent: string; readonly instruction: string }
 
 /** The complete role catalogue — maps role labels to agent and instruction.

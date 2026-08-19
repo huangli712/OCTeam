@@ -1,6 +1,6 @@
 /**
  * The shared PluginContext built from host-provided PluginInput, plus the
- * StorageScope enum and its scope-warning helper.
+ * StorageScope type and its scope-warning helper.
  */
 
 import os from "node:os"
