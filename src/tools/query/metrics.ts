@@ -19,10 +19,10 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
+import type { RunRecord } from "../../core/types.js"
 import { logSwallowed } from "../../core/log.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
 import { listRunRecords } from "../../orchestration/records/runs.js"
-import type { RunRecord } from "../../core/types.js"
 
 /** One per-run detail line; flags zero-token runs as "(no token data)". */
 function formatRunLine(r: RunRecord): string {
@@ -50,17 +50,26 @@ export function teamMetricsTool(ctx: PluginContext): ToolDefinition {
                 .describe("max runs to aggregate, newest first (default 20)"),
         },
         async execute(args, context) {
-            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id, {
-                requireActive: false,
-            })
+            const caller = await resolveCallerInTeam(
+                ctx.storageRoot,
+                context.sessionID,
+                args.team_id,
+                { requireActive: false },
+            )
             if (!caller) return "Error: caller is not a member of this team"
 
             let records: RunRecord[]
             try {
                 records = await listRunRecords(caller.directory)
             } catch (err) {
-                logSwallowed(ctx, "team_metrics failed to read run records", err, { team: args.team_id })
-                return `Error: run records for team "${args.team_id}" could not be read: ${err instanceof Error ? err.message : String(err)}`
+                logSwallowed(
+                    ctx,
+                    "team_metrics failed to read run records",
+                    err,
+                    { team: args.team_id },
+                )
+                return `Error: run records for team "${args.team_id}" could not be read: `
+                    + `${err instanceof Error ? err.message : String(err)}`
             }
             if (records.length === 0) return `No run records for team "${args.team_id}" yet.`
 
