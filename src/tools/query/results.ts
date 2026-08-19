@@ -1,5 +1,3 @@
-/** Byte cap for indented step output in the workflow tree display. */
-const STEP_OUTPUT_DISPLAY_CAP = 1024
 /**
  * team_results / team_result_get tools.
  *
@@ -10,7 +8,6 @@ const STEP_OUTPUT_DISPLAY_CAP = 1024
  * team_result_get with no run_id returns the LATEST run, directly covering the
  * common "I lost the team_result summary" case.
  */
-
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
@@ -26,12 +23,14 @@ import { safeReadFile } from "../../state/locks.js"
 import { runMemberOutputPath, isSafePathSegment } from "../../state/paths.js"
 import type { RunRecord, WorkflowGateStep, WorkflowRunStep } from "../../core/types.js"
 
+/** Byte cap for indented step output in the workflow tree display. */
+const STEP_OUTPUT_DISPLAY_CAP = 1024
+
 /** WorkflowRunStep widened with gate malformed-verdict fields for display. */
 type DisplayWorkflowRunStep = WorkflowRunStep & {
     onMalformed?: WorkflowGateStep["onMalformed"]
     malformedAttempts?: number
 }
-
 
 /** Label for a gate's target step (for display in step lines). */
 function workflowTargetLabel(step: WorkflowRunStep): string {
