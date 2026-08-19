@@ -15,7 +15,12 @@ import {
     signoffTaskFields,
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
-import { commonOrchestrationFields, humanApprovalSchemaFields, signoffSchemaFields } from "../schema.js"
+//
+import {
+    commonOrchestrationFields,
+    humanApprovalSchemaFields,
+    signoffSchemaFields
+} from "../schema.js"
 import { validateSignoff } from "../support.js"
 
 /** Run a verdict-gated pipeline where each stage is verified before the next proceeds. */
@@ -34,8 +39,15 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
             stages: tool.schema
                 .array(
                     tool.schema.object({
-                        member: tool.schema.string().min(1).describe("the producer member name"),
-                        task: tool.schema.string().min(1).max(8192).describe("the producer's task"),
+                        member: tool.schema
+                            .string()
+                            .min(1)
+                            .describe("the producer member name"),
+                        task: tool.schema
+                            .string()
+                            .min(1)
+                            .max(8192)
+                            .describe("the producer's task"),
                         verifier: tool.schema
                             .string()
                             .min(1)
@@ -105,7 +117,8 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
                     if (args.escalate_to) {
                         for (const s of args.stages) {
                             if (args.escalate_to === s.member) {
-                                return `Error: escalate_to "${args.escalate_to}" must not equal stage producer "${s.member}" — the escalation response would overwrite the producer's original artifact`
+                                return `Error: escalate_to "${args.escalate_to}" must not equal stage producer "${s.member}" `
+                                    + `— the escalation response would overwrite the producer's original artifact`
                             }
                         }
                     }
