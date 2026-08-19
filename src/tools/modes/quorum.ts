@@ -13,6 +13,7 @@ import {
     baseTaskFields,
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
+//
 import { commonOrchestrationFields } from "../schema.js"
 
 /**
@@ -47,8 +48,8 @@ export function teamQuorumTool(ctx: PluginContext): ToolDefinition {
                 .max(64)
                 .regex(/^[A-Za-z0-9_]+$/)
                 .describe(
-                    "ballot field name (alphanumeric + underscore, max 64 chars), e.g. 'decision'. Members are instructed "
-                    + 'to emit <vote>{"<vote_key>": "<value>"}</vote>.',
+                    "ballot field name (alphanumeric + underscore, max 64 chars), e.g. 'decision'. "
+                    + 'Members are instructed to emit <vote>{"<vote_key>": "<value>"}</vote>.',
                 ),
             vote_options: tool.schema
                 .array(tool.schema.string().min(1).max(256))
@@ -121,7 +122,8 @@ export function teamQuorumTool(ctx: PluginContext): ToolDefinition {
                         }
                     }
                     if (args.max_errored_members !== undefined && args.max_errored_members >= participants.length) {
-                        return `Error: max_errored_members (${args.max_errored_members}) must be less than participant count (${participants.length})`
+                        return `Error: max_errored_members (${args.max_errored_members}) must be less `
+                            + `than participant count (${participants.length})`
                     }
                     return null
                 },
@@ -132,11 +134,11 @@ export function teamQuorumTool(ctx: PluginContext): ToolDefinition {
                     return {
                         type: "quorum",
                         ...baseTaskFields(args, team, DEFAULT_TIMEOUT_MS),
-                        stages: [],                         // ActiveTaskBase requires this field
+                        stages: [],    // ActiveTaskBase requires this field
                         task: args.task,
                         voteKey: args.vote_key,
                         voteOptions: args.vote_options,
-                        participants,                       // thread subset through
+                        participants,  // thread subset through
                         ballots: {},
                         erroredCount: 0,
                         // Default tolerance N-1: only fail pre-tally when all
