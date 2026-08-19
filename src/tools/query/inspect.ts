@@ -3,13 +3,13 @@
  */
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
-import { isEnoent } from "../../core/utils.js"
-import { logSwallowed } from "../../core/log.js"
 
 import type { PluginContext } from "../../core/context.js"
+import { isEnoent } from "../../core/utils.js"
+import { logSwallowed } from "../../core/log.js"
+import { safeMemberAgent } from "../../core/role.js"
 import { loadTeamState, readTeamSpec } from "../../state/store.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
-import { safeMemberAgent } from "../../core/role.js"
 
 /** Query detailed information about a specific team member. */
 export function teamQueryTool(ctx: PluginContext): ToolDefinition {
@@ -20,32 +20,51 @@ export function teamQueryTool(ctx: PluginContext): ToolDefinition {
             member_name: tool.schema.string().min(1),
         },
         async execute(args, context) {
-            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id, {
-                requireActive: false,
-            })
+            const caller = await resolveCallerInTeam(
+                ctx.storageRoot,
+                context.sessionID,
+                args.team_id,
+                { requireActive: false },
+            )
             if (!caller) return "Error: caller is not a member of this team"
             let team
             try {
-                team = await loadTeamState(caller.storageRoot, caller.teamName, caller.leadSessionId)
+                team = await loadTeamState(
+                    caller.storageRoot,
+                    caller.teamName,
+                    caller.leadSessionId,
+                )
             } catch (err) {
                 if (isEnoent(err)) return `Error: team "${args.team_id}" not found`
                 logSwallowed(ctx, "loadTeamState failed", err, { team: args.team_id })
                 return `Error: team "${args.team_id}" could not be loaded (state file unreadable)`
             }
             const member = team.members.find(m => m.name === args.member_name)
-            if (!member) return `Error: member "${args.member_name}" not found in team "${args.team_id}"`
+            if (!member) {
+                return `Error: member "${args.member_name}" not found in team "${args.team_id}"`
+            }
 
             let role: string | undefined
             let prompt: string | undefined
             try {
-                const spec = await readTeamSpec(caller.storageRoot, caller.teamName, caller.leadSessionId)
+                const spec = await readTeamSpec(
+                    caller.storageRoot,
+                    caller.teamName,
+                    caller.leadSessionId,
+                )
                 const sm = spec?.members.find(m => m.name === args.member_name)
                 role = sm?.role
                 prompt = sm?.prompt
             } catch (err) {
                 if (!isEnoent(err)) {
-                    logSwallowed(ctx, "readTeamSpec failed (inspect)", err, { team: caller.teamName })
-                    return `Error: team "${args.team_id}" config could not be read: ${err instanceof Error ? err.message : String(err)}`
+                    logSwallowed(
+                        ctx,
+                        "readTeamSpec failed (inspect)",
+                        err,
+                        { team: caller.teamName },
+                    )
+                    return `Error: team "${args.team_id}" config could not be read: `
+                        + `${err instanceof Error ? err.message : String(err)}`
                 }
                 logSwallowed(ctx, "readTeamSpec failed (inspect)", err, { team: caller.teamName })
             }
