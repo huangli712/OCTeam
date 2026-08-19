@@ -29,6 +29,38 @@ import { asSdkMessages, extractSessionStatusEntry } from "./orchestration/protoc
 import { logEvent, logger, logSwallowed } from "./core/log.js"
 import { handleSessionDeleted } from "./orchestration/lifecycle/reconcile.js"
 
+// Period between sweep-timer ticks (missed-idle reconciliation, termination enforcement).
+const SWEEP_INTERVAL_MS = 15_000
+
+// Max retry attempts for persistTeamState on transient disk failures.
+const SAVE_MAX_ATTEMPTS = 3
+
+// Backoff between persistTeamState retry attempts.
+const SAVE_BACKOFF_MS = 100
+
+/**
+ * Compaction-context suppression. The `experimental.chat.messages.transform`
+ * hook fires both on live prompt turns AND during session compaction (where it
+ * receives a structuredClone of the head messages — see decompiled trigger site).
+ * Injecting into the clone is lost, but pollMailbox+ackMessages have REAL side
+ * effects → silent message loss. We can't distinguish the two from input (`{}`),
+ * so we mark a session as "compacting" via the experimental.session.compacting
+ * hook and consume-once-skip the very next transform for it. TTL bounds a stuck
+ * flag (if compaction aborts before transform) to a single delayed turn.
+ */
+const compacting = new Map<string, number>() // sessionID -> expiresAt
+
+// TTL for compacting flags; bounds a stuck flag if compaction aborts before transform.
+const COMPACTING_FLAG_TTL_MS = 15_000
+/** Max tracked compacting flags; insert-time eviction enforces it (see below). */
+const COMPACTING_MAP_CAP = 256
+
+// ACK happens before the downstream LLM turn. Retain enough
+// in-process state to count explicit session.error turns that can no longer
+// redeliver their injected mailbox messages.
+const earlyAckedMessageCountBySession = new Map<string, number>()
+let droppedMailboxTurnsSinceStartup = 0
+
 /** Narrow an unknown SDK event into a type+properties shape, or null. */
 function narrowSdkEvent(event: unknown): { type?: string; properties?: Record<string, unknown> } | null {
     if (typeof event !== "object" || event === null) return null
@@ -69,38 +101,6 @@ function sdkEventSessionID(event: unknown): string | undefined {
     return undefined
 }
 
-// Period between sweep-timer ticks (missed-idle reconciliation, termination enforcement).
-const SWEEP_INTERVAL_MS = 15_000
-
-// Max retry attempts for persistTeamState on transient disk failures.
-const SAVE_MAX_ATTEMPTS = 3
-
-// Backoff between persistTeamState retry attempts.
-const SAVE_BACKOFF_MS = 100
-
-/**
- * Compaction-context suppression. The `experimental.chat.messages.transform`
- * hook fires both on live prompt turns AND during session compaction (where it
- * receives a structuredClone of the head messages — see decompiled trigger site).
- * Injecting into the clone is lost, but pollMailbox+ackMessages have REAL side
- * effects → silent message loss. We can't distinguish the two from input (`{}`),
- * so we mark a session as "compacting" via the experimental.session.compacting
- * hook and consume-once-skip the very next transform for it. TTL bounds a stuck
- * flag (if compaction aborts before transform) to a single delayed turn.
- */
-const compacting = new Map<string, number>() // sessionID -> expiresAt
-
-// TTL for compacting flags; bounds a stuck flag if compaction aborts before transform.
-const COMPACTING_FLAG_TTL_MS = 15_000
-/** Max tracked compacting flags; insert-time eviction enforces it (see below). */
-const COMPACTING_MAP_CAP = 256
-
-// ACK happens before the downstream LLM turn. Retain enough
-// in-process state to count explicit session.error turns that can no longer
-// redeliver their injected mailbox messages.
-const earlyAckedMessageCountBySession = new Map<string, number>()
-let droppedMailboxTurnsSinceStartup = 0
-
 /**
  * Save team state with bounded retry. Transient disk failures (EIO, ENOSPC)
  * are retried up to SAVE_MAX_ATTEMPTS times before giving up. On final failure
@@ -134,6 +134,17 @@ export async function persistTeamState(
     }
     team._persistDirty = true
     logSwallowed(ctx, label, lastErr, { ...extra, attempts: SAVE_MAX_ATTEMPTS }, "error")
+}
+
+/** Build the synthetic master pseudo-member for a team's drain-all pass. */
+function masterPseudoMember(): MemberState & { isMaster: true } {
+    return {
+        name: "master",
+        isMaster: true,
+        status: "idle",
+        initialized: true,
+        turnCount: 0,
+    }
 }
 
 /**
@@ -389,17 +400,6 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
             }
             logSwallowed(ctx, "member-idle handler failed", err, { sessionID })
         }
-    }
-}
-
-/** Build the synthetic master pseudo-member for a team's drain-all pass. */
-function masterPseudoMember(): MemberState & { isMaster: true } {
-    return {
-        name: "master",
-        isMaster: true,
-        status: "idle",
-        initialized: true,
-        turnCount: 0,
     }
 }
 
