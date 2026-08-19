@@ -33,6 +33,16 @@ const NO_ISSUES_TAG = /<(?:no_issues|无问题)\s*\/?>\s*$/
 const TASK_SUBJECT_MAX_LENGTH = 500
 const TASK_DESCRIPTION_MAX_LENGTH = 8_192
 
+/** Outcome of parsing a consensus turn: either a valid agreed flag or a
+ *  classified parse failure (tag missing, bad JSON, or agreed not boolean). */
+type ConsensusParseResult =
+    | { readonly agreed: boolean; readonly parseFailed: false }
+    | {
+        readonly agreed: false
+        readonly parseFailed: true
+        readonly reason: "tag_not_found" | "json_parse_error" | "agreed_not_boolean"
+    }
+
 /** Detect duplicate keys that JSON.parse would otherwise resolve last-wins. */
 function hasDuplicateKeys(jsonStr: string): boolean {
     const seen = new Set<string>()
@@ -550,16 +560,6 @@ export function allReadOnlyStagesReportNoIssues(task: ActiveTask): boolean {
     if (roStages.length === 0) return false
     return roStages.every(s => NO_ISSUES_TAG.test(task.responses[s.member] ?? ""))
 }
-
-/** Outcome of parsing a consensus turn: either a valid agreed flag or a
- *  classified parse failure (tag missing, bad JSON, or agreed not boolean). */
-type ConsensusParseResult =
-    | { readonly agreed: boolean; readonly parseFailed: false }
-    | {
-        readonly agreed: false
-        readonly parseFailed: true
-        readonly reason: "tag_not_found" | "json_parse_error" | "agreed_not_boolean"
-    }
 
 /** Parse a consensus response and classify missing, invalid, or valid payloads. */
 export function parseConsensus(text: string): ConsensusParseResult {
