@@ -9,15 +9,29 @@ import path from "node:path"
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
+import type { TeamSpec } from "../../core/types.js"
 import { logSwallowed } from "../../core/log.js"
 import { isEnoent } from "../../core/utils.js"
 import {
-    listTeamNames, loadTeamState, readTeamSpec, rekeyTeamRegistry, saveTeamState, writeTeamSpec,
+    listTeamNames,
+    loadTeamState,
+    readTeamSpec,
+    rekeyTeamRegistry,
+    saveTeamState,
+    writeTeamSpec,
 } from "../../state/store.js"
-import { indexMasterTeam, isIndexedMasterOf, setActiveTeam, unindexMasterTeam } from "../../state/resolve.js"
-import { teamDir, teamLifecycleLockPath, teamNamespaceLockPath } from "../../state/paths.js"
+import {
+    indexMasterTeam,
+    isIndexedMasterOf,
+    setActiveTeam,
+    unindexMasterTeam
+} from "../../state/resolve.js"
+import {
+    teamDir,
+    teamLifecycleLockPath,
+    teamNamespaceLockPath
+} from "../../state/paths.js"
 import { withLock } from "../../state/locks.js"
-import type { TeamSpec } from "../../core/types.js"
 
 /** Rename a live team, updating its directory and all stored references. */
 export function teamRenameTool(ctx: PluginContext): ToolDefinition {
@@ -71,7 +85,9 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
             let specError: string | undefined = undefined
             // Acquire the namespace lock to prevent concurrent team_create
             // from claiming the old name slot after rename moves the directory.
-            await withLock(teamNamespaceLockPath(ctx.storageRoot), async () => withLock(teamLifecycleLockPath(team.directory), async () => team.mutex.runExclusive(async () => {
+            await withLock(teamNamespaceLockPath(ctx.storageRoot), async () =>
+                withLock(teamLifecycleLockPath(team.directory), async () =>
+                    team.mutex.runExclusive(async () => {
                 // Revalidate inside the mutex: a concurrent
                 // startOrchestration may have flipped status live→busy since
                 // the outside-mutex check at line 51. Refuse rather than
@@ -125,7 +141,8 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                     // Treat as a fatal precondition and refuse the rename.
                     // Set a flag because the outer code checks flags and the mutex
                     // callback return value is discarded.
-                    specError = `Error: team "${args.team_id}" config is unreadable — refusing to rename (${err instanceof Error ? err.message : String(err)})`
+                    specError = `Error: team "${args.team_id}" config is unreadable — refusing to rename `
+                        + `(${err instanceof Error ? err.message : String(err)})`
                     logSwallowed(ctx, "team_rename: team spec unreadable", err, { team: args.team_id })
                     // Clean up the placeholder directory created above.
                     await fs.rmdir(newDir).catch((cleanupErr) => {
@@ -176,7 +193,12 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                     // Clean it up so future lifecycle operations on the renamed
                     // team don't wait for TTL to expire on a stale lock.
                     await fs.unlink(teamLifecycleLockPath(newDir)).catch((unlinkErr) => {
-                        logSwallowed(ctx, "team_rename: stale lock cleanup after rename", unlinkErr, { lockPath: teamLifecycleLockPath(newDir) })
+                        logSwallowed(
+                            ctx,
+                            "team_rename: stale lock cleanup after rename",
+                            unlinkErr,
+                            { lockPath: teamLifecycleLockPath(newDir) },
+                        )
                     })
                 } catch (writeErr) {
                     // Rollback: restore the old directory and in-memory state.
@@ -199,15 +221,24 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                     if (spec && originalSpecName !== undefined && spec.name !== originalSpecName) {
                         try {
                             const restoredSpec = { ...spec, name: originalSpecName }
-                            await writeTeamSpec(ctx.storageRoot, restoredSpec, pathLeadSessionId, ctx.storageRoot)
+                            await writeTeamSpec(
+                                ctx.storageRoot,
+                                restoredSpec,
+                                pathLeadSessionId,
+                                ctx.storageRoot,
+                            )
                         } catch (specRollbackErr) {
-                            logSwallowed(ctx, "rename rollback: writeTeamSpec restore failed", specRollbackErr, { oldDir, newDir })
+                            logSwallowed(
+                                ctx,
+                                "rename rollback: writeTeamSpec restore failed",
+                                specRollbackErr,
+                                { oldDir, newDir },
+                            )
                         }
                     }
                     throw writeErr
                 }
             }), team.directory), ctx.storageRoot)
-
 
             if (specError) {
                 return specError
