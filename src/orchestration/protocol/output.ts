@@ -24,7 +24,8 @@ const WORK_TOOLS = new Set([
  *
  * @internal Exported only for use by tests/output-capture.test.ts (baseline
  * regression for the text-only extraction contract). Production callers use
- * `extractOutputFromParts` (which composes this with output-shape handling).
+ * `extractOutputFromParts`, which carries its own inline text filtering plus
+ * output-shape handling.
  */
 export function extractTextFromParts(parts: unknown): string {
     if (!Array.isArray(parts)) return ""

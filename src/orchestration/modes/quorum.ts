@@ -5,7 +5,8 @@
  *   dispatch → barrier_wait → tally → deliver
  *   - Some option >= threshold → deliver (idle, "quorum_succeeded:"+option)
  *   - No option >= threshold   → deliver (failed, "quorum_no_majority")
- *   - nEff == 0                → deliver (failed, "quorum_all_errored")
+ *   - nEff == 0                → deliver (failed, quorum_all_abstained /
+ *     quorum_all_errored / quorum_all_malformed per cause)
  *
  * Runtime errors are handled by checkTermination (pre-barrier) per maxErroredMembers.
  * Invalid ballots are handled here (post-barrier) per parseBallot. Both abstain

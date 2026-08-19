@@ -6,11 +6,12 @@
  *
  * reconcileOne releases stale resources for teams left in a non-terminal state:
  *   - busy: release stale mailbox reservations and snapshot the active task onto
- *     lastInterruptedTask for a later team_resume. The team is NOT auto-failed,
- *     because listAllTeams traverses ALL session directories and a concurrent
- *     OpenCode instance must not mark another live process's busy team as failed.
- *     A genuinely crashed process's busy team stays busy on disk; the user
- *     resolves it via team_cancel or team_resume.
+ *     lastInterruptedTask for a later team_resume. PID-based fencing: when the
+ *     recorded runner PID is confirmed dead (ESRCH), the team is marked failed
+ *     and activeTask cleared; a live or unknown PID keeps the team busy on disk
+ *     (concurrent-instance safety — listAllTeams traverses ALL session
+ *     directories, so a live sibling process's busy team must not be touched).
+ *     The user resolves a leftover busy team via team_cancel or team_resume.
  *   - idle: release stale reservations (members reusable as-is).
  * live / failed are terminal-or-pristine → skipped.
  * Runs once in server() init, AFTER rebuildSessionIndex, BEFORE startSweepTimer.

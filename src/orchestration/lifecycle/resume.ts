@@ -5,7 +5,9 @@
  * helpers, all co-located in this module.
  *
  * Called inside team.mutex.runExclusive AFTER activeTask is committed. Mutates
- * team/task freely; does NOT save state (caller owns persistence).
+ * team/task freely. dispatchToMember persists state internally, a few handlers
+ * save explicitly mid-dispatch (see resumeArenaMode), and the caller performs
+ * the final Phase 3 save.
  */
 
 import type { PluginContext } from "../../core/context.js";

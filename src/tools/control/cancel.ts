@@ -62,7 +62,7 @@ export function teamCancelTool(ctx: PluginContext): ToolDefinition {
                 // but record the cancelled run as failed so metrics do not count it
                 // as a success.
                 await finishRun(ctx, team, "cancelled", "idle", "failed")
-                // d. Persist.
+                // c. Persist.
                 await saveTeamState(team)
                 result = abortFailureCount > 0
                     ? `Team "${args.team_id}" orchestration cancelled, but ${abortFailureCount} member`

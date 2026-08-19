@@ -195,7 +195,8 @@ async function applyRedispatch(
                 const abortError = err instanceof Error ? err : new Error(String(err))
                 // Return an error if abort fails so the previous turn cannot run
                 // alongside the new dispatch and the caller can retry.
-                return `Error: cannot abort previous turn for member "${oldActor.name}" before redispatch. ${abortError.message}`
+                return `Error: cannot abort previous turn for member "${oldActor.name}" before redispatch. `
+                    + `${abortError.message}`
             }
         }
     }
@@ -214,7 +215,9 @@ async function applySkip(
     if (index === null) return "Error: workflow has no active step to skip"
     const workflowStep = task.steps?.[index]
     if (workflowStep === undefined) return `Error: step ${index + 1} does not exist`
-    if (!isActiveWorkflowStep(task, index)) return `Error: step ${index + 1} is not in the active workflow frontier`
+    if (!isActiveWorkflowStep(task, index)) {
+        return `Error: step ${index + 1} is not in the active workflow frontier`
+    }
     if (workflowStep.kind === "fanout" || workflowStep.kind === "join") {
         return `Error: step ${index + 1} marker steps cannot be skipped directly`
     }
@@ -249,7 +252,9 @@ async function applyAdvance(ctx: PluginContext, team: Team, task: WorkflowTask):
     if (index === null) return "Error: workflow has no active step to advance"
     const workflowStep = task.steps?.[index]
     if (workflowStep === undefined) return `Error: step ${index + 1} does not exist`
-    if (!isActiveWorkflowStep(task, index)) return `Error: step ${index + 1} is not in the active workflow frontier`
+    if (!isActiveWorkflowStep(task, index)) {
+        return `Error: step ${index + 1} is not in the active workflow frontier`
+    }
     const invariantError = validateWorkflowAfterFix(task)
     if (invariantError !== null) return invariantError
     workflowStep.completed = true
@@ -312,7 +317,9 @@ async function applyReassign(
     if (index === null) return "Error: workflow has no active step to reassign"
     const workflowStep = task.steps?.[index]
     if (workflowStep === undefined) return `Error: step ${index + 1} does not exist`
-    if (!isActiveWorkflowStep(task, index)) return `Error: step ${index + 1} is not in the active workflow frontier`
+    if (!isActiveWorkflowStep(task, index)) {
+        return `Error: step ${index + 1} is not in the active workflow frontier`
+    }
     if (workflowStep.kind === "fanout" || workflowStep.kind === "join") {
         return `Error: step ${index + 1} marker steps cannot be reassigned`
     }
@@ -348,7 +355,8 @@ async function applyReassign(
             // Reject a duplicate verifier before replacing the primary entry.
             const remaining = workflowStep.verifiers.slice(1)
             if (remaining.includes(toMember)) {
-                return `Error: "${toMember}" is already a verifier in this ensemble gate — reassignment would create a duplicate`
+                return `Error: "${toMember}" is already a verifier in this ensemble gate `
+                    + `— reassignment would create a duplicate`
             }
             // Clear the old verifier's ensemble result so the next aggregation
             // does not count its stale vote alongside the new verifier.

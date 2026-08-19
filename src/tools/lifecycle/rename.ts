@@ -83,8 +83,9 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
             let staleState = false
             let collision = false
             let specError: string | undefined = undefined
-            // Acquire the namespace lock to prevent concurrent team_create
-            // from claiming the old name slot after rename moves the directory.
+            // Acquire the namespace lock (shared with team_delete, the only
+            // other holder) so a concurrent team_delete cannot quarantine the
+            // directory while rename moves it.
             await withLock(teamNamespaceLockPath(ctx.storageRoot), async () =>
                 withLock(teamLifecycleLockPath(team.directory), async () =>
                     team.mutex.runExclusive(async () => {

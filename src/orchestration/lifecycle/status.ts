@@ -32,7 +32,8 @@ const RETRY_ESCALATION_MS = 60_000
  *
  * The re-drive block only reaches for concurrent or multi-phase modes whose
  * barrier can continue with survivors (parallel / delegate / recurse /
- * workflow / arena). The other modes have tolerance 0 in checkTermination, so
+ * workflow / arena / quorum). The other modes have tolerance 0 in
+ * checkTermination, so
  * by the time we reach here activeTask is already cleared for them — they are
  * intentionally absent from the switch.
  */
