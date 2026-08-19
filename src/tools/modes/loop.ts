@@ -13,7 +13,12 @@ import {
     humanApprovalTaskFields,
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
-import { commonOrchestrationFields, humanApprovalSchemaFields, parseThresholdFields } from "../schema.js"
+//
+import {
+    commonOrchestrationFields,
+    humanApprovalSchemaFields,
+    parseThresholdFields
+} from "../schema.js"
 import { assertMember } from "../support.js"
 import { MASTER_NAME } from "../../state/naming.js"
 
@@ -35,7 +40,10 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
                     }),
                 )
                 .min(1),
-            decider: tool.schema.string().min(1).describe("member name of the decider (NOT \"master\")"),
+            decider: tool.schema
+                .string()
+                .min(1)
+                .describe("member name of the decider (NOT \"master\")"),
             max_rounds: tool.schema.number().int().min(1).max(50),
             initial_task: tool.schema.string().min(1).max(8192),
             ...commonOrchestrationFields,
@@ -67,13 +75,15 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
                     // stage, breaking the loop contract.
                     const explicitDeciderStageIndex = stageMembers.indexOf(args.decider)
                     if (explicitDeciderStageIndex !== -1 && explicitDeciderStageIndex !== stageMembers.length - 1) {
-                        return `Error: decider "${args.decider}" appears in stage ${explicitDeciderStageIndex + 1} but must be the LAST stage (decision must follow all modify stages)`
+                        return `Error: decider "${args.decider}" appears in stage ${explicitDeciderStageIndex + 1} `
+                            + `but must be the LAST stage (decision must follow all modify stages)`
                     }
                     // Omitted actions default to read_only; only an explicit
                     // action:"modify" is rejected.
                     const deciderAction = args.stages[explicitDeciderStageIndex]?.action
                     if (deciderAction === "modify") {
-                        return `Error: decider "${args.decider}" stage must be action "read_only" (it reviews, not modifies)`
+                        return `Error: decider "${args.decider}" stage must be action "read_only" `
+                            + `(it reviews, not modifies)`
                     }
                     return null
                 },
@@ -119,7 +129,13 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
                     if (!member) return
                     const first = team.members.find(m => m.name === member.member)
                     if (first) {
-                        await dispatchToMember(ctx, first, args.initial_task, first.worktreePath ?? ctx.directory, team)
+                        await dispatchToMember(
+                            ctx,
+                            first,
+                            args.initial_task,
+                            first.worktreePath ?? ctx.directory,
+                            team,
+                        )
                     }
                 },
                 // successMessage
