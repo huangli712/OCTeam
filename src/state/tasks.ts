@@ -15,11 +15,28 @@
 import fs from "node:fs/promises"
 import crypto from "node:crypto"
 
+import type {
+    Task,
+    TaskStatus
+} from "../core/types.js"
 import { logger } from '../core/log.js';
 import { isEnoent } from '../core/utils.js';
-import { assertNoSymlinkTraversal, CLAIM_TTL_MS, atomicWrite, lockFresh, withLock } from "./locks.js"
-import { claimLockPath, claimMutexPath, claimsDir, taskPath, tasksDir, taskUpdateLockPath } from "./paths.js"
-import type { Task, TaskStatus } from "../core/types.js"
+//
+import {
+    assertNoSymlinkTraversal,
+    CLAIM_TTL_MS,
+    atomicWrite,
+    lockFresh,
+    withLock
+} from "./locks.js"
+import {
+    claimLockPath,
+    claimMutexPath,
+    claimsDir,
+    taskPath,
+    tasksDir,
+    taskUpdateLockPath
+} from "./paths.js"
 
 /**
  * Canonical task-id shape. Task IDs are always crypto.randomUUID() (see
@@ -29,7 +46,7 @@ import type { Task, TaskStatus } from "../core/types.js"
 export const TASK_ID_PATTERN =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-    /**
+/**
  * Raised by claimTask when the calling member already holds another task in
  * the "claimed" or "in_progress" window. Enforces the
  * claim → complete → idle → claim-next workflow (one active task per member).
@@ -109,7 +126,12 @@ function assertValidTaskId(taskId: string): void {
  * AND the claimedAt age strictly exceeds the TTL (age == ttl is NOT stale).
  * All IO (lockFresh, Date.now) is resolved by the caller and passed in.
  */
-export function isClaimStale(fresh: boolean, claimedAt: number, now: number, ttl: number): boolean {
+export function isClaimStale(
+    fresh: boolean,
+    claimedAt: number,
+    now: number,
+    ttl: number,
+): boolean {
     return !fresh && now - claimedAt > ttl
 }
 
@@ -190,7 +212,14 @@ async function readTaskFile(teamDirectory: string, taskId: string): Promise<Task
 /** Create a task with an optional preallocated UUID and write it atomically to disk. */
 export async function createTask(
     teamDirectory: string,
-    input: { id?: string; runId?: string; subject: string; description: string; blockedBy?: string[]; depth?: number },
+    input: {
+        id?: string
+        runId?: string
+        subject: string
+        description: string
+        blockedBy?: string[]
+        depth?: number
+    },
 ): Promise<Task> {
     const now = Date.now()
     const id = input.id ?? crypto.randomUUID()
