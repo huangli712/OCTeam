@@ -1,22 +1,16 @@
 # OCTeam
 
-OCTeam is a multi-agent team orchestration system for OpenCode. It is an
-OpenCode plugin that lets you create long-lived teams of up to 12 agent
-sessions — each with its own role, prompt, and optional agent — and
-orchestrate them with twelve workflow primitives.
+OCTeam is a multi-agent team orchestration system for OpenCode. It is an OpenCode plugin that lets you create long-lived teams of up to 12 agent sessions — each with its own role, prompt, and optional agent — and orchestrate them with twelve workflow primitives.
 
-**Version:** 0.13.4
+**Version:** 0.14.0
 **License:** MIT  
 **Runtime:** Bun (TypeScript)
 
 ## Install
 
-OCTeam is distributed as an npm package (`octeam`). Install it in three
-steps:
+OCTeam is distributed as an npm package (`octeam`). Install it in three steps:
 
-1. **Download** the latest release package from the
-   [Releases page](https://github.com/huangli712/OCTeam/releases) (e.g.
-   `octeam-<version>.tgz`).
+1. **Download** the latest release package from the [Releases page](https://github.com/huangli712/OCTeam/releases) (e.g. `octeam-<version>.tgz`).
 
 2. **Extract** it:
 
@@ -30,10 +24,7 @@ steps:
    opencode plugin install ./octeam-<version>
    ```
 
-OCTeam registers as an `oc-plugin` with two entrypoints (server + TUI sidebar).
-Peer dependencies (`@opencode-ai/plugin` >=1.4.7, `@opencode-ai/sdk` >=1.4.7,
-`@opentui/solid` >=0.1.99, `solid-js` >=1.9.0) are resolved by OpenCode's
-plugin host.
+OCTeam registers as an `oc-plugin` with two entrypoints (server + TUI sidebar). Peer dependencies (`@opencode-ai/plugin` >=1.4.7, `@opencode-ai/sdk` >=1.4.7, `@opentui/solid` >=0.1.99, `solid-js` >=1.9.0) are resolved by OpenCode's plugin host.
 
 ## Tool surface (42 tools)
 
@@ -87,8 +78,7 @@ plugin host.
 | `team_workflow` | Deterministic declarative workflow: task/gate/fanout/join steps with engine-driven retry, recovery, and join policies |
 | `team_quorum` | Replicated k-of-n voting: N members independently answer the same fixed-schema question; strict majority (k > valid_ballots/2) wins |
 
-All twelve are master-only: only the team's leader session may start an
-orchestration. Only one orchestration can be active per team at a time.
+All twelve are master-only: only the team's leader session may start an orchestration. Only one orchestration can be active per team at a time.
 
 ### Workflow authoring
 
@@ -114,45 +104,23 @@ orchestration. Only one orchestration can be active per team at a time.
 
 ## Key concepts
 
-**Team.** A named group of up to 12 members (the `maxMembers` default; configurable per team). Each team has a leader session
-("master") and a set of member sessions. Teams live in a storage scope:
-project-scope (`<dir>/.octeam`) or user-scope (`~/.octeam`).
+**Team.** A named group of up to 12 members (the `maxMembers` default; configurable per team). Each team has a leader session ("master") and a set of member sessions. Teams live in a storage scope: project-scope (`<dir>/.octeam`) or user-scope (`~/.octeam`).
 
-**Member.** A member is an OpenCode session with a role, system prompt, and
-optional model/agent configuration. Members can optionally run in isolated git
-worktrees.
+**Member.** A member is an OpenCode session with a role, system prompt, and optional model/agent configuration. Members can optionally run in isolated git worktrees.
 
-**Master-only orchestration.** Only the team's leader session starts workflows.
-Other sessions call tools like `team_done`, `team_send_message`, and
-`team_task_*`.
+**Master-only orchestration.** Only the team's leader session starts workflows. Other sessions call tools like `team_done`, `team_send_message`, and `team_task_*`.
 
-**Single-active-per-session.** A session can have at most one team activated at
-a time. `team_activate` refuses if another team is already active — call
-`team_deactivate` on it first (auto-switching is disabled).
+**Single-active-per-session.** A session can have at most one team activated at a time. `team_activate` refuses if another team is already active — call `team_deactivate` on it first (auto-switching is disabled).
 
-**State.** All team state is JSON-serializable, persisted under
-`<scope>/.octeam/teams/<name>/`. Each team has a `config.json` (immutable
-spec), `state.json` (mutable runtime state), plus `mailbox/`, `tasks/`, `runs/`,
-and optional `worktrees/` directories.
+**State.** All team state is JSON-serializable, persisted under `<scope>/.octeam/teams/<name>/`. Each team has a `config.json` (immutable spec), `state.json` (mutable runtime state), plus `mailbox/`, `tasks/`, `runs/`, and optional `worktrees/` directories.
 
-**Orchestration runs.** Every workflow produces a run record under
-`runs/<runId>/` with per-member output files and an append-only event timeline.
-Run history persists across plugin restarts.
+**Orchestration runs.** Every workflow produces a run record under `runs/<runId>/` with per-member output files and an append-only event timeline. Run history persists across plugin restarts.
 
-**Human-in-the-loop approvals.** `team_pipeline`, `team_tollgate`, `team_loop`,
-`team_route`, `team_recurse`, `team_arbitrate`, `team_consensus`, and
-`team_workflow` can pause at supported mid-run boundaries when
-`human_approval` is enabled. The leader resumes with `team_approve` or rejects
-with `team_reject`. This is distinct from `signoff`: HITL is a mid-run human
-approval gate, while signoff is a post-completion member-agent review.
+**Human-in-the-loop approvals.** `team_pipeline`, `team_tollgate`, `team_loop`, `team_route`, `team_recurse`, `team_arbitrate`, `team_consensus`, and `team_workflow` can pause at supported mid-run boundaries when `human_approval` is enabled. The leader resumes with `team_approve` or rejects with `team_reject`. This is distinct from `signoff`: HITL is a mid-run human approval gate, while signoff is a post-completion member-agent review.
 
-**Crash recovery.** On plugin restart, OCTeam reconciles any team left "busy"
-by a crashed process, rebuilds the session index from disk, and makes the
-interrupted task resumable via `team_resume`.
+**Crash recovery.** On plugin restart, OCTeam reconciles any team left "busy" by a crashed process, rebuilds the session index from disk, and makes the interrupted task resumable via `team_resume`.
 
-**TUI sidebar.** The `tui` plugin entrypoint renders a team status panel in the
-OpenCode interface showing member states, active orchestration type, and task
-progress.
+**TUI sidebar.** The `tui` plugin entrypoint renders a team status panel in the OpenCode interface showing member states, active orchestration type, and task progress.
 
 ## Commands
 
@@ -166,9 +134,7 @@ bun run build        # Build server + TUI bundles and emit declarations
 
 ## Minimal usage example
 
-You drive OCTeam from the team's leader session in natural language; the leader
-session translates your intent into OCTeam tool calls that orchestrate the
-member sessions.
+You drive OCTeam from the team's leader session in natural language; the leader session translates your intent into OCTeam tool calls that orchestrate the member sessions.
 
 **1. Create a team**
 
@@ -213,7 +179,4 @@ team_results(team_id="reviewers")
 
 ## Security
 
-Security issues are handled through the project's security policy on GitHub.
-To report a vulnerability, use the repository's **Security** tab
-("Report a vulnerability") rather than opening a public issue. Please do not
-disclose security problems publicly until they have been addressed.
+Security issues are handled through the project's security policy on GitHub. To report a vulnerability, use the repository's **Security** tab ("Report a vulnerability") rather than opening a public issue. Please do not disclose security problems publicly until they have been addressed.
