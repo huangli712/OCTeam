@@ -4,24 +4,62 @@
  */
 
 import fs from "node:fs/promises"
-import { isEnoent } from "../../core/utils.js"
-import { logSwallowed } from "../../core/log.js"
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
-import { loadTeamState, readTeamSpec, reloadTeamStateLocked, saveTeamState, saveTeamStateBounded, type Team, writeTeamSpec } from "../../state/store.js"
-import { indexMember, resolveCallerInTeam, unindexSession } from "../../state/resolve.js"
-import { configPath, inboxPath, processedPath, reservedDir, worktreesDir, teamLifecycleLockPath } from "../../state/paths.js"
+import type { 
+    ActiveTask,
+    TeamSpec, 
+    WorkflowStep
+} from "../../core/types.js"
+import { 
+    OCTEAM_AGENTS, 
+    isOCTeamAgent, 
+    normalizeRole, 
+    roleAgent 
+} from "../../core/role.js"
+import { isEnoent } from "../../core/utils.js"
+import { logSwallowed } from "../../core/log.js"
+import { 
+    loadTeamState,
+    readTeamSpec,
+    reloadTeamStateLocked,
+    saveTeamState,
+    saveTeamStateBounded,
+    writeTeamSpec,
+    type Team
+} from "../../state/store.js"
+import { 
+    indexMember,
+    resolveCallerInTeam,
+    unindexSession
+} from "../../state/resolve.js"
+import {
+    configPath,
+    inboxPath,
+    processedPath,
+    reservedDir,
+    worktreesDir,
+    teamLifecycleLockPath
+} from "../../state/paths.js"
 import { withLock } from "../../state/locks.js"
-import { destroyWorktree, hasUncommittedChanges } from "../../state/worktrees.js"
-import { listAllTasks, updateTask } from "../../state/tasks.js"
-import { OCTEAM_AGENTS, isOCTeamAgent, normalizeRole, roleAgent } from "../../core/role.js"
-import type { ActiveTask, TeamSpec, WorkflowStep } from "../../core/types.js"
+import {
+    destroyWorktree,
+    hasUncommittedChanges
+} from "../../state/worktrees.js"
+import {
+    listAllTasks,
+    updateTask
+} from "../../state/tasks.js"
 import { MEMBER_NAME_POOL } from "../../state/naming.js"
 
 /** Rename an optional record key while preserving its value. */
-function renameRecordKey<T>(record: Record<string, T> | undefined, oldName: string, newName: string): void {
+function renameRecordKey<T>(
+    record: Record<string, T> | undefined,
+    oldName: string,
+    newName: string,
+): void {
     const value = record?.[oldName]
     if (record === undefined || value === undefined) return
     record[newName] = value
@@ -30,7 +68,11 @@ function renameRecordKey<T>(record: Record<string, T> | undefined, oldName: stri
 
 /** Rename every member reference in a persisted workflow step (actor, verifier,
  * ensemble list/results, reducer) from oldName to newName. */
-function migrateWorkflowStepMemberRefs(step: WorkflowStep, oldName: string, newName: string): void {
+function migrateWorkflowStepMemberRefs(
+    step: WorkflowStep,
+    oldName: string,
+    newName: string,
+): void {
     if (step.dispatchedActor === oldName) step.dispatchedActor = newName
     switch (step.kind) {
         case "task":
@@ -360,7 +402,8 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                                 logSwallowed(ctx, "fixmember: task owner rollback failed", rollbackErr, { taskId: m.id })
                             }
                         }
-                        changes.push(`warning: task owner migration failed and rolled back (${err instanceof Error ? err.message : String(err)})`)
+                        changes.push(`warning: task owner migration failed and rolled back `
+                            + `(${err instanceof Error ? err.message : String(err)})`)
                     }
                 }
 
@@ -448,7 +491,12 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                             )
                         } catch (err) {
                             if (!isEnoent(err)) {
-                                logSwallowed(ctx, "fixmember: mailbox rollback rename failed", err, { newName, oldName: args.member_name })
+                                logSwallowed(
+                                    ctx,
+                                    "fixmember: mailbox rollback rename failed",
+                                    err,
+                                    { newName, oldName: args.member_name },
+                                )
                             }
                         }
                     }
@@ -490,7 +538,12 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                         })
                     } catch (err) {
                         if (!isEnoent(err)) {
-                            logSwallowed(ctx, "fixmember: deferred session delete failed", err, { member: args.member_name, session: oldSid })
+                            logSwallowed(
+                                ctx,
+                                "fixmember: deferred session delete failed",
+                                err,
+                                { member: args.member_name, session: oldSid },
+                            )
                         }
                     }
                     unindexSession(oldSid)
