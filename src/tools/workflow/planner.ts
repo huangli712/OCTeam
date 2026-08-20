@@ -32,7 +32,10 @@ import {
 } from "../../state/locks.js"
 //
 import { validateWorkflowStepsAgainstMembers } from "./validate.js"
-import { validateMemberAgent, validateMemberName } from "../support.js"
+import {
+    validateMemberAgent,
+    validateMemberName
+} from "../support.js"
 
 /** Agent name for planner child sessions. */
 const PLANNER_AGENT = "oct-metis"
@@ -226,7 +229,11 @@ function buildCorrectionPrompt(error: string): string {
  * Prefer the closing tag, falling back to output that stays unchanged across two
  * polls; on timeout any partial output is returned so the correction loop can
  * report the real error. */
-async function pollForAssistantOutput(ctx: PluginContext, childId: string, poll: PollConfig): Promise<string> {
+async function pollForAssistantOutput(
+    ctx: PluginContext,
+    childId: string,
+    poll: PollConfig,
+): Promise<string> {
     const deadline = Date.now() + poll.timeoutMs
     let lastOutput = ""
     let stableCount = 0
@@ -261,82 +268,77 @@ async function pollForAssistantOutput(ctx: PluginContext, childId: string, poll:
 }
 
 /**
- * Drive a single oct-metis child session to produce a validated team+workflow.
- * Creates exactly ONE child session, dispatches the prompt, polls for output,
- * and re-prompts the SAME session with the exact error on a missing tag /
- * malformed JSON / validation failure, up to maxRetries corrections.
+ * Coerce a write/revise argument to a parsed value. Accepts a JS object
+ * (programmatic callers, tests) or a JSON string (natural from LLM tool-call
+ * under the unknown() schema). Returns a clear error for malformed input so
+ * the caller can surface it as a tool result.
  */
-export async function runPlannerSession(ctx: PluginContext, opts: RunPlannerOptions): Promise<PlannerResult> {
-    const created = await ctx.client.session.create({
-        body: { parentID: opts.parentSessionId, title: `team_planner/${opts.teamId}` },
-        query: { directory: ctx.directory },
-    })
-    const childId = created.data?.id
-    if (!childId) {
-        throw new Error("team_planner: session.create returned no child session id")
-    }
-
-    try {
-        const poll: PollConfig = { timeoutMs: opts.timeoutMs, pollMs: opts.pollMs }
-        let dispatchText = opts.prompt
-        let lastError = ""
-        for (let attempt = 0; attempt <= opts.maxRetries; attempt += 1) {
-            await ctx.client.session.promptAsync({
-                path: { id: childId },
-                body: {
-                    parts: [
-                        {
-                            type: "text",
-                            text: dispatchText,
-                            synthetic: false,
-                        }
-                    ],
-                    agent: PLANNER_AGENT,
-                },
-                query: { directory: ctx.directory },
-            })
-            const output = await pollForAssistantOutput(ctx, childId, poll)
-            const evaluated = evaluatePlannerOutput(output, opts.validate)
-            if ("value" in evaluated) return evaluated.value
-            lastError = evaluated.error
-            dispatchText = buildCorrectionPrompt(evaluated.error)
-        }
-        throw new Error(
-            `team_planner: planner did not return a valid team/workflow after`
-                + ` ${opts.maxRetries + 1} attempt(s). Last error: ${lastError}`,
-        )
-    } finally {
-        // Close the child session so it does not linger in the session list
-        // after the planner completes (success, error, or timeout).
-        let deleted = false
-        let deleteError: unknown
-        for (let attempt = 1; attempt <= PLANNER_DELETE_ATTEMPTS; attempt += 1) {
-            try {
-                await ctx.client.session.delete({
-                    path: { id: childId },
-                    query: { directory: ctx.directory },
-                })
-                deleted = true
-                break
-            } catch (err) {
-                deleteError = err instanceof Error ? err : new Error(String(err))
-                if (attempt < PLANNER_DELETE_ATTEMPTS) {
-                    await sleep(PLANNER_DELETE_RETRY_MS)
-                }
+function coerceJsonArg(value: unknown, name: string): { value: unknown } | { error: string } {
+    if (value === undefined) return { error: `Error: ${name} is required` }
+    if (typeof value === "string") {
+        try {
+            return { value: JSON.parse(value) }
+        } catch (err) {
+            return {
+                error: `Error: ${name} is a string but not valid JSON: `
+                    + `${err instanceof Error ? err.message : String(err)}`,
             }
         }
-        if (!deleted) {
-            logSwallowed(ctx, "planner: child session.delete failed", deleteError, { childId })
-        }
+    }
+    return { value }
+}
+
+/** Create a PlannerValidate closure that validates against the given team_id. */
+function makePlannerValidate(teamId: string): PlannerValidate {
+    return parsed => {
+        const error = validatePlannerPayload(teamId, parsed.team, parsed.workflow)
+        if (error) return { error }
+        return { team: parsed.team, workflow: parsed.workflow }
     }
 }
 
-// --- deterministic validation (shared by the validate seam and op=write) ----
+/** Build the formatting contract instruction shown to the planner agent. */
+function plannerContract(teamId: string): string {
+    return [
+        "Respond with EXACTLY one block and nothing else:",
+        `<team_planner>{"team":{...},"workflow":{...}}</team_planner>`,
+        "",
+        `- team.name MUST equal "${teamId}".`,
+        "- team.members: 1-12 members, each with a preset pool name, a role, and a prompt.",
+        "- workflow.steps: task/gate steps. Every member/verifier must be a declared team member,"
+            + " and a gate verifier must differ from the task member it verifies.",
+        "- Emit raw JSON inside the tag. Do not use markdown fences or add prose.",
+    ].join("\n")
+}
+
+
+/** Derive the workflow loader filename from a team_id. */
+function workflowFileName(teamId: string): string {
+    return `workflow.${teamId}.json`
+}
+
+/** Format an artifact preview string with file paths and JSON dumps. */
+function formatArtifact(artifact: PlannerArtifact): string {
+    const teamPath = path.join(artifact.directory, teamFileName(artifact.teamId))
+    const workflowPath = path.join(artifact.directory, workflowFileName(artifact.teamId))
+    return [
+        "Target loaders:",
+        `- ${teamPath}`,
+        `- ${workflowPath}`,
+        "",
+        `${teamFileName(artifact.teamId)}:`,
+        JSON.stringify(artifact.team, null, 4),
+        "",
+        `${workflowFileName(artifact.teamId)}:`,
+        JSON.stringify(artifact.workflow, null, 4),
+    ].join("\n")
+}
 
 /** Validate that team_id is a safe lowercase slug within length bounds. */
 function validateTeamId(teamId: string): string | null {
     if (teamId.length < 1 || teamId.length > 64 || !TEAM_ID_SLUG.test(teamId)) {
-        return `Error: team_id "${teamId}" must be a safe lowercase slug (lowercase letters, digits, and hyphens only)`
+        return (`Error: team_id "${teamId}" must be a safe lowercase slug `
+            + `(lowercase letters, digits, and hyphens only)`)
     }
     return null
 }
@@ -365,31 +367,17 @@ function validatePlannerBounds(bounds: unknown, memberCount: number): string | n
     }
     const maxMembers = bounds.maxMembers
     if (typeof maxMembers === "number" && maxMembers < memberCount) {
-        return `Error: team.bounds.maxMembers (${maxMembers}) is less than the number of members (${memberCount})`
+        return (`Error: team.bounds.maxMembers (${maxMembers}) is less than the number`
+            + ` of members (${memberCount})`)
     }
     return null
 }
 
-/**
- * Coerce a write/revise argument to a parsed value. Accepts a JS object
- * (programmatic callers, tests) or a JSON string (natural from LLM tool-call
- * under the unknown() schema). Returns a clear error for malformed input so
- * the caller can surface it as a tool result.
- */
-function coerceJsonArg(value: unknown, name: string): { value: unknown } | { error: string } {
-    if (value === undefined) return { error: `Error: ${name} is required` }
-    if (typeof value === "string") {
-        try {
-            return { value: JSON.parse(value) }
-        } catch (err) {
-            return { error: `Error: ${name} is a string but not valid JSON: ${err instanceof Error ? err.message : String(err)}` }
-        }
-    }
-    return { value }
-}
-
 /** Validate team_create-args-like shape; returns member names or an error. */
-function validatePlannerTeam(teamId: string, team: unknown): { memberNames: string[] } | { error: string } {
+function validatePlannerTeam(
+    teamId: string,
+    team: unknown,
+): { memberNames: string[] } | { error: string } {
     if (!isRecord(team)) return { error: "Error: team must be an object" }
     if (team.name !== teamId) {
         return { error: `Error: team.name must match team_id "${teamId}"` }
@@ -457,7 +445,11 @@ function validatePlannerTeam(teamId: string, team: unknown): { memberNames: stri
 }
 
 /** Validate a planner-produced workflow: version, strict_vars, steps structure, and member references. */
-function validatePlannerWorkflow(teamId: string, workflow: unknown, memberNames: readonly string[]): string | null {
+function validatePlannerWorkflow(
+    teamId: string,
+    workflow: unknown,
+    memberNames: readonly string[],
+): string | null {
     if (!isRecord(workflow)) return "Error: workflow must be an object"
     if (workflow.version !== undefined && workflow.version !== 1) {
         return "Error: workflow.version must be absent or 1"
@@ -477,31 +469,6 @@ function validatePlannerPayload(teamId: string, team: unknown, workflow: unknown
     const teamResult = validatePlannerTeam(teamId, team)
     if ("error" in teamResult) return teamResult.error
     return validatePlannerWorkflow(teamId, workflow, teamResult.memberNames)
-}
-
-/** Create a PlannerValidate closure that validates against the given team_id. */
-function makePlannerValidate(teamId: string): PlannerValidate {
-    return parsed => {
-        const error = validatePlannerPayload(teamId, parsed.team, parsed.workflow)
-        if (error) return { error }
-        return { team: parsed.team, workflow: parsed.workflow }
-    }
-}
-
-// --- prompt + preview construction ------------------------------------------
-
-/** Build the formatting contract instruction shown to the planner agent. */
-function plannerContract(teamId: string): string {
-    return [
-        "Respond with EXACTLY one block and nothing else:",
-        `<team_planner>{"team":{...},"workflow":{...}}</team_planner>`,
-        "",
-        `- team.name MUST equal "${teamId}".`,
-        "- team.members: 1-12 members, each with a preset pool name, a role, and a prompt.",
-        "- workflow.steps: task/gate steps. Every member/verifier must be a declared team member,"
-            + " and a gate verifier must differ from the task member it verifies.",
-        "- Emit raw JSON inside the tag. Do not use markdown fences or add prose.",
-    ].join("\n")
 }
 
 /** Build the initial propose prompt: goal, constraints, and formatting contract. */
@@ -536,37 +503,86 @@ function buildRevisePrompt(req: ReviseRequest): string {
     ].join("\n")
 }
 
-/** Derive the team loader filename from a team_id. */
-function teamFileName(teamId: string): string {
-    return `team.${teamId}.json`
-}
+/**
+ * Drive a single oct-metis child session to produce a validated team+workflow.
+ * Creates exactly ONE child session, dispatches the prompt, polls for output,
+ * and re-prompts the SAME session with the exact error on a missing tag /
+ * malformed JSON / validation failure, up to maxRetries corrections.
+ */
+export async function runPlannerSession(
+    ctx: PluginContext,
+    opts: RunPlannerOptions,
+): Promise<PlannerResult> {
+    const created = await ctx.client.session.create({
+        body: { parentID: opts.parentSessionId, title: `team_planner/${opts.teamId}` },
+        query: { directory: ctx.directory },
+    })
+    const childId = created.data?.id
+    if (!childId) {
+        throw new Error("team_planner: session.create returned no child session id")
+    }
 
-/** Derive the workflow loader filename from a team_id. */
-function workflowFileName(teamId: string): string {
-    return `workflow.${teamId}.json`
+    try {
+        const poll: PollConfig = { timeoutMs: opts.timeoutMs, pollMs: opts.pollMs }
+        let dispatchText = opts.prompt
+        let lastError = ""
+        for (let attempt = 0; attempt <= opts.maxRetries; attempt += 1) {
+            await ctx.client.session.promptAsync({
+                path: { id: childId },
+                body: {
+                    parts: [
+                        {
+                            type: "text",
+                            text: dispatchText,
+                            synthetic: false,
+                        }
+                    ],
+                    agent: PLANNER_AGENT,
+                },
+                query: { directory: ctx.directory },
+            })
+            const output = await pollForAssistantOutput(ctx, childId, poll)
+            const evaluated = evaluatePlannerOutput(output, opts.validate)
+            if ("value" in evaluated) return evaluated.value
+            lastError = evaluated.error
+            dispatchText = buildCorrectionPrompt(evaluated.error)
+        }
+        throw new Error(
+            `team_planner: planner did not return a valid team/workflow after`
+                + ` ${opts.maxRetries + 1} attempt(s). Last error: ${lastError}`,
+        )
+    } finally {
+        // Close the child session so it does not linger in the session list
+        // after the planner completes (success, error, or timeout).
+        let deleted = false
+        let deleteError: unknown
+        for (let attempt = 1; attempt <= PLANNER_DELETE_ATTEMPTS; attempt += 1) {
+            try {
+                await ctx.client.session.delete({
+                    path: { id: childId },
+                    query: { directory: ctx.directory },
+                })
+                deleted = true
+                break
+            } catch (err) {
+                deleteError = err instanceof Error ? err : new Error(String(err))
+                if (attempt < PLANNER_DELETE_ATTEMPTS) {
+                    await sleep(PLANNER_DELETE_RETRY_MS)
+                }
+            }
+        }
+        if (!deleted) {
+            logSwallowed(ctx, "planner: child session.delete failed", deleteError, { childId })
+        }
+    }
 }
-
-/** Format an artifact preview string with file paths and JSON dumps. */
-function formatArtifact(artifact: PlannerArtifact): string {
-    const teamPath = path.join(artifact.directory, teamFileName(artifact.teamId))
-    const workflowPath = path.join(artifact.directory, workflowFileName(artifact.teamId))
-    return [
-        "Target loaders:",
-        `- ${teamPath}`,
-        `- ${workflowPath}`,
-        "",
-        `${teamFileName(artifact.teamId)}:`,
-        JSON.stringify(artifact.team, null, 4),
-        "",
-        `${workflowFileName(artifact.teamId)}:`,
-        JSON.stringify(artifact.workflow, null, 4),
-    ].join("\n")
-}
-
-// --- op handlers ------------------------------------------------------------
 
 /** Handle op="propose": validate args, run planner session, return a preview. */
-async function runProposeOp(ctx: PluginContext, sessionID: string, args: TeamPlannerArgs): Promise<string> {
+async function runProposeOp(
+    ctx: PluginContext,
+    sessionID: string,
+    args: TeamPlannerArgs,
+): Promise<string> {
     const goal = args.goal
     if (typeof goal !== "string" || goal.length === 0) return "Error: op=propose requires `goal`"
     const constraints = typeof args.constraints === "string" ? args.constraints : undefined
@@ -588,7 +604,11 @@ async function runProposeOp(ctx: PluginContext, sessionID: string, args: TeamPla
 }
 
 /** Handle op="revise": validate args, run planner session with feedback, return a preview. */
-async function runReviseOp(ctx: PluginContext, sessionID: string, args: TeamPlannerArgs): Promise<string> {
+async function runReviseOp(
+    ctx: PluginContext,
+    sessionID: string,
+    args: TeamPlannerArgs,
+): Promise<string> {
     const goal = args.goal
     if (typeof goal !== "string" || goal.length === 0) return "Error: op=revise requires `goal`"
     const feedback = args.feedback
@@ -674,8 +694,15 @@ async function runWriteOp(ctx: PluginContext, args: TeamPlannerArgs): Promise<st
             } catch (err) {
                 // A file exists but could not be read for backup. Abort BEFORE
                 // writing so the original content is not destroyed.
-                logSwallowed(ctx, "planner: backup read failed; aborting write to preserve originals", err, { teamId: args.team_id })
-                return `Error: cannot back up existing loader(s) for overwrite (file unreadable). Aborting before write to preserve original content. Underlying error: ${err instanceof Error ? err.message : String(err)}`
+                logSwallowed(
+                    ctx,
+                    "planner: backup read failed; aborting write to preserve originals",
+                    err,
+                    { teamId: args.team_id },
+                )
+                return (`Error: cannot back up existing loader(s) for overwrite (file unreadable).`
+                    + ` Aborting before write to preserve original content.`
+                    + ` Underlying error: ${err instanceof Error ? err.message : String(err)}`)
             }
         }
         // Use atomicWrite for symlink-safety (refuses to write through symlinks,
@@ -720,6 +747,11 @@ async function runWriteOp(ctx: PluginContext, args: TeamPlannerArgs): Promise<st
             + ` under ${ctx.directory}.\n\n${artifact}`
         )
     }, ctx.directory)
+}
+
+/** Derive the team loader filename from a team_id. */
+function teamFileName(teamId: string): string {
+    return `team.${teamId}.json`
 }
 
 /** Plan and persist team definitions and workflows via a child oct-metis session. */
