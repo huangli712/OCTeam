@@ -12,9 +12,19 @@ import path from "node:path"
 // Reuse the server's path-construction contract so the sidebar never drifts from
 // the on-disk storage layout. src/state/paths.ts is the single source of truth
 // for the teams/<name>/{state.json,config.json,mailbox/...} layout.
-import { configPath, inboxPath, processedPath, statePath, teamDir, teamsDir } from "../state/paths.js"
+import {
+    configPath,
+    inboxPath,
+    processedPath,
+    statePath,
+    teamDir,
+    teamsDir
+} from "../state/paths.js"
 import { isValidTeamState } from "../state/store.js"
-import { assertNoSymlinkTraversal, safeReadFile } from "../state/locks.js"
+import {
+    assertNoSymlinkTraversal,
+    safeReadFile
+} from "../state/locks.js"
 import { isEnoent } from "../core/utils.js"
 
 /** Result state for sidebar data, including optional partial data on errors. */
@@ -62,7 +72,10 @@ export type TeamSummary = {
  * unread (inbox) and total (inbox + processed). Reserved / in-flight messages
  * live in a separate dir and are intentionally not counted.
  */
-export async function countMailbox(teamDirectory: string, recipient: string): Promise<LoadState<MailboxCount>> {
+export async function countMailbox(
+    teamDirectory: string,
+    recipient: string,
+): Promise<LoadState<MailboxCount>> {
     const countLines = async (file: string): Promise<number> => {
         try {
             const raw = await safeReadFile(teamDirectory, file, { maxBytes: 1_048_576 })
@@ -92,7 +105,10 @@ export async function countMailbox(teamDirectory: string, recipient: string): Pr
  * Skips entries that vanished mid-read (ENOENT); other read failures mark
  * the result as a partial error with the teams that did load.
  */
-async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promise<LoadState<TeamSummary[]>> {
+async function readTeamsFrom(
+    storageRoot: string,
+    leadSessionId: string,
+): Promise<LoadState<TeamSummary[]>> {
     const teamsPath = teamsDir(storageRoot, leadSessionId)
     let entries: import("node:fs").Dirent[]
     try {
@@ -209,7 +225,10 @@ async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promis
  * User-scope (~/.octeam) teams are global and intentionally excluded from the
  * per-session sidebar view.
  */
-export async function loadTeams(directory: string, sessionId: string): Promise<LoadState<TeamSummary[]>> {
+export async function loadTeams(
+    directory: string,
+    sessionId: string,
+): Promise<LoadState<TeamSummary[]>> {
     // <workspace>/.octeam mirrors context.ts's project-scope storageRoot; teamsDir()
     // then appends the session segment + "teams".
     const storageRoot = path.join(directory, ".octeam")
