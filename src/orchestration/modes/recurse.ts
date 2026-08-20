@@ -14,21 +14,40 @@
  */
 
 import type { PluginContext } from "../../core/context.js"
-import { type Team, saveTeamState } from "../../state/store.js"
-import type { ApprovalRequest, MemberState } from "../../core/types.js"
-import { createTask, getTask, listAllTasks, updateTask } from "../../state/tasks.js"
+import type {
+    ApprovalRequest,
+    MemberState
+} from "../../core/types.js"
+import { logSwallowed } from "../../core/log.js"
+import {
+    type Team,
+    saveTeamState
+} from "../../state/store.js"
+import {
+    createTask,
+    getTask,
+    listAllTasks,
+    updateTask
+} from "../../state/tasks.js"
 import { recordEvent } from "../records/events.js"
 import { parseDecompose } from "../protocol/decisions.js"
-import { runDelegateStyleTail, NOTIFY_COOLDOWN_MS } from "./delegate.js"
-import { DEFAULT_RECURSE_DEPTH, DEFAULT_RECURSE_SUBTASKS } from "./defaults.js"
 import { finishRun } from "../control/completion.js"
 import { dispatchToMember } from "../control/dispatch.js"
-import { logSwallowed } from "../../core/log.js"
 import { maybeRequestApproval } from "../control/approval.js"
 import { findMember } from "../../tools/support.js"
+//
+import {
+    runDelegateStyleTail,
+    NOTIFY_COOLDOWN_MS
+} from "./delegate.js"
+import {
+    DEFAULT_RECURSE_DEPTH,
+    DEFAULT_RECURSE_SUBTASKS
+} from "./defaults.js"
 
 /** Cap on root re-dispatch attempts before declaring the run stalled. */
 const MAX_AGGREGATION_DISPATCHES = 3
+
 /** Retry cap for a task that keeps re-emitting <decompose> after being forced to solve directly. */
 const MAX_FORCED_DIRECT_DECOMPOSE_RETRIES = 3
 
@@ -90,7 +109,11 @@ function buildAggregationPrompt(rootSubject: string, childCount: number): string
 }
 
 /** Resolve the member by name and re-enter the delegate-style tail (used after HITL approval/rejection). */
-async function runRecurseTailFromApproval(ctx: PluginContext, team: Team, memberName: string | undefined): Promise<void> {
+async function runRecurseTailFromApproval(
+    ctx: PluginContext,
+    team: Team,
+    memberName: string | undefined,
+): Promise<void> {
     const member = team.members.find(m => m.name === memberName)
     if (!member) return
     await runDelegateStyleTail(ctx, team, member, "recurse", () => buildRecursePrompt())
@@ -186,7 +209,11 @@ export async function rejectRecurseDecompose(
  * preventing infinite recursion/oscillation.
  * The tail reuses delegate's task-pool termination engine.
  */
-export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: MemberState): Promise<void> {
+export async function handleRecurseIdle(
+    ctx: PluginContext,
+    team: Team,
+    member: MemberState,
+): Promise<void> {
     const task = team.activeTask
     if (!task || task.type !== "recurse") return
 
