@@ -30,6 +30,16 @@ import {
 // because indexMasterTeam is only called at runtime (inside initTeamState),
 // never at module-load time — by then resolve.ts has fully loaded.
 import { indexMasterTeam } from "./resolve.js"
+
+// O_NOFOLLOW closes the TOCTOU window. Use fs.constants if available,
+// falling back to the Linux numeric value for platforms where constants
+// doesn't expose it.
+const O_NOFOLLOW = (fsSyncConstants as Record<string, number>).O_NOFOLLOW ?? 0x20000
+
+/** Bounded-retry knobs for saveTeamStateBounded (attempts and backoff between them). */
+const SAVE_RETRY_ATTEMPTS = 3
+const SAVE_RETRY_BACKOFF_MS = 50
+
 /**
  * Runtime team object: TeamState plus non-persisted handles.
  *
@@ -272,46 +282,26 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
     return true
 }
 
-// O_NOFOLLOW closes the TOCTOU window. Use fs.constants if available,
-// falling back to the Linux numeric value for platforms where constants
-// doesn't expose it.
-const O_NOFOLLOW = (fsSyncConstants as Record<string, number>).O_NOFOLLOW ?? 0x20000
-
-/**
- * Read and parse a JSON file, returning null on ENOENT or schema failure.
- *
- * @param filePath    path to the JSON file
- * @param validate    optional schema guard; null returned on mismatch
- */
-async function readJsonOrNull<T>(
-    filePath: string,
-    validate?: (value: unknown) => value is T,
-): Promise<T | null> {
-    let fh: fs.FileHandle | undefined
-    try {
-        // Open with O_NOFOLLOW so a leaf symlink is rejected atomically
-        // (ELOOP), closing the lstat→readFile TOCTOU window.
-        fh = await fs.open(filePath, fs.constants.O_RDONLY | O_NOFOLLOW)
-        const stat = await fh.stat()
-        if (!stat.isFile()) return null
-        if (stat.size > 1_048_576) {
-            logger.warn("readJsonOrNull: file exceeds 1 MiB cap", { file: filePath, size: stat.size })
-            return null
-        }
-        const raw = await fh.readFile("utf8")
-        const parsed: unknown = JSON.parse(raw)
-        if (validate && !validate(parsed)) {
-            logger.warn("readJsonOrNull: schema validation failed", { file: filePath })
-            return null
-        }
-        return parsed as T
-    } catch (err: unknown) {
-        const code = (err as NodeJS.ErrnoException).code
-        if (code === "ENOENT" || code === "ELOOP") return null
-        throw err
-    } finally {
-        if (fh) await fh.close().catch(() => {})
+/** Structural validation for TeamSpec. */
+function isValidTeamSpec(value: unknown): value is TeamSpec {
+    if (typeof value !== "object" || value === null) return false
+    const s = value as Record<string, unknown>
+    if (typeof s.name !== "string" || !s.name) return false
+    if (s.version !== 1) return false
+    if (typeof s.createdAt !== "number" || !Number.isFinite(s.createdAt)) return false
+    if (!Array.isArray(s.members)) return false
+    const seenNames = new Set<string>()
+    for (const m of s.members) {
+        if (typeof m !== "object" || m === null) return false
+        const mb = m as Record<string, unknown>
+        if (typeof mb.name !== "string" || !mb.name) return false
+        // Reject duplicate member names.
+        if (seenNames.has(mb.name)) return false
+        seenNames.add(mb.name)
+        if (typeof mb.role !== "string" || !mb.role) return false
+        if (typeof mb.prompt !== "string") return false
     }
+    return true
 }
 
 /**
@@ -455,26 +445,6 @@ export async function loadTeamState(
     return inflight
 }
 
-/** Refresh a registered Team from disk. The caller must hold team.mutex. */
-export async function reloadTeamStateLocked(team: Team): Promise<void> {
-    const file = statePath(team.directory)
-    try {
-        const diskStat = await fs.stat(file)
-        const state = await readJsonOrNull<TeamState>(
-            file,
-            (value): value is TeamState => isValidTeamState(value, team.directory),
-        )
-        if (!state) {
-            throw new Error(`reloadTeamStateLocked: state.json for team "${team.teamName}" is unreadable or invalid`)
-        }
-        applyReloadedTeamState(team, state, diskStat.mtimeMs)
-        team._lastCacheCheck = Date.now()
-    } catch (error) {
-        team._stateUnreadable = true
-        throw error
-    }
-}
-
 /**
  * Perform the actual disk read + Team construction for a first load.
  * Extracted so loadTeamState can store the in-flight promise synchronously
@@ -502,6 +472,26 @@ async function loadTeamFromDisk(dir: string, teamName: string): Promise<Team> {
         return team
     } finally {
         inflightLoads.delete(dir)
+    }
+}
+
+/** Refresh a registered Team from disk. The caller must hold team.mutex. */
+export async function reloadTeamStateLocked(team: Team): Promise<void> {
+    const file = statePath(team.directory)
+    try {
+        const diskStat = await fs.stat(file)
+        const state = await readJsonOrNull<TeamState>(
+            file,
+            (value): value is TeamState => isValidTeamState(value, team.directory),
+        )
+        if (!state) {
+            throw new Error(`reloadTeamStateLocked: state.json for team "${team.teamName}" is unreadable or invalid`)
+        }
+        applyReloadedTeamState(team, state, diskStat.mtimeMs)
+        team._lastCacheCheck = Date.now()
+    } catch (error) {
+        team._stateUnreadable = true
+        throw error
     }
 }
 
@@ -700,9 +690,6 @@ function mergeMembers(
     return result
 }
 
-/** Bounded-retry knobs for saveTeamStateBounded (attempts and backoff between them). */
-const SAVE_RETRY_ATTEMPTS = 3
-const SAVE_RETRY_BACKOFF_MS = 50
 /**
  * Save team state with bounded retries for transient disk failures.
  * Throws the final error so orchestration control code can handle it.
@@ -972,34 +959,49 @@ export async function readTeamSpec(
     return spec
 }
 
-/** Structural validation for TeamSpec. */
-function isValidTeamSpec(value: unknown): value is TeamSpec {
-    if (typeof value !== "object" || value === null) return false
-    const s = value as Record<string, unknown>
-    if (typeof s.name !== "string" || !s.name) return false
-    if (s.version !== 1) return false
-    if (typeof s.createdAt !== "number" || !Number.isFinite(s.createdAt)) return false
-    if (!Array.isArray(s.members)) return false
-    const seenNames = new Set<string>()
-    for (const m of s.members) {
-        if (typeof m !== "object" || m === null) return false
-        const mb = m as Record<string, unknown>
-        if (typeof mb.name !== "string" || !mb.name) return false
-        // Reject duplicate member names.
-        if (seenNames.has(mb.name)) return false
-        seenNames.add(mb.name)
-        if (typeof mb.role !== "string" || !mb.role) return false
-        if (typeof mb.prompt !== "string") return false
-    }
-    return true
-}
-
 /** Read TeamSpec from a known team directory (scope-independent).
  * Validate via isValidTeamSpec so a corrupt or tampered config.json does not
  * reach callers that expect a well-formed spec.
  */
 export async function readTeamSpecFromDir(teamDirectory: string): Promise<TeamSpec | null> {
     return readJsonOrNull<TeamSpec>(configPath(teamDirectory), isValidTeamSpec)
+}
+
+/**
+ * Read and parse a JSON file, returning null on ENOENT or schema failure.
+ *
+ * @param filePath    path to the JSON file
+ * @param validate    optional schema guard; null returned on mismatch
+ */
+async function readJsonOrNull<T>(
+    filePath: string,
+    validate?: (value: unknown) => value is T,
+): Promise<T | null> {
+    let fh: fs.FileHandle | undefined
+    try {
+        // Open with O_NOFOLLOW so a leaf symlink is rejected atomically
+        // (ELOOP), closing the lstat→readFile TOCTOU window.
+        fh = await fs.open(filePath, fs.constants.O_RDONLY | O_NOFOLLOW)
+        const stat = await fh.stat()
+        if (!stat.isFile()) return null
+        if (stat.size > 1_048_576) {
+            logger.warn("readJsonOrNull: file exceeds 1 MiB cap", { file: filePath, size: stat.size })
+            return null
+        }
+        const raw = await fh.readFile("utf8")
+        const parsed: unknown = JSON.parse(raw)
+        if (validate && !validate(parsed)) {
+            logger.warn("readJsonOrNull: schema validation failed", { file: filePath })
+            return null
+        }
+        return parsed as T
+    } catch (err: unknown) {
+        const code = (err as NodeJS.ErrnoException).code
+        if (code === "ENOENT" || code === "ELOOP") return null
+        throw err
+    } finally {
+        if (fh) await fh.close().catch(() => {})
+    }
 }
 
 /** Write the immutable TeamSpec (config.json) atomically. Used at team_create.
