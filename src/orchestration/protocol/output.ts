@@ -6,6 +6,7 @@
  */
 
 import type { Message, Part, TextPart } from "@opencode-ai/sdk"
+
 import type { MemberSpec } from "../../core/types.js"
 import { rolePreset } from "../../core/role.js"
 
@@ -16,6 +17,19 @@ const WORK_TOOLS = new Set([
     "aft_write", "aft_edit", "aft_bash", "aft_apply_patch",
     "aft_delete", "aft_move", "aft_refactor", "aft_import", "aft_ast_replace",
 ])
+
+/**
+ * Severity ordering for workflow gate issue display: critical > high > medium > low.
+ * Shared by records/ledger.ts (live WorkflowStep) and tools/query/results.ts
+ * (read-only WorkflowRunStep) to avoid duplicated sort + format logic.
+ */
+const SEVERITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
+
+/** Minimal issue shape accepted by workflow record formatters. */
+export interface WorkflowIssueLike {
+    severity?: string
+    message?: string
+}
 
 /**
  * Extract concatenated text from message parts (filters type === "text").
@@ -352,19 +366,6 @@ export function asSdkMessages(data: unknown): import("../../core/types.js").SdkM
     return data.filter((m): m is import("../../core/types.js").SdkMessage =>
         typeof m === "object" && m !== null && !Array.isArray(m),
     )
-}
-
-/**
- * Severity ordering for workflow gate issue display: critical > high > medium > low.
- * Shared by records/ledger.ts (live WorkflowStep) and tools/query/results.ts
- * (read-only WorkflowRunStep) to avoid duplicated sort + format logic.
- */
-const SEVERITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
-
-/** Minimal issue shape accepted by workflow record formatters. */
-export interface WorkflowIssueLike {
-    severity?: string
-    message?: string
 }
 
 /**
