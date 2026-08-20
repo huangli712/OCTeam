@@ -23,7 +23,11 @@ import { MAX_UPSTREAM_OUTPUT_BYTES } from "./upstream.js";
 // Gate target resolution lives in gate-targets.ts to
 // break the dag→invariants→gate→dag import cycle. Re-export to preserve
 // the public API for existing consumers (engine.ts, verdict.ts, etc.).
-export { precedingTaskIndex, gateTargetIndex, gateTargetIndices } from "./gate-targets.js";
+export {
+    precedingTaskIndex,
+    gateTargetIndex,
+    gateTargetIndices
+} from "./gate-targets.js";
 
 /** Structured jump context produced by a gate's goto evaluation. */
 export type WorkflowJumpTransition = {
@@ -55,8 +59,6 @@ type ConditionInput = {
 type ParsedCondition =
     | { condition: WorkflowCondition }
     | { error: string }
-
-// --- verifier prompt construction ---
 
 /**
  * Build the verifier's dispatch prompt: the preceding task's output, the
@@ -146,23 +148,6 @@ function buildVerdictSchemaExample(
     return `{${base},${extras.join(",")}}`;
 }
 
-
-// --- labels ---
-
-/** Format a list of 1-based step indices into a human label like "step 3" or "steps 1, 2, 4". */
-export function stepIndicesLabel(indices: number[]): string {
-    if (indices.length === 0) return "nearest task";
-    const labels = indices.map((index) => String(index + 1));
-    const first = labels[0];
-    if (first === undefined) return "nearest task";
-    return labels.length === 1 ? `step ${first}` : `steps ${labels.join(", ")}`;
-}
-
-/** Build a human target label prefixed with "workflow" for verifier prompts. */
-export function workflowTargetLabel(indices: number[]): string {
-    return `workflow ${stepIndicesLabel(indices)}`;
-}
-
 /** Concatenate target producer outputs within one shared byte budget. */
 export function buildGateProducerOutput(
     steps: WorkflowStep[],
@@ -205,8 +190,6 @@ export function buildGateProducerOutput(
     return blocks.join("\n\n");
 }
 
-// --- goto resolution ---
-
 /** Build a prefixed jump context string for re-dispatch prompts. */
 export function buildJumpContext(transition: WorkflowJumpTransition): string {
     const lines = [`[Workflow jump: ${transition.reason}]`];
@@ -218,7 +201,22 @@ export function buildJumpContext(transition: WorkflowJumpTransition): string {
     return lines.join("\n");
 }
 
+/** Format a list of 1-based step indices into a human label like "step 3" or "steps 1, 2, 4". */
+export function stepIndicesLabel(indices: number[]): string {
+    if (indices.length === 0) return "nearest task";
+    const labels = indices.map((index) => String(index + 1));
+    const first = labels[0];
+    if (first === undefined) return "nearest task";
+    return labels.length === 1 ? `step ${first}` : `steps ${labels.join(", ")}`;
+}
+
+/** Build a human target label prefixed with "workflow" for verifier prompts. */
+export function workflowTargetLabel(indices: number[]): string {
+    return `workflow ${stepIndicesLabel(indices)}`;
+}
+
 /** Resolve a goto target index, valid only when the gate's where condition matches.
+ * 
  * Returns:
  *   >= 0 : the goto target index — jump.
  *   -1  : no goto defined, or where condition is "does_not_match".
@@ -269,10 +267,15 @@ export function whereReason(step: WorkflowGateStep, fallback: string): string {
     return step.where === undefined ? fallback : `when:${step.where.kind}`;
 }
 
-// --- ensemble verdict aggregation ---
-
 /** Build an ensemble aggregation result with the given verdict and feedback. */
-function ensembleResult(verdict: Verdict, rationale: string, score?: number, confidence?: number, issues?: WorkflowIssue[], diff = ""): {
+function ensembleResult(
+    verdict: Verdict,
+    rationale: string,
+    score?: number,
+    confidence?: number,
+    issues?: WorkflowIssue[],
+    diff = "",
+): {
     verdict: Verdict
     parseFailed: boolean
     rationale: string
@@ -374,7 +377,10 @@ export function aggregateEnsembleVerdict(step: WorkflowGateStep): {
             // When BOTH pass and fail meet the threshold simultaneously
             // (e.g. 1P/1F at threshold 0.5), there is no clear winner → INVALID.
             if (passMeets && failMeets) {
-                return resultFromVerdict("INVALID", `Tie at quorum threshold (${passCount}P/${failCount}F/${invalidCount}I, threshold ${threshold})`);
+                return resultFromVerdict(
+                    "INVALID",
+                    `Tie at quorum threshold (${passCount}P/${failCount}F/${invalidCount}I, threshold ${threshold})`,
+                );
             }
             if (passMeets) {
                 return resultFromVerdict("PASS", `Quorum PASS (${passCount}/${total} >= ${threshold})`)
@@ -398,8 +404,6 @@ export function aggregateEnsembleVerdict(step: WorkflowGateStep): {
         }
     }
 }
-
-// --- condition matching ---
 
 /** Map a severity string to its numeric rank for comparison. */
 function severityRank(severity: WorkflowIssueSeverity): number {
@@ -449,7 +453,10 @@ export function parseWorkflowCondition(raw: unknown): ParsedCondition {
 }
 
 /** Evaluate whether a WorkflowCondition holds for the given input values. */
-export function matchesWorkflowCondition(condition: WorkflowCondition, input: ConditionInput): boolean {
+export function matchesWorkflowCondition(
+    condition: WorkflowCondition,
+    input: ConditionInput,
+): boolean {
     switch (condition.kind) {
         case "score_gte": return input.score !== undefined && input.score >= condition.value
         case "score_lt": return input.score !== undefined && input.score < condition.value
@@ -468,7 +475,10 @@ export function matchesWorkflowCondition(condition: WorkflowCondition, input: Co
  * boolean helper above cannot express the unevaluable case and silently
  * mis-routes the gate to the default successor.
  */
-export function evaluateWorkflowCondition(condition: WorkflowCondition, input: ConditionInput): WorkflowConditionEvaluation {
+export function evaluateWorkflowCondition(
+    condition: WorkflowCondition,
+    input: ConditionInput,
+): WorkflowConditionEvaluation {
     // Validate threshold ranges against the verifier prompt contract.
     // score: 0-10, confidence: 0-1. Out-of-range configs produce
     // tautological or impossible conditions — treat as unevaluable.
