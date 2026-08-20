@@ -8,16 +8,24 @@
  */
 
 import crypto from "node:crypto"
-import { isEnoent } from "../../core/utils.js"
-import { logSwallowed } from "../../core/log.js"
+
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
+import type {
+    Message,
+    ParallelMode
+} from "../../core/types.js"
+import { isEnoent } from "../../core/utils.js"
+import { logSwallowed } from "../../core/log.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
-import { loadTeamState, saveTeamStateBounded } from "../../state/store.js"
+import {
+    loadTeamState,
+    saveTeamStateBounded
+} from "../../state/store.js"
 import { BackpressureError } from "../../messaging/mailbox.js"
 import { deliverToRecipients } from "../../messaging/deliver.js"
-import type { Message, ParallelMode } from "../../core/types.js"
+//
 import { nonMasterMembers } from "../support.js"
 
 /**
@@ -165,12 +173,22 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
                             try {
                                 await saveTeamStateBounded(team)
                             } catch (rollbackErr) {
-                                logSwallowed(ctx, "send_message: rollback save failed after delivery error", rollbackErr, { team: team.teamName })
+                                logSwallowed(
+                                    ctx,
+                                    "send_message: rollback save failed after delivery error",
+                                    rollbackErr,
+                                    { team: team.teamName },
+                                )
                             }
                         } else {
                             // Run switched during delivery — cannot safely
                             // debit the new run. Log the lost quota.
-                            logSwallowed(ctx, "send_message: run finished during delivery; cannot refund quota (run switched)", err, { team: team.teamName, undelivered })
+                            logSwallowed(
+                                ctx,
+                                "send_message: run finished during delivery; cannot refund quota (run switched)",
+                                err,
+                                { team: team.teamName, undelivered },
+                            )
                         }
                     })
                 }
