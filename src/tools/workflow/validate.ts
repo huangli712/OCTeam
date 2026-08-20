@@ -6,13 +6,8 @@
  * Imports lowering and reference resolution from lower.ts.
  */
 
-import type { MemberState } from "../../core/types.js"
-import { parseWorkflowCondition } from "../../orchestration/workflow/gate.js"
-import { loadWorkflowFile, validateWorkflowSteps, WORKFLOW_MAX_TOTAL_STEPS } from "../../orchestration/workflow/loader.js"
-import { defaultBounds, validateSignoff } from "../support.js"
-import { AsyncMutex } from "../../state/locks.js"
-import type { Team } from "../../state/store.js"
 import type { PluginContext } from "../../core/context.js"
+import type { MemberState } from "../../core/types.js"
 import type {
     WorkflowFanoutBranch,
     WorkflowFanoutToolStep,
@@ -20,6 +15,15 @@ import type {
     WorkflowToolArgs,
     ResolvedWorkflowToolArgs,
 } from "../../core/types/workflow.js"
+import { parseWorkflowCondition } from "../../orchestration/workflow/gate.js"
+import { 
+    loadWorkflowFile,
+    validateWorkflowSteps,
+    WORKFLOW_MAX_TOTAL_STEPS
+} from "../../orchestration/workflow/loader.js"
+import { AsyncMutex } from "../../state/locks.js"
+import type { Team } from "../../state/store.js"
+//
 import {
     assertNever,
     canConsumeWorkflowInput,
@@ -34,11 +38,15 @@ import {
     resolveWorkflowInputIndices,
     stepLocation,
     targetStepErrorLabel,
+    expandMatrixForeachFanout,
     type LoweredWorkflowFanoutStep,
     type LoweredWorkflowLinearStep,
     type LoweredWorkflowStep,
 } from "./lower.js"
-import { expandMatrixForeachFanout } from "./lower.js"
+import { 
+    defaultBounds, 
+    validateSignoff
+} from "../support.js"
 
 /** Field names allowed on EVERY workflow step kind regardless of its `kind`. */
 const COMMON_STEP_FIELDS = [
