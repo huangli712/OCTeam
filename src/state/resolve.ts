@@ -81,7 +81,11 @@ export function indexMember(
 }
 
 /** Index every team in one scope. Shared by the project + user passes above. */
-async function indexScope(storageRoot: string, segmented: boolean, ctx?: PluginContext): Promise<unknown[]> {
+async function indexScope(
+    storageRoot: string,
+    segmented: boolean,
+    ctx?: PluginContext,
+): Promise<unknown[]> {
     const failures: unknown[] = []
     let teams: Awaited<ReturnType<typeof listAllTeams>>
     try {
@@ -127,24 +131,51 @@ async function indexScope(storageRoot: string, segmented: boolean, ctx?: PluginC
                 if (sentinelLead && sentinelLead === expectedLead) {
                     trustedLeadSessionId = sentinelLead
                 } else {
-                    if (ctx) logEvent(ctx, "warn", `indexScope: ${segmented ? "project" : "user"}-scope master.sentinel mismatches; refusing master privilege`, {
-                        teamName, sentinelLead, expectedLead,
-                    })
+                    if (ctx) logEvent(
+                        ctx,
+                        "warn",
+                        `indexScope: ${segmented ? "project" : "user"}-scope `
+                        + `master.sentinel mismatches; refusing master privilege`,
+                        {
+                            teamName, sentinelLead, expectedLead,
+                        },
+                    )
                     // Do NOT grant master — leave trustedLeadSessionId undefined.
                 }
             } catch (sentinelErr) {
                 if (isEnoent(sentinelErr)) {
-                    if (ctx) logSwallowed(ctx, `indexScope: ${segmented ? "project" : "user"}-scope team has no master.sentinel; using ${segmented ? "directory" : "state.json"} value (less secure)`, sentinelErr, { teamName })
+                    if (ctx) logSwallowed(
+                        ctx,
+                        `indexScope: ${segmented ? "project" : "user"}-scope team has no `
+                        + `master.sentinel; using ${segmented ? "directory" : "state.json"} `
+                        + `value (less secure)`,
+                        sentinelErr,
+                        { teamName },
+                    )
                     trustedLeadSessionId = segmented ? leadSessionId : team.leadSessionId
                 } else {
-                    if (ctx) logSwallowed(ctx, `indexScope: ${segmented ? "project" : "user"}-scope master.sentinel unreadable; refusing master privilege (fail-closed)`, sentinelErr, { teamName })
+                    if (ctx) logSwallowed(
+                        ctx,
+                        `indexScope: ${segmented ? "project" : "user"}-scope `
+                        + `master.sentinel unreadable; refusing master privilege `
+                        + `(fail-closed)`,
+                        sentinelErr,
+                        { teamName },
+                    )
                     // trustedLeadSessionId stays undefined
                 }
             }
             if (ctx && segmented && team.leadSessionId !== leadSessionId) {
-                logSwallowed(ctx, "indexScope: disk leadSessionId mismatches directory layout; using directory value", undefined, {
-                    teamName, diskLeadSessionId: team.leadSessionId, dirLeadSessionId: leadSessionId,
-                })
+                logSwallowed(
+                    ctx,
+                    "indexScope: disk leadSessionId mismatches directory layout; using directory value",
+                    undefined,
+                    {
+                        teamName,
+                        diskLeadSessionId: team.leadSessionId,
+                        dirLeadSessionId: leadSessionId,
+                    },
+                )
             }
             // Restart invariant: never auto-activate. The active pointer is NOT
             // restored from persisted activatedAt — reconcileActivation clears
@@ -454,6 +485,9 @@ export async function rebuildSessionIndex(
         ...await indexScope(userStorageRoot, false, ctx),
     ]
     if (failures.length > 0) {
-        throw new AggregateError(failures, `rebuildSessionIndex failed for ${failures.length} team or scope operation(s)`)
+        throw new AggregateError(
+            failures,
+            `rebuildSessionIndex failed for ${failures.length} team or scope operation(s)`,
+        )
     }
 }
