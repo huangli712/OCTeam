@@ -8,11 +8,21 @@ import { realpathSync, constants as fsSyncConstants } from "node:fs"
 import { randomUUID } from "node:crypto"
 import path from "node:path"
 
+import type {
+    TeamState,
+    TeamSpec
+} from "../core/types.js"
 import { logger } from '../core/log.js';
-import type { TeamState, TeamSpec } from "../core/types.js"
 import { isOCTeamAgent } from "../core/role.js"
 import { isEnoent } from '../core/utils.js';
-import { assertNoSymlinkTraversal, atomicWrite, AsyncMutex, safeReadFile, withLock } from "./locks.js"
+//
+import {
+    assertNoSymlinkTraversal,
+    atomicWrite,
+    AsyncMutex,
+    safeReadFile,
+    withLock
+} from "./locks.js"
 import {
     configPath,
     deletedMarkerPath,
@@ -23,12 +33,6 @@ import {
     teamsDir,
     worktreesDir,
 } from "./paths.js"
-// indexMasterTeam is called from initTeamState so the in-memory master
-// index is populated for ALL init paths (not just team_create). This forms
-// a module cycle (resolve.ts imports listAllTeams/loadTeamState from store.ts,
-// store.ts imports indexMasterTeam from resolve.ts), which is safe in ESM
-// because indexMasterTeam is only called at runtime (inside initTeamState),
-// never at module-load time — by then resolve.ts has fully loaded.
 import { indexMasterTeam } from "./resolve.js"
 
 // O_NOFOLLOW closes the TOCTOU window. Use fs.constants if available,
@@ -36,19 +40,22 @@ import { indexMasterTeam } from "./resolve.js"
 // doesn't expose it.
 const O_NOFOLLOW = (fsSyncConstants as Record<string, number>).O_NOFOLLOW ?? 0x20000
 
-/** Bounded-retry knobs for saveTeamStateBounded (attempts and backoff between them). */
+/** Bounded-retry attempts for saveTeamStateBounded. */
 const SAVE_RETRY_ATTEMPTS = 3
+
+/** Backoff (ms) between saveTeamStateBounded retries. */
 const SAVE_RETRY_BACKOFF_MS = 50
 
 /**
  * Runtime team object: TeamState plus non-persisted handles.
  *
  * `mutex` is a per-team process-level singleton keyed by resolved directory
- * (see teamRegistry) — it serializes event-handler state mutations. `directory` is the resolved team
- * working directory on disk. `deleted` is the runtime tombstone set by
- * team_delete inside the mutex: once true, processIdle/saveTeamState skip
- * persistence so a racing handler holding the same in-memory reference cannot
- * recreate the just-removed directory via atomicWrite's mkdir({recursive:true}).
+ * (see teamRegistry) — it serializes event-handler state mutations.
+ * `directory` is the resolved team working directory on disk.
+ * `deleted` is the runtime tombstone set by team_delete inside the mutex:
+ * once true, processIdle/saveTeamState skip persistence so a racing handler
+ * holding the same in-memory reference cannot recreate the just-removed
+ * directory via atomicWrite's mkdir({recursive:true}).
  * None of these fields is written to state.json (see stripRuntimeFields).
  *
  * `spawning` is a runtime guard set by startOrchestration between Phase 1
@@ -180,22 +187,27 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
     // validate it is a non-empty string so a tampered state.json cannot inject
     // a non-string value that could break path operations. Absent is allowed
     // for fixtures and tests that omit the field.
-    if (s.leadSessionId !== undefined && (typeof s.leadSessionId !== "string" || s.leadSessionId.length === 0)) return false
+    if (s.leadSessionId !== undefined
+        && (typeof s.leadSessionId !== "string" || s.leadSessionId.length === 0)) return false
     // Validate key fields that participate in concurrency control.
     // teamRunId must be a non-empty string when present (empty string
     // would fail runId comparisons and bypass deletion marker checks).
-    if (s.teamRunId !== undefined && (typeof s.teamRunId !== "string" || s.teamRunId.length === 0)) return false
+    if (s.teamRunId !== undefined
+        && (typeof s.teamRunId !== "string" || s.teamRunId.length === 0)) return false
     if (s.spawning !== undefined && typeof s.spawning !== "boolean") return false
     if (s.spawningOwner !== undefined && typeof s.spawningOwner !== "string") return false
     // PID 0 and negative PIDs are never valid process IDs. A tampered
     // state.json with runnerPid:0 would bypass the cross-process ownership
     // guard (process.pid is always > 0).
-    if (s.runnerPid !== undefined && (typeof s.runnerPid !== "number" || !Number.isFinite(s.runnerPid) || s.runnerPid <= 0)) return false
+    if (s.runnerPid !== undefined
+        && (typeof s.runnerPid !== "number" || !Number.isFinite(s.runnerPid) || s.runnerPid <= 0)) return false
     // Validate timestamp fields as finite numbers when present.
     // Note: createdAt/activatedAt use 0 as a sentinel for "not yet set"
     // (e.g. inactive teams). Only reject negative or non-finite values.
-    if (s.createdAt !== undefined && (typeof s.createdAt !== "number" || !Number.isFinite(s.createdAt) || s.createdAt < 0)) return false
-    if (s.activatedAt !== undefined && (typeof s.activatedAt !== "number" || !Number.isFinite(s.activatedAt) || s.activatedAt < 0)) return false
+    if (s.createdAt !== undefined
+        && (typeof s.createdAt !== "number" || !Number.isFinite(s.createdAt) || s.createdAt < 0)) return false
+    if (s.activatedAt !== undefined
+        && (typeof s.activatedAt !== "number" || !Number.isFinite(s.activatedAt) || s.activatedAt < 0)) return false
     if (s.bounds !== undefined) {
         if (typeof s.bounds !== "object" || s.bounds === null) return false
         // All bounds values must be non-negative finite numbers.
@@ -522,7 +534,12 @@ function mergeTeamState(disk: TeamState, ancestor: TeamState, current: TeamState
             // would falsely mark the run as ownerless. Only protect disk when
             // it actually changed from ancestor; if disk == ancestor, the
             // current process legitimately cleared it.
-            if (key === "runnerPid" && current[key] === undefined && disk[key] !== undefined && !jsonEqual(disk[key], ancestor[key])) continue
+            if (
+                key === "runnerPid"
+                && current[key] === undefined
+                && disk[key] !== undefined
+                && !jsonEqual(disk[key], ancestor[key])
+            ) continue
             ;(merged as Record<string, unknown>)[key] = current[key]
         }
     }
@@ -767,9 +784,15 @@ export async function saveTeamState(team: Team): Promise<void> {
                     } finally {
                         await backupFh.close()
                     }
-                    logger.warn("saveTeamState: disk state failed validation; backed up corrupt state before overwrite", { dir, backupPath })
+                    logger.warn(
+                        "saveTeamState: disk state failed validation; backed up corrupt state before overwrite",
+                        { dir, backupPath },
+                    )
                 } catch {
-                    logger.warn("saveTeamState: disk state failed validation; backup failed, proceeding with overwrite", { dir })
+                    logger.warn(
+                        "saveTeamState: disk state failed validation; backup failed, proceeding with overwrite",
+                        { dir },
+                    )
                 }
                 toWrite = currentState
             } else {
@@ -779,14 +802,19 @@ export async function saveTeamState(team: Team): Promise<void> {
                 // Merging would mix old-generation members/tasks into the
                 // new team. Refuse to merge stale state.
                 if (diskState && diskState.teamRunId !== currentState.teamRunId) {
-                    throw new Error(`saveTeamState: disk teamRunId (${diskState.teamRunId}) differs from live (${currentState.teamRunId}) — team was recreated; refusing to merge stale state`)
+                    throw new Error(`saveTeamState: disk teamRunId (${diskState.teamRunId}) differs from live `
+                        + `(${currentState.teamRunId}) — team was recreated; refusing to merge stale state`)
                 }
                 // The disk file vanished since the last save but cache still has
                 // an ancestor snapshot. Another process may have deleted or
                 // renamed the team. Log prominently so operators can detect
                 // potential stale-state resurrection.
                 if (!diskState) {
-                    logger.warn("saveTeamState: team state file vanished since last save — team may have been deleted/renamed by another process", { dir })
+                    logger.warn(
+                        "saveTeamState: team state file vanished since last save "
+                        + "— team may have been deleted/renamed by another process",
+                        { dir },
+                    )
                 }
                 toWrite = diskState
                     ? mergeTeamState(diskState, ancestor, currentState)
@@ -824,15 +852,30 @@ export async function saveTeamState(team: Team): Promise<void> {
             }
             const reSerialized = JSON.stringify(trimmed, null, 2)
             if (Buffer.byteLength(reSerialized, "utf8") <= 1_048_576) {
-                logger.warn("saveTeamState: state exceeded 1 MiB, truncated responses to fit", { dir, original: serializedBytes, trimmed: Buffer.byteLength(reSerialized, "utf8") })
+                logger.warn(
+                    "saveTeamState: state exceeded 1 MiB, truncated responses to fit",
+                    {
+                        dir,
+                        original: serializedBytes,
+                        trimmed: Buffer.byteLength(reSerialized, "utf8"),
+                    },
+                )
                 await atomicWrite(statePath(dir), reSerialized, dir)
                 toWrite = trimmed as unknown as TeamState
             } else {
                 // Do NOT write a state that the reader will reject.
-                logger.error("saveTeamState: state exceeds 1 MiB even after truncation, refusing to save", { dir, size: Buffer.byteLength(reSerialized, "utf8") })
+                logger.error(
+                    "saveTeamState: state exceeds 1 MiB even after truncation, refusing to save",
+                    {
+                        dir,
+                        size: Buffer.byteLength(reSerialized, "utf8"),
+                    },
+                )
                 // Throw so callers know the save failed and cannot report
                 // success while disk remains at the old state.
-                throw new Error(`saveTeamState: state for team in ${dir} exceeds 1 MiB even after truncation (${Buffer.byteLength(reSerialized, "utf8")} bytes); refusing to save stale state`)
+                throw new Error(`saveTeamState: state for team in ${dir} exceeds 1 MiB `
+                    + `even after truncation (${Buffer.byteLength(reSerialized, "utf8")} bytes); `
+                    + `refusing to save stale state`)
             }
         } else {
             await atomicWrite(statePath(dir), serialized, dir)
