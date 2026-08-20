@@ -2,11 +2,54 @@
 
 OCTeam is a multi-agent team orchestration system for OpenCode. It is an OpenCode plugin that lets you create long-lived teams of up to 12 agent sessions — each with its own role, prompt, and optional agent — and orchestrate them with twelve workflow primitives.
 
-**Version:** 0.14.1
-**License:** MIT  
-**Runtime:** Bun (TypeScript)
+**Version:** 0.14.2
 
-## Install
+## Why OCTeam?
+
+A single agent session gives you one context window, one model, and one line of reasoning. For large or high-stakes work that is not enough: you want parallel throughput, specialized roles, and independent verification. OCTeam gives you a durable team of agent sessions plus the orchestration primitives to drive them:
+
+| | Single session | OCTeam |
+|---|---|---|
+| Context | One context window | Up to 12 member sessions, each with its own context |
+| Reasoning | One model, one line of thought | Different roles, models, and agents in parallel |
+| Lifetime | Session-scoped | Team state persists on disk across restarts |
+
+Around the team, the engine adds master-only orchestration, human-in-the-loop approval pauses, isolated per-member git worktrees, and crash recovery via checkpoints. Teams are long-lived: members, mailboxes, shared task lists, and run records persist on disk, survive restarts, and stay observable and repairable mid-run (`team_progress`, `team_results`, `team_fix_workflow`, `team_resume`).
+
+## Typical scenarios
+
+- **Parallel review.** Several reviewers read the same change from correctness, security, and style angles at once; you merge their findings (`team_parallel`).
+- **Pipeline handoffs.** Spec → implement → test → review, each stage run by a member whose output feeds the next (`team_pipeline`).
+- **Debate, voting, and ruling.** Members argue opposing positions and an arbiter issues a binding ruling — for design decisions where a single answer is easy to get wrong (`team_consensus`, `team_arbitrate`); N members answer the same question independently and strict majority wins (`team_quorum`).
+- **Competitive arena.** Candidates implement rival solutions in isolated git worktrees; an evaluator scores them and one winner is delivered (`team_arena`).
+- **Recursive decomposition.** A large goal splits into subtasks, subtasks into sub-subtasks, and results aggregate back up (`team_recurse`); idle members self-claim work from a shared task market (`team_delegate`).
+- **Verdict-gated work.** A stage runs only after a verifier passes the previous stage's output; FAIL sends it back with a diff (`team_tollgate`, `team_loop`).
+- **Dynamic routing.** A router inspects each input and selects the branch(es) that handle it — triage, classification, fan-out by topic (`team_route`).
+- **Composed workflows.** Declarative task/gate/fanout/join DAGs with engine-driven retry, recovery, and join policies (`team_workflow`).
+
+In short: OCTeam is not a smarter agent — it is the coordination layer that turns several agents into one team.
+
+## Key concepts
+
+**Team.** A named group of up to 12 members (the `maxMembers` default; configurable per team). Each team has a leader session ("master") and a set of member sessions. Teams live in a storage scope: project-scope (`<dir>/.octeam`) or user-scope (`~/.octeam`).
+
+**Member.** A member is an OpenCode session with a role, system prompt, and optional model/agent configuration. Members can optionally run in isolated git worktrees.
+
+**Master-only orchestration.** Only the team's leader session starts workflows. Other sessions call tools like `team_done`, `team_send_message`, and `team_task_*`.
+
+**Single-active-per-session.** A session can have at most one team activated at a time. `team_activate` refuses if another team is already active — call `team_deactivate` on it first (auto-switching is disabled).
+
+**State.** All team state is JSON-serializable, persisted under `<scope>/.octeam/teams/<name>/`. Each team has a `config.json` (immutable spec), `state.json` (mutable runtime state), plus `mailbox/`, `tasks/`, `runs/`, and optional `worktrees/` directories.
+
+**Orchestration runs.** Every workflow produces a run record under `runs/<runId>/` with per-member output files and an append-only event timeline. Run history persists across plugin restarts.
+
+**Human-in-the-loop approvals.** `team_pipeline`, `team_tollgate`, `team_loop`, `team_route`, `team_recurse`, `team_arbitrate`, `team_consensus`, and `team_workflow` can pause at supported mid-run boundaries when `human_approval` is enabled. The leader resumes with `team_approve` or rejects with `team_reject`. This is distinct from `signoff`: HITL is a mid-run human approval gate, while signoff is a post-completion member-agent review.
+
+**Crash recovery.** On plugin restart, OCTeam reconciles any team left "busy" by a crashed process, rebuilds the session index from disk, and makes the interrupted task resumable via `team_resume`.
+
+**TUI sidebar.** The `tui` plugin entrypoint renders a team status panel in the OpenCode interface showing member states, active orchestration type, and task progress.
+
+## Installation
 
 OCTeam is distributed as an npm package (`octeam`). Install it in three steps:
 
@@ -26,7 +69,45 @@ OCTeam is distributed as an npm package (`octeam`). Install it in three steps:
 
 OCTeam registers as an `oc-plugin` with two entrypoints (server + TUI sidebar). Peer dependencies (`@opencode-ai/plugin` >=1.4.7, `@opencode-ai/sdk` >=1.4.7, `@opentui/solid` >=0.1.99, `solid-js` >=1.9.0) are resolved by OpenCode's plugin host.
 
-## Tool surface (42 tools)
+## Configuration
+
+OCTeam registers nine built-in subagents — `oct-oracle`, `oct-librarian`, `oct-explore`, `oct-metis`, `oct-momus`, `oct-multimodal-looker`, `oct-junior`, `oct-deep`, and `oct-ultrabrain` — each preset with a hardened prompt and permission map. You can pin a model (and tune a few non-security fields) per agent in `opencode.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "oct-oracle": {
+      "model": "anthropic/claude-opus-5",
+      "variant": "max"
+    },
+    "oct-librarian": {
+      "model": "anthropic/claude-opus-5",
+      "variant": "max"
+    },
+    "oct-explore": {
+      "model": "yinhe/glm-5.2",
+      "variant": "max"
+    },
+    "oct-junior": {
+      "model": "yinhe/glm-5.2",
+      "variant": "max"
+    },
+    "oct-ultrabrain": {
+      "model": "anthropic/claude-fable-5",
+      "variant": "max"
+    }
+  }
+}
+```
+
+Recognized user-tunable fields: `model`, `variant`, `temperature`, `top_p`, `color`, `steps`, `maxSteps`, and `hidden`. Everything security-critical — `mode`, `prompt`, `description`, and `permission` — always comes from OCTeam's hardened presets and cannot be overridden from user config; user permission entries are honored only where they tighten the preset.
+
+Agents without an explicit entry fall back to the configured default `model`, then to the leader session's model. To use these agents, pass one as a member's `agent` when creating a team (`team_create`) or adding a member (`team_add_member`).
+
+## Tools
+
+OCTeam exposes 42 tools in six categories: **lifecycle** (create and manage teams and members), **messaging** (member-to-member mailbox), **shared task list** (tasks with blockedBy dependencies), **orchestration** (the 12 workflow primitives), **workflow authoring** (planner), and **observability and recovery** (progress, results, metrics, resume, repair).
 
 ### Lifecycle
 
@@ -61,7 +142,7 @@ OCTeam registers as an `oc-plugin` with two entrypoints (server + TUI sidebar). 
 | `team_task_update` | Update a task's status (claim, progress, complete, delete) |
 | `team_task_get` | Get full details of a single task |
 
-### Orchestration (12 primitives)
+### Orchestration
 
 | Tool | Description |
 |------|-------------|
@@ -101,26 +182,6 @@ All twelve are master-only: only the team's leader session may start an orchestr
 | `team_reject` | Reject a pending human-in-the-loop pause and apply the mode-specific rejection path |
 | `team_metrics` | Aggregate token/message/success metrics across runs |
 | `team_resume` | Resume an interrupted orchestration from a crash checkpoint |
-
-## Key concepts
-
-**Team.** A named group of up to 12 members (the `maxMembers` default; configurable per team). Each team has a leader session ("master") and a set of member sessions. Teams live in a storage scope: project-scope (`<dir>/.octeam`) or user-scope (`~/.octeam`).
-
-**Member.** A member is an OpenCode session with a role, system prompt, and optional model/agent configuration. Members can optionally run in isolated git worktrees.
-
-**Master-only orchestration.** Only the team's leader session starts workflows. Other sessions call tools like `team_done`, `team_send_message`, and `team_task_*`.
-
-**Single-active-per-session.** A session can have at most one team activated at a time. `team_activate` refuses if another team is already active — call `team_deactivate` on it first (auto-switching is disabled).
-
-**State.** All team state is JSON-serializable, persisted under `<scope>/.octeam/teams/<name>/`. Each team has a `config.json` (immutable spec), `state.json` (mutable runtime state), plus `mailbox/`, `tasks/`, `runs/`, and optional `worktrees/` directories.
-
-**Orchestration runs.** Every workflow produces a run record under `runs/<runId>/` with per-member output files and an append-only event timeline. Run history persists across plugin restarts.
-
-**Human-in-the-loop approvals.** `team_pipeline`, `team_tollgate`, `team_loop`, `team_route`, `team_recurse`, `team_arbitrate`, `team_consensus`, and `team_workflow` can pause at supported mid-run boundaries when `human_approval` is enabled. The leader resumes with `team_approve` or rejects with `team_reject`. This is distinct from `signoff`: HITL is a mid-run human approval gate, while signoff is a post-completion member-agent review.
-
-**Crash recovery.** On plugin restart, OCTeam reconciles any team left "busy" by a crashed process, rebuilds the session index from disk, and makes the interrupted task resumable via `team_resume`.
-
-**TUI sidebar.** The `tui` plugin entrypoint renders a team status panel in the OpenCode interface showing member states, active orchestration type, and task progress.
 
 ## Commands
 
@@ -180,3 +241,7 @@ team_results(team_id="reviewers")
 ## Security
 
 Security issues are handled through the project's security policy on GitHub. To report a vulnerability, use the repository's **Security** tab ("Report a vulnerability") rather than opening a public issue. Please do not disclose security problems publicly until they have been addressed.
+
+## License
+
+MIT
