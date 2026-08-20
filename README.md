@@ -1,8 +1,9 @@
 # OCTeam
 
-Persistent multi-agent teams for OpenCode. OCTeam is an OpenCode plugin that
-lets you create long-lived teams of up to 12 OpenCode sessions and orchestrate
-them with twelve workflow primitives.
+OCTeam is a multi-agent team orchestration system for OpenCode. It is an
+OpenCode plugin that lets you create long-lived teams of up to 12 agent
+sessions — each with its own role, prompt, and optional agent — and
+orchestrate them with twelve workflow primitives.
 
 **Version:** 0.13.4
 **License:** MIT  
@@ -10,12 +11,26 @@ them with twelve workflow primitives.
 
 ## Install
 
-OCTeam registers as an `oc-plugin` with two entrypoints (server + TUI sidebar):
+OCTeam is distributed as an npm package (`octeam`). Install it in three
+steps:
 
-```
-opencode plugin install octeam
-```
+1. **Download** the latest release package from the
+   [Releases page](https://github.com/huangli712/OCTeam/releases) (e.g.
+   `octeam-<version>.tgz`).
 
+2. **Extract** it:
+
+   ```
+   tar -xzf octeam-<version>.tgz
+   ```
+
+3. **Install** the extracted directory with the opencode CLI:
+
+   ```
+   opencode plugin install ./octeam-<version>
+   ```
+
+OCTeam registers as an `oc-plugin` with two entrypoints (server + TUI sidebar).
 Peer dependencies (`@opencode-ai/plugin` >=1.4.7, `@opencode-ai/sdk` >=1.4.7,
 `@opentui/solid` >=0.1.99, `solid-js` >=1.9.0) are resolved by OpenCode's
 plugin host.
@@ -151,22 +166,48 @@ bun run build        # Build server + TUI bundles and emit declarations
 
 ## Minimal usage example
 
-Create a team with two members, activate it, and run a parallel task:
+You drive OCTeam from the team's leader session in natural language; the leader
+session translates your intent into OCTeam tool calls that orchestrate the
+member sessions.
+
+**1. Create a team**
+
+You type:
+
+> Set up a code review team named `reviewers` with two reviewers, and make it my active team.
+
+The leader session runs:
 
 ```
-# 1. Create a team
 team_create(name="reviewers", description="Code review team")
-# 2. Add members
 team_add_member(team_id="reviewers", role="reviewer", prompt="You review code for bugs.")
 team_add_member(team_id="reviewers", role="reviewer", prompt="You review code for style.")
-# 3. Activate the team
 team_activate(team_id="reviewers")
-# 4. Run a parallel review
+```
+
+**2. Run a parallel review**
+
+You type:
+
+> Have the reviewers review `src/server.ts` for correctness and style issues.
+
+The leader session runs:
+
+```
 team_parallel(team_id="reviewers", mode="isolated",
   task="Review src/server.ts for correctness and style issues.")
-# 5. Check progress
+```
+
+**3. Follow up**
+
+You type:
+
+> What's the progress? Show me the results.
+
+The leader session runs:
+
+```
 team_progress(team_id="reviewers")
-# 6. View results
 team_results(team_id="reviewers")
 ```
 
