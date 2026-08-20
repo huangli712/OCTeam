@@ -419,7 +419,7 @@ team_deactivate(fd-implement)
     {
       "name": "quinn",
       "role": "architect",
-      "prompt": "You audit the new feature for DESIGN FIT: does it align with OCTeam's architecture, conventions, and module boundaries (see src/ + docs/ARCHITECTURE.md)? For your dimension, emit exactly one line: <!-- AUDIT: design-fit: pass --> or <!-- AUDIT: design-fit: fail --> followed by a short list of concerns."
+      "prompt": "You audit the new feature for DESIGN FIT: does it align with OCTeam's architecture, conventions, and module boundaries (see src/ + docs/arch.md)? For your dimension, emit exactly one line: <!-- AUDIT: design-fit: pass --> or <!-- AUDIT: design-fit: fail --> followed by a short list of concerns."
     }
   ]
 }
@@ -533,4 +533,4 @@ Note:
 - [`demos/code-review/README.md`](../code-review/README.md) — sister comprehensive scenario: multi-team code review (also 4 primitives, for comparison)
 - parallel / consensus / pipeline / loop source: [`src/tools/parallel.ts`](../../src/tools/parallel.ts) / [`consensus.ts`](../../src/tools/consensus.ts) / [`pipeline.ts`](../../src/tools/pipeline.ts) / [`loop.ts`](../../src/tools/loop.ts)
 - delegate / route / arbitrate / tollgate / recurse source: [`src/tools/delegate.ts`](../../src/tools/delegate.ts) / [`router.ts`](../../src/tools/router.ts) / [`arbitrate.ts`](../../src/tools/arbitrate.ts) / [`tollgate.ts`](../../src/tools/tollgate.ts) / [`recurse.ts`](../../src/tools/recurse.ts)
-- [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — OCTeam architecture and module boundaries (plan/audit teams should reference)
+- [`docs/arch.md`](../../docs/arch.md) — OCTeam architecture and module boundaries (plan/audit teams should reference)
