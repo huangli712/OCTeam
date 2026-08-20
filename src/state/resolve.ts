@@ -7,13 +7,21 @@
  * same private Maps.
  */
 
+import type { PluginContext } from "../core/context.js"
+import type { MemberState } from "../core/types.js"
+import { 
+    logEvent, 
+    logger,
+    logSwallowed
+} from "../core/log.js"
 import { isEnoent } from "../core/utils.js"
-import { listAllTeams, loadTeamState } from "./store.js"
+//
+import { 
+    listAllTeams, 
+    loadTeamState
+} from "./store.js"
 import { masterSentinelPath } from "./paths.js"
 import { safeReadFile } from "./locks.js"
-import type { MemberState } from "../core/types.js"
-import type { PluginContext } from "../core/context.js"
-import { logEvent, logger, logSwallowed } from "../core/log.js"
 import { isInteractionForbidden } from "./activation.js"
 
 /** Map of sessionID -> member index entry for non-master team members. */
@@ -51,6 +59,16 @@ type MasterIndexEntry = {
     activeDirectory?: string            // the ONE available team; undefined ⇒ none active
 }
 
+/** A team member resolved from a sessionID, plus the team context it belongs to. */
+export type ResolvedMember = MemberState & {
+    teamName: string
+    teamRunId: string
+    directory: string
+    leadSessionId?: string
+    /** Storage root this team lives under (project or user scope). */
+    storageRoot: string
+}
+
 /** Index a member session by its sessionID, mapping it to a specific team. */
 export function indexMember(
     sessionID: string,
@@ -60,6 +78,89 @@ export function indexMember(
     storageRoot: string,
 ): void {
     memberIndex.set(sessionID, { teamName, memberName, leadSessionId, storageRoot })
+}
+
+/** Index every team in one scope. Shared by the project + user passes above. */
+async function indexScope(storageRoot: string, segmented: boolean, ctx?: PluginContext): Promise<unknown[]> {
+    const failures: unknown[] = []
+    let teams: Awaited<ReturnType<typeof listAllTeams>>
+    try {
+        teams = await listAllTeams(storageRoot, segmented)
+    } catch (err) {
+        if (ctx) logSwallowed(ctx, "indexScope failed to list teams", err, { storageRoot })
+        failures.push(err)
+        return failures
+    }
+    for (const { leadSessionId, teamName } of teams) {
+        try {
+            const team = await loadTeamState(storageRoot, teamName, leadSessionId)
+            // For project scope (segmented), the authoritative owner is the
+            // directory-derived `leadSessionId`
+            // (enumerated by listAllTeams from the filesystem layout
+            // <root>/<sid>/teams/<team>). The disk-persisted
+            // team.leadSessionId must not be trusted here because a member with
+            // .octeam/ write access could set it to their own session and gain
+            // master privilege on the next rebuild.
+            //
+            // For user scope (segmented=false), read the master.sentinel
+            // file (written once at team_create, read-only) instead of the
+            // mutable state.json.leadSessionId. A missing sentinel falls back
+            // to state.json with a warning, while a mismatch refuses master
+            // privilege. The separate read-only file makes tampering observable.
+            let trustedLeadSessionId: string | undefined
+            // Project scope also verifies the sentinel because it stores auth
+            // state in member-writable .octeam/, so a member could forge a
+            // <sid>/teams/...
+            // directory to gain master privilege. Requiring the sentinel
+            // raises the bar because the attacker must also forge master.sentinel.
+            // A sentinel mismatch always refuses master; a missing sentinel
+            // (ENOENT) falls back to the directory-derived value and logs a
+            // prominent warning.
+            try {
+                const sentinelPath = masterSentinelPath(team.directory)
+                const sentinelContent = await safeReadFile(team.directory, sentinelPath, { maxBytes: 1024 })
+                if (sentinelContent === undefined) {
+                    throw Object.assign(new Error("ENOENT"), { code: "ENOENT" })
+                }
+                const sentinelLead = sentinelContent.trim()
+                const expectedLead = segmented ? leadSessionId : team.leadSessionId
+                if (sentinelLead && sentinelLead === expectedLead) {
+                    trustedLeadSessionId = sentinelLead
+                } else {
+                    if (ctx) logEvent(ctx, "warn", `indexScope: ${segmented ? "project" : "user"}-scope master.sentinel mismatches; refusing master privilege`, {
+                        teamName, sentinelLead, expectedLead,
+                    })
+                    // Do NOT grant master — leave trustedLeadSessionId undefined.
+                }
+            } catch (sentinelErr) {
+                if (isEnoent(sentinelErr)) {
+                    if (ctx) logSwallowed(ctx, `indexScope: ${segmented ? "project" : "user"}-scope team has no master.sentinel; using ${segmented ? "directory" : "state.json"} value (less secure)`, sentinelErr, { teamName })
+                    trustedLeadSessionId = segmented ? leadSessionId : team.leadSessionId
+                } else {
+                    if (ctx) logSwallowed(ctx, `indexScope: ${segmented ? "project" : "user"}-scope master.sentinel unreadable; refusing master privilege (fail-closed)`, sentinelErr, { teamName })
+                    // trustedLeadSessionId stays undefined
+                }
+            }
+            if (ctx && segmented && team.leadSessionId !== leadSessionId) {
+                logSwallowed(ctx, "indexScope: disk leadSessionId mismatches directory layout; using directory value", undefined, {
+                    teamName, diskLeadSessionId: team.leadSessionId, dirLeadSessionId: leadSessionId,
+                })
+            }
+            // Restart invariant: never auto-activate. The active pointer is NOT
+            // restored from persisted activatedAt — reconcileActivation clears
+            // all on-disk activatedAt, and the user must team_activate explicitly.
+            indexMasterTeam(trustedLeadSessionId ?? "", team.teamName, leadSessionId, storageRoot, team.directory)
+            for (const m of team.members) {
+                if (m.sessionId) {
+                    indexMember(m.sessionId, team.teamName, m.name, leadSessionId, storageRoot)
+                }
+            }
+        } catch (err) {
+            if (ctx) logSwallowed(ctx, "indexScope skipped unreadable state", err, { dir: teamName })
+            failures.push(err)
+        }
+    }
+    return failures
 }
 
 /**
@@ -143,10 +244,14 @@ export function isIndexedMasterOf(
     return entry.teams.has(directory)
 }
 
-/** Enumerate every team a master session owns (drain-all enumeration). */
-export function resolveMasterTeams(sessionID: string): MasterTeamEntry[] {
-    const entry = masterIndex.get(sessionID)
-    return entry ? Array.from(entry.teams.values()) : []
+/**
+ * True if this session is already indexed as a (non-master) team member. Used by
+ * team_create to refuse a member (child) session from spawning its own team —
+ * which would overwrite its index entry (orphaning its original team) and let it
+ * escalate to master of a new team.
+ */
+export function isIndexedMember(sessionID: string): boolean {
+    return memberIndex.has(sessionID)
 }
 
 /**
@@ -168,26 +273,6 @@ export function trustedLeadSessionId(directory: string): string | undefined {
     return undefined
 }
 
-/**
- * True if this session is already indexed as a (non-master) team member. Used by
- * team_create to refuse a member (child) session from spawning its own team —
- * which would overwrite its index entry (orphaning its original team) and let it
- * escalate to master of a new team.
- */
-export function isIndexedMember(sessionID: string): boolean {
-    return memberIndex.has(sessionID)
-}
-
-/** A team member resolved from a sessionID, plus the team context it belongs to. */
-export type ResolvedMember = MemberState & {
-    teamName: string
-    teamRunId: string
-    directory: string
-    leadSessionId?: string
-    /** Storage root this team lives under (project or user scope). */
-    storageRoot: string
-}
-
 /** Build the synthetic master pseudo-member for a resolved team. */
 function syntheticMaster(team: {
     teamName: string
@@ -206,6 +291,12 @@ function syntheticMaster(team: {
         leadSessionId,
         storageRoot,
     }
+}
+
+/** Enumerate every team a master session owns (drain-all enumeration). */
+export function resolveMasterTeams(sessionID: string): MasterTeamEntry[] {
+    const entry = masterIndex.get(sessionID)
+    return entry ? Array.from(entry.teams.values()) : []
 }
 
 /**
@@ -365,87 +456,4 @@ export async function rebuildSessionIndex(
     if (failures.length > 0) {
         throw new AggregateError(failures, `rebuildSessionIndex failed for ${failures.length} team or scope operation(s)`)
     }
-}
-
-/** Index every team in one scope. Shared by the project + user passes above. */
-async function indexScope(storageRoot: string, segmented: boolean, ctx?: PluginContext): Promise<unknown[]> {
-    const failures: unknown[] = []
-    let teams: Awaited<ReturnType<typeof listAllTeams>>
-    try {
-        teams = await listAllTeams(storageRoot, segmented)
-    } catch (err) {
-        if (ctx) logSwallowed(ctx, "indexScope failed to list teams", err, { storageRoot })
-        failures.push(err)
-        return failures
-    }
-    for (const { leadSessionId, teamName } of teams) {
-        try {
-            const team = await loadTeamState(storageRoot, teamName, leadSessionId)
-            // For project scope (segmented), the authoritative owner is the
-            // directory-derived `leadSessionId`
-            // (enumerated by listAllTeams from the filesystem layout
-            // <root>/<sid>/teams/<team>). The disk-persisted
-            // team.leadSessionId must not be trusted here because a member with
-            // .octeam/ write access could set it to their own session and gain
-            // master privilege on the next rebuild.
-            //
-            // For user scope (segmented=false), read the master.sentinel
-            // file (written once at team_create, read-only) instead of the
-            // mutable state.json.leadSessionId. A missing sentinel falls back
-            // to state.json with a warning, while a mismatch refuses master
-            // privilege. The separate read-only file makes tampering observable.
-            let trustedLeadSessionId: string | undefined
-            // Project scope also verifies the sentinel because it stores auth
-            // state in member-writable .octeam/, so a member could forge a
-            // <sid>/teams/...
-            // directory to gain master privilege. Requiring the sentinel
-            // raises the bar because the attacker must also forge master.sentinel.
-            // A sentinel mismatch always refuses master; a missing sentinel
-            // (ENOENT) falls back to the directory-derived value and logs a
-            // prominent warning.
-            try {
-                const sentinelPath = masterSentinelPath(team.directory)
-                const sentinelContent = await safeReadFile(team.directory, sentinelPath, { maxBytes: 1024 })
-                if (sentinelContent === undefined) {
-                    throw Object.assign(new Error("ENOENT"), { code: "ENOENT" })
-                }
-                const sentinelLead = sentinelContent.trim()
-                const expectedLead = segmented ? leadSessionId : team.leadSessionId
-                if (sentinelLead && sentinelLead === expectedLead) {
-                    trustedLeadSessionId = sentinelLead
-                } else {
-                    if (ctx) logEvent(ctx, "warn", `indexScope: ${segmented ? "project" : "user"}-scope master.sentinel mismatches; refusing master privilege`, {
-                        teamName, sentinelLead, expectedLead,
-                    })
-                    // Do NOT grant master — leave trustedLeadSessionId undefined.
-                }
-            } catch (sentinelErr) {
-                if (isEnoent(sentinelErr)) {
-                    if (ctx) logSwallowed(ctx, `indexScope: ${segmented ? "project" : "user"}-scope team has no master.sentinel; using ${segmented ? "directory" : "state.json"} value (less secure)`, sentinelErr, { teamName })
-                    trustedLeadSessionId = segmented ? leadSessionId : team.leadSessionId
-                } else {
-                    if (ctx) logSwallowed(ctx, `indexScope: ${segmented ? "project" : "user"}-scope master.sentinel unreadable; refusing master privilege (fail-closed)`, sentinelErr, { teamName })
-                    // trustedLeadSessionId stays undefined
-                }
-            }
-            if (ctx && segmented && team.leadSessionId !== leadSessionId) {
-                logSwallowed(ctx, "indexScope: disk leadSessionId mismatches directory layout; using directory value", undefined, {
-                    teamName, diskLeadSessionId: team.leadSessionId, dirLeadSessionId: leadSessionId,
-                })
-            }
-            // Restart invariant: never auto-activate. The active pointer is NOT
-            // restored from persisted activatedAt — reconcileActivation clears
-            // all on-disk activatedAt, and the user must team_activate explicitly.
-            indexMasterTeam(trustedLeadSessionId ?? "", team.teamName, leadSessionId, storageRoot, team.directory)
-            for (const m of team.members) {
-                if (m.sessionId) {
-                    indexMember(m.sessionId, team.teamName, m.name, leadSessionId, storageRoot)
-                }
-            }
-        } catch (err) {
-            if (ctx) logSwallowed(ctx, "indexScope skipped unreadable state", err, { dir: teamName })
-            failures.push(err)
-        }
-    }
-    return failures
 }
