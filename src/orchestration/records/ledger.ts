@@ -6,8 +6,15 @@
  * produce strings without side effects.
  */
 
-import type { WorkflowStep, WorkflowGateStep, WorkflowFanoutStep } from "../../core/types.js";
-import { truncateOutput, formatWorkflowIssueDetail } from "../protocol/output.js";
+import type {
+    WorkflowStep,
+    WorkflowGateStep,
+    WorkflowFanoutStep
+} from "../../core/types.js";
+import {
+    truncateOutput,
+    formatWorkflowIssueDetail
+} from "../protocol/output.js";
 
 /** Whether the step list contains any fanout/join/branch structure. */
 function hasWorkflowBranchTree(steps: readonly WorkflowStep[]): boolean {
@@ -33,7 +40,12 @@ function workflowVerdictMetrics(s: WorkflowGateStep): string {
 }
 
 /** Classify a fanout branch status: completed, skipped, errored, or pending. */
-function workflowBranchStatus(steps: readonly WorkflowStep[], fanoutStep: WorkflowFanoutStep, branchId: string, branchIndex: number): string {
+function workflowBranchStatus(
+    steps: readonly WorkflowStep[],
+    fanoutStep: WorkflowFanoutStep,
+    branchId: string,
+    branchIndex: number,
+): string {
     const fanout = fanoutStep.fanout
     const range = fanout.branchRanges[branchIndex]
     if (range === undefined) return "pending"
@@ -47,16 +59,23 @@ function workflowBranchStatus(steps: readonly WorkflowStep[], fanoutStep: Workfl
 }
 
 /** Render a comma-separated branch:status list for a fanout step's join line. */
-function workflowBranchStatusList(steps: readonly WorkflowStep[], fanoutStep: WorkflowFanoutStep): string {
+function workflowBranchStatusList(
+    steps: readonly WorkflowStep[],
+    fanoutStep: WorkflowFanoutStep,
+): string {
     const fanout = fanoutStep.fanout
     return fanout.branchIds
         .map((branchId, branchIndex) => `${branchId}:${workflowBranchStatus(steps, fanoutStep, branchId, branchIndex)}`)
         .join(", ")
 }
 
-
 /** Format a single branch line: id, status, and step range. */
-function formatWorkflowBranchLine(steps: readonly WorkflowStep[], fanoutStep: WorkflowFanoutStep, branchId: string, branchIndex: number): string {
+function formatWorkflowBranchLine(
+    steps: readonly WorkflowStep[],
+    fanoutStep: WorkflowFanoutStep,
+    branchId: string,
+    branchIndex: number,
+): string {
     const fanout = fanoutStep.fanout
     const range = fanout.branchRanges[branchIndex]
     if (range === undefined) return `  - Branch ${branchId} [pending]`
@@ -65,7 +84,11 @@ function formatWorkflowBranchLine(steps: readonly WorkflowStep[], fanoutStep: Wo
 }
 
 /** Format a single workflow step as a 1-based ledger line (task/gate/fanout/join). */
-export function formatWorkflowLedgerStep(steps: readonly WorkflowStep[], step: WorkflowStep, index: number): string {
+export function formatWorkflowLedgerStep(
+    steps: readonly WorkflowStep[],
+    step: WorkflowStep,
+    index: number,
+): string {
     const idTag = step.id ? ` (${step.id})` : ""
     switch (step.kind) {
         case "task": {
@@ -79,9 +102,15 @@ export function formatWorkflowLedgerStep(steps: readonly WorkflowStep[], step: W
                 return `${index + 1}. [gate]${idTag} ${step.verifier ?? "?"} verifies ${workflowTargetLabel(step)} (skipped)`
             }
             const target = workflowTargetLabel(step)
-            const invalidTag = step.onInvalid && step.onInvalid !== "fail" ? `, on_invalid=${step.onInvalid}${(step.invalidAttempts ?? 0) > 0 ? ` (${step.invalidAttempts})` : ""}` : ""
+            const invalidTag = step.onInvalid && step.onInvalid !== "fail"
+                ? `, on_invalid=${step.onInvalid}`
+                  + `${(step.invalidAttempts ?? 0) > 0 ? ` (${step.invalidAttempts})` : ""}`
+                : ""
             const jumpTag = (step.jumpCount ?? 0) > 0 ? `, jumps=${step.jumpCount}` : ""
-            return `${index + 1}. [gate]${idTag} ${step.verifier ?? "?"} verifies ${target} -> ${step.verdict ?? "pending"}${workflowVerdictMetrics(step)}${(step.attempts ?? 0) > 0 ? ` (${step.attempts} retries)` : ""}${invalidTag}${jumpTag}${formatWorkflowIssueDetail(step.issues)}`
+            return `${index + 1}. [gate]${idTag} ${step.verifier ?? "?"} verifies ${target} `
+                + `-> ${step.verdict ?? "pending"}${workflowVerdictMetrics(step)}`
+                + `${(step.attempts ?? 0) > 0 ? ` (${step.attempts} retries)` : ""}`
+                + `${invalidTag}${jumpTag}${formatWorkflowIssueDetail(step.issues)}`
         }
         case "fanout": {
             const fanout = step.fanout
