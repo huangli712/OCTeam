@@ -6,6 +6,7 @@
  */
 
 import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
+
 import { loadTeams, type LoadState } from "./teams.js"
 
 /** Display status derived from OpenCode SessionStatus. */
@@ -23,6 +24,17 @@ export type SessionTreeNode = {
 }
 
 /**
+ * Minimal message shape consumed by the pure helpers below. The real API
+ * returns richer Message objects; we only read these optional fields.
+ */
+type MessageRow = {
+    info?: {
+        agent?: string
+        time?: { created?: number; completed?: number }
+    }
+}
+
+/**
  * Map OpenCode's SessionStatus ({ type: "busy" | "idle" | "retry" })
  * to our display status.
  */
@@ -32,17 +44,6 @@ export function mapStatus(raw: { type: string } | undefined | null): DisplayStat
     if (raw.type === "retry") return "retrying"
     if (raw.type === "idle") return "idle"
     return "unknown"
-}
-
-/**
- * Minimal message shape consumed by the pure helpers below. The real API
- * returns richer Message objects; we only read these optional fields.
- */
-type MessageRow = {
-    info?: {
-        agent?: string
-        time?: { created?: number; completed?: number }
-    }
 }
 
 /**
