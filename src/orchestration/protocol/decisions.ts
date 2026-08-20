@@ -21,16 +21,21 @@ import type {
     WorkflowIssueSeverity,
 } from "../../core/types.js"
 
-// Structured, i18n-consistent "no issues" signal for loop read_only stages. A
-// read_only stage emits <no_issues/> or its Chinese-language alias to declare
-// clean without relying on an ambiguous keyword substring.
-//
-// The tag MUST appear at the END of the output once trailing whitespace is
-// trimmed. This makes it the decider's final declaration rather than a
-// mid-text reference.
+/**
+ * Structured, i18n-consistent "no issues" signal for loop read_only stages. A
+ * read_only stage emits <no_issues/> or its Chinese-language alias to declare
+ * clean without relying on an ambiguous keyword substring.
+ *
+ * The tag MUST appear at the END of the output once trailing whitespace is
+ * trimmed. This makes it the decider's final declaration rather than a
+ * mid-text reference.
+ */
 const NO_ISSUES_TAG = /<(?:no_issues|无问题)\s*\/?>\s*$/
-/** Length caps for decomposed subtask fields, mirrored from the task schema. */
+
+/** Max length of a decomposed subtask subject, mirrored from the task schema. */
 const TASK_SUBJECT_MAX_LENGTH = 500
+
+/** Max length of a decomposed subtask description, mirrored from the task schema. */
 const TASK_DESCRIPTION_MAX_LENGTH = 8_192
 
 /** Outcome of parsing a consensus turn: either a valid agreed flag or a
@@ -341,7 +346,15 @@ export function parseArbitrationDecision(
  */
 export function parseVerdict(
     rawText: string,
-): { verdict?: Verdict; rationale: string; diff: string; score?: number; confidence?: number; issues?: WorkflowIssue[]; parseFailed?: boolean } {
+): {
+    verdict?: Verdict
+    rationale: string
+    diff: string
+    score?: number
+    confidence?: number
+    issues?: WorkflowIssue[]
+    parseFailed?: boolean
+} {
     const p = extractTaggedJSON(rawText, "verdict", "判定")
     if (!p) return { rationale: "", diff: "", parseFailed: true }
     const raw = typeof p.result === "string" ? p.result.trim().toUpperCase() : ""
@@ -352,8 +365,13 @@ export function parseVerdict(
         verdict: raw as Verdict,
         rationale: typeof p.rationale === "string" ? p.rationale : "",
         diff: typeof p.diff === "string" ? p.diff : "",
-        score: typeof p.score === "number" && Number.isFinite(p.score) && p.score >= 0 && p.score <= 10 ? p.score : undefined,
-        confidence: typeof p.confidence === "number" && Number.isFinite(p.confidence) && p.confidence >= 0 && p.confidence <= 1 ? p.confidence : undefined,
+        score: typeof p.score === "number" && Number.isFinite(p.score) && p.score >= 0 && p.score <= 10
+            ? p.score
+            : undefined,
+        confidence: typeof p.confidence === "number" && Number.isFinite(p.confidence) && p.confidence >= 0
+            && p.confidence <= 1
+            ? p.confidence
+            : undefined,
         issues: parseWorkflowIssues(p.issues),
     }
 }
@@ -534,7 +552,9 @@ export function parseDecompose(
  * Parse a <signoff>{"approved": true|false, "rationale": "..."}</signoff> block
  * from a reviewer's output. Returns null only when no signoff tag is present.
  */
-export function parseSignoff(text: string): { approved: boolean; rationale: string; parseFailed?: boolean } | null {
+export function parseSignoff(
+    text: string,
+): { approved: boolean; rationale: string; parseFailed?: boolean } | null {
     const parsed = extractTaggedJSON(text, "signoff", "签核")
     if (parsed === null) return null
     if (parsed === undefined) return { approved: false, rationale: "", parseFailed: true }
@@ -554,13 +574,6 @@ export function parseSignoff(text: string): { approved: boolean; rationale: stri
     }
 }
 
-/** Loop exit condition 2: every read_only stage emitted a <no_issues/> tag. */
-export function allReadOnlyStagesReportNoIssues(task: ActiveTask): boolean {
-    const roStages = task.stages.filter(s => s.action === "read_only")
-    if (roStages.length === 0) return false
-    return roStages.every(s => NO_ISSUES_TAG.test(task.responses[s.member] ?? ""))
-}
-
 /** Parse a consensus response and classify missing, invalid, or valid payloads. */
 export function parseConsensus(text: string): ConsensusParseResult {
     const parsed = extractTaggedJSON(text, "consensus", "共识")
@@ -576,8 +589,18 @@ export function parseConsensus(text: string): ConsensusParseResult {
     return { agreed: parsed.agreed, parseFailed: false }
 }
 
+/** Loop exit condition 2: every read_only stage emitted a <no_issues/> tag. */
+export function allReadOnlyStagesReportNoIssues(task: ActiveTask): boolean {
+    const roStages = task.stages.filter(s => s.action === "read_only")
+    if (roStages.length === 0) return false
+    return roStages.every(s => NO_ISSUES_TAG.test(task.responses[s.member] ?? ""))
+}
+
 /** Consensus: every participant must emit agreed consensus. */
-export function allMembersAgree(responses: Record<string, string>, participants?: string[]): boolean {
+export function allMembersAgree(
+    responses: Record<string, string>,
+    participants?: string[],
+): boolean {
     // When participants are provided, verify EACH one has a response.
     // Without this, an errored member (no response) is silently ignored,
     // and consensus is declared among only the responding subset.
