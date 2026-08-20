@@ -9,6 +9,7 @@ import type {
     WorkflowStep,
     WorkflowTask,
 } from "../../core/types.js"
+//
 import { joinPolicySatisfied } from "./join-policy.js"
 import { includesWorkflowIndex } from "./invariants.js"
 
@@ -30,58 +31,14 @@ export function assertNeverWorkflowStepKind(value: never): never {
     throw new WorkflowDagInvariantError(value)
 }
 
-/** Return the set of step indices currently active for dispatch. */
-export function getActiveWorkflowStepIndices(
-    task: Pick<WorkflowTask, "activeStepIndices" | "currentStageIndex">,
-): readonly number[] {
-    return task.activeStepIndices ?? [task.currentStageIndex]
+/** Sort workflow step indices ascending. */
+export function sortedWorkflowIndices(indices: readonly number[]): number[] {
+    return [...indices].sort((left, right) => left - right)
 }
 
-/** Resolve the dispatched or primary actor name for a workflow step. */
-export function workflowStepActor(step: WorkflowStep | undefined): string | null {
-    if (step === undefined) return null
-
-    switch (step.kind) {
-        case "task":
-            return step.dispatchedActor ?? step.member ?? null
-        case "gate":
-            return step.dispatchedActor ?? step.verifier ?? null
-        case "join":
-            return step.dispatchedAt === undefined
-                || (step.join?.joinPolicy !== "reduce"
-                    && step.join?.joinPolicy !== "select")
-                ? null
-                : step.dispatchedActor ?? step.join?.reducerMember ?? null
-        case "fanout":
-            return null
-        default:
-            return assertNeverWorkflowStepKind(step)
-    }
-}
-
-/** Collect non-null actor names for all active workflow steps. */
-export function getActiveWorkflowStepActors(
-    task: Pick<WorkflowTask, "activeStepIndices" | "currentStageIndex" | "steps">,
-): readonly string[] {
-    const steps = task.steps ?? []
-    const actors: string[] = []
-
-    for (const index of getActiveWorkflowStepIndices(task)) {
-        const step = steps[index]
-        if (step === undefined) continue
-        // Ensemble gates have multiple verifiers — include ALL of them so
-        // termination's error-tolerance check sees every active verifier.
-        if (step.kind === "gate" && step.verifiers !== undefined) {
-            for (const v of step.verifiers) {
-                if (step.ensembleResults?.[v] === undefined) actors.push(v)
-            }
-            continue
-        }
-        const actor = workflowStepActor(step)
-        if (actor !== null) actors.push(actor)
-    }
-
-    return actors
+/** Push an index to the list if not already present. */
+function pushUniqueWorkflowIndex(indices: number[], index: number): void {
+    if (!indices.includes(index)) indices.push(index)
 }
 
 /** Record an unavailable ensemble verifier as a producer-neutral INVALID vote. */
@@ -150,20 +107,6 @@ export function readyWorkflowStepIndices(
     return ready
 }
 
-/** Check whether a join step's fanout branches are all terminal (completed or errored). */
-export function isWorkflowJoinSatisfied(steps: readonly WorkflowStep[], joinStep: WorkflowStep): boolean {
-    switch (joinStep.kind) {
-        case "join":
-            return joinStep.join === undefined ? false : isJoinMetadataSatisfied(steps, joinStep.join)
-        case "task":
-        case "gate":
-        case "fanout":
-            return false
-        default:
-            return assertNeverWorkflowStepKind(joinStep)
-    }
-}
-
 /** Validate that the workflow step list contains no recursive fanout. */
 export function validateWorkflowDag(steps: readonly WorkflowStep[]): WorkflowDagValidationResult {
     for (let index = 0; index < steps.length; index += 1) {
@@ -194,6 +137,76 @@ function fanoutBranchHeadIndices(step: WorkflowFanoutStep): readonly number[] {
     if (fanout === undefined) return []
 
     return fanout.branchRanges.map(range => range.startIndex)
+}
+
+/** Return the set of step indices currently active for dispatch. */
+export function getActiveWorkflowStepIndices(
+    task: Pick<WorkflowTask, "activeStepIndices" | "currentStageIndex">,
+): readonly number[] {
+    return task.activeStepIndices ?? [task.currentStageIndex]
+}
+
+/** Collect non-null actor names for all active workflow steps. */
+export function getActiveWorkflowStepActors(
+    task: Pick<WorkflowTask, "activeStepIndices" | "currentStageIndex" | "steps">,
+): readonly string[] {
+    const steps = task.steps ?? []
+    const actors: string[] = []
+
+    for (const index of getActiveWorkflowStepIndices(task)) {
+        const step = steps[index]
+        if (step === undefined) continue
+        // Ensemble gates have multiple verifiers — include ALL of them so
+        // termination's error-tolerance check sees every active verifier.
+        if (step.kind === "gate" && step.verifiers !== undefined) {
+            for (const v of step.verifiers) {
+                if (step.ensembleResults?.[v] === undefined) actors.push(v)
+            }
+            continue
+        }
+        const actor = workflowStepActor(step)
+        if (actor !== null) actors.push(actor)
+    }
+
+    return actors
+}
+
+/** Resolve the dispatched or primary actor name for a workflow step. */
+export function workflowStepActor(step: WorkflowStep | undefined): string | null {
+    if (step === undefined) return null
+
+    switch (step.kind) {
+        case "task":
+            return step.dispatchedActor ?? step.member ?? null
+        case "gate":
+            return step.dispatchedActor ?? step.verifier ?? null
+        case "join":
+            return step.dispatchedAt === undefined
+                || (step.join?.joinPolicy !== "reduce"
+                    && step.join?.joinPolicy !== "select")
+                ? null
+                : step.dispatchedActor ?? step.join?.reducerMember ?? null
+        case "fanout":
+            return null
+        default:
+            return assertNeverWorkflowStepKind(step)
+    }
+}
+
+/** Resolve the dispatched or primary actor name for a step. */
+export function workflowStepActorName(step: WorkflowStep): string | undefined {
+    switch (step.kind) {
+        case "task":
+            return step.dispatchedActor ?? step.member
+        case "gate":
+            return step.dispatchedActor ?? step.verifier
+        case "join":
+            return step.dispatchedActor
+        case "fanout":
+            return undefined
+        default:
+            throw new WorkflowDagInvariantError(step)
+    }
 }
 
 /** Recursively collect indices of ready (unblocked, not completed) workflow steps. */
@@ -272,30 +285,18 @@ export function isSameWorkflowBranch(
         && stepBranch.branchId === branch.branchId
 }
 
-/** Sort workflow step indices ascending. */
-export function sortedWorkflowIndices(indices: readonly number[]): number[] {
-    return [...indices].sort((left, right) => left - right)
-}
-
-/** Resolve the dispatched or primary actor name for a step. */
-export function workflowStepActorName(step: WorkflowStep): string | undefined {
-    switch (step.kind) {
-        case "task":
-            return step.dispatchedActor ?? step.member
-        case "gate":
-            return step.dispatchedActor ?? step.verifier
+/** Check whether a join step's fanout branches are all terminal (completed or errored). */
+export function isWorkflowJoinSatisfied(steps: readonly WorkflowStep[], joinStep: WorkflowStep): boolean {
+    switch (joinStep.kind) {
         case "join":
-            return step.dispatchedActor
+            return joinStep.join === undefined ? false : isJoinMetadataSatisfied(steps, joinStep.join)
+        case "task":
+        case "gate":
         case "fanout":
-            return undefined
+            return false
         default:
-            throw new WorkflowDagInvariantError(step)
+            return assertNeverWorkflowStepKind(joinStep)
     }
-}
-
-/** Push an index to the list if not already present. */
-function pushUniqueWorkflowIndex(indices: number[], index: number): void {
-    if (!indices.includes(index)) indices.push(index)
 }
 
 /** Check whether a join step's metadata indicates all branches have reached a terminal state.

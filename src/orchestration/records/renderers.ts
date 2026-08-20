@@ -6,9 +6,25 @@
  * buildSummary (summary.ts) dispatches to exactly one of these per run.
  */
 
+import type {
+    ActiveTask,
+    ArenaCandidateScore
+} from "../../core/types.js"
+import type { Task } from "../../core/types.js"
 import type { Team } from "../../state/store.js"
 import { listAllTasks } from "../../state/tasks.js"
 import { truncateOutput } from "../protocol/output.js"
+//
+import {
+    formatWorkflowLedgerLines,
+    formatWorkflowOutputSections
+} from "./ledger.js"
+
+/** Total byte budget for workflow step outputs in a run summary (ledger + sections). */
+const WORKFLOW_OUTPUT_BYTE_BUDGET = 512 * 1024
+
+/** Appended when the budget is exceeded; keep its byte count in sync with the budget. */
+const WORKFLOW_OUTPUT_TRUNCATED_MARKER = "[workflow outputs truncated: 524288-byte budget exceeded]"
 
 /** Escape XML control characters in member output to prevent tag injection. */
 function escapeXmlUnsafe(s: string): string {
@@ -19,14 +35,6 @@ function escapeXmlUnsafe(s: string): string {
 function safeMemberOutput(text: string, maxBytes?: number): string {
     return escapeXmlUnsafe(truncateOutput(text, maxBytes))
 }
-import { formatWorkflowLedgerLines, formatWorkflowOutputSections } from "./ledger.js"
-import type { ActiveTask, ArenaCandidateScore } from "../../core/types.js"
-import type { Task } from "../../core/types.js"
-
-/** Total byte budget for workflow step outputs in a run summary (ledger + sections). */
-const WORKFLOW_OUTPUT_BYTE_BUDGET = 512 * 1024
-/** Appended when the budget is exceeded; keep its byte count in sync with the budget. */
-const WORKFLOW_OUTPUT_TRUNCATED_MARKER = "[workflow outputs truncated: 524288-byte budget exceeded]"
 
 /**
  * Render a delegate run: task status lines plus each member's captured output.
@@ -34,7 +42,11 @@ const WORKFLOW_OUTPUT_TRUNCATED_MARKER = "[workflow outputs truncated: 524288-by
  * is only "- [completed] Task (@owner)" lines, giving the reviewer no code to
  * evaluate. Mirrors the responses-inclusion pattern used by summarizePipeline.
  */
-export async function summarizeDelegate(team: Team, task: ActiveTask, head: string): Promise<string> {
+export async function summarizeDelegate(
+    team: Team,
+    task: ActiveTask,
+    head: string,
+): Promise<string> {
     // Include only tasks from the current run so deleted tasks from previous
     // runs cannot make summaries grow without bound.
     const allTasks = await listAllTasks(team.directory)
@@ -91,7 +103,10 @@ export function summarizeLoop(task: ActiveTask, head: string): string {
 }
 
 /** Render a route run: selected targets' outputs + router rationale. */
-export function summarizeRoute(task: Extract<ActiveTask, { type: "route" }>, head: string): string {
+export function summarizeRoute(
+    task: Extract<ActiveTask, { type: "route" }>,
+    head: string,
+): string {
     // Exclude the router's <route> decision JSON (noise); show only the
     // selected targets' outputs plus the router's rationale.
     const targets = task.routeTargets ?? []
@@ -105,7 +120,10 @@ export function summarizeRoute(task: Extract<ActiveTask, { type: "route" }>, hea
 }
 
 /** Render an arbitrate run: binding ruling + debaters' positions. */
-export function summarizeArbitrate(task: Extract<ActiveTask, { type: "arbitrate" }>, head: string): string {
+export function summarizeArbitrate(
+    task: Extract<ActiveTask, { type: "arbitrate" }>,
+    head: string,
+): string {
     // Lead with the arbiter's binding ruling; follow with the debaters'
     // final positions. The arbiter's raw <ruling> JSON is excluded.
     const positions = (task.disputants ?? [])
@@ -121,7 +139,11 @@ export function summarizeArbitrate(task: Extract<ActiveTask, { type: "arbitrate"
 }
 
 /** Render a recurse run: root task result + depth-indented decomposition tree. */
-export async function summarizeRecurse(team: Team, task: Extract<ActiveTask, { type: "recurse" }>, head: string): Promise<string> {
+export async function summarizeRecurse(
+    team: Team,
+    task: Extract<ActiveTask, { type: "recurse" }>,
+    head: string,
+): Promise<string> {
     // Lead with the root task's result (the final deliverable); follow
     // with the decomposition tree built from rootTaskId via blockedBy edges.
     const allTasks = await listAllTasks(team.directory)
@@ -165,7 +187,10 @@ export async function summarizeRecurse(team: Team, task: Extract<ActiveTask, { t
 }
 
 /** Render a tollgate run: per-gate verdict table + completed gates' outputs. */
-export function summarizeTollgate(task: Extract<ActiveTask, { type: "tollgate" }>, head: string): string {
+export function summarizeTollgate(
+    task: Extract<ActiveTask, { type: "tollgate" }>,
+    head: string,
+): string {
     // One line per gate: its verdict (or pending), producer, verifier,
     // and FAIL-retry count. Follow with each completed gate's output.
     const stages = task.gatedStages ?? []
@@ -218,7 +243,10 @@ export function summarizePipeline(task: ActiveTask, head: string): string {
  * labeled by step number + member, so a member running multiple task steps
  * does not produce duplicate ### member headers with the wrong output).
  */
-export function summarizeWorkflow(task: Extract<ActiveTask, { type: "workflow" }>, head: string): string {
+export function summarizeWorkflow(
+    task: Extract<ActiveTask, { type: "workflow" }>,
+    head: string,
+): string {
     const steps = task.steps ?? []
     const rows = formatWorkflowLedgerLines(steps)
     const rawLedger = rows.length > 0 ? `\n[Steps]\n${rows.join("\n")}` : ""
@@ -334,7 +362,10 @@ export function summarizeParallel(task: ActiveTask, head: string): string {
 }
 
 /** Render an arena run: winner line + evaluator scoreboard + audit note. */
-export function summarizeArena(task: Extract<ActiveTask, { type: "arena" }>, head: string): string {
+export function summarizeArena(
+    task: Extract<ActiveTask, { type: "arena" }>,
+    head: string,
+): string {
     // Lead with the winner line (name + selection basis), then the
     // evaluator-attested scoreboard sorted by the winner metric, then a
     // candidates/evaluator audit note. A failed run (no winner / no
