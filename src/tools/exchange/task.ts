@@ -11,14 +11,19 @@
  */
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
-import { isEnoent } from "../../core/utils.js"
-import { logSwallowed } from "../../core/log.js"
 
 import type { PluginContext } from "../../core/context.js"
+import type { Task } from "../../core/types/task.js"
+import type { TaskStatus } from "../../core/types.js"
+import { isEnoent } from "../../core/utils.js"
+import { logSwallowed } from "../../core/log.js"
 import { withLock } from "../../state/locks.js"
 import { claimMutexPath } from "../../state/paths.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
-import { loadTeamState, reloadTeamStateLocked } from "../../state/store.js"
+import { 
+    loadTeamState,
+    reloadTeamStateLocked
+} from "../../state/store.js"
 import {
     TASK_ID_PATTERN,
     MemberHoldsActiveTaskError,
@@ -31,8 +36,6 @@ import {
     listAllTasks,
     updateTask,
 } from "../../state/tasks.js"
-import type { Task } from "../../core/types/task.js"
-import type { TaskStatus } from "../../core/types.js"
 import type { ResolvedMember } from "../../state/resolve.js"
 
 /**
@@ -52,13 +55,15 @@ async function rejectIfIsolated(
         // Use the authoritative mode field because tasks array presence is not
         // an isolation boundary.
         if (at?.type === "parallel" && at.mode === "isolated") {
-            return `Error: shared task access is disabled in parallel isolated mode. Isolated members cannot share a task list.`
+            return (`Error: shared task access is disabled in parallel isolated mode. `
+                + `Isolated members cannot share a task list.`)
         }
         return null
     } catch (err) {
         if (isEnoent(err)) return `Error: team "${teamId}" not found`
         logSwallowed(ctx, "loadTeamState failed during isolated-mode check", err, { team: teamId })
-        return `Error: cannot verify team state for isolated-mode check. Underlying error: ${err instanceof Error ? err.message : String(err)}`
+        return (`Error: cannot verify team state for isolated-mode check. Underlying error: `
+            + `${err instanceof Error ? err.message : String(err)}`)
     }
 }
 
@@ -251,7 +256,8 @@ export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
                     if (isEnoent(err)) {
                         return `Error: team "${args.team_id}" not found`
                     }
-                    return `Error: cannot verify team state for isolated-mode check. Task claim rejected. Underlying error: ${err instanceof Error ? err.message : String(err)}`
+                    return (`Error: cannot verify team state for isolated-mode check. Task claim rejected. `
+                        + `Underlying error: ${err instanceof Error ? err.message : String(err)}`)
                 }
                 try {
                     return await withLock(claimMutexPath(team.directory), () => team.mutex.runExclusive(async () => {
@@ -261,12 +267,14 @@ export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
                             if (isEnoent(err)) {
                                 return `Error: team "${args.team_id}" not found`
                             }
-                            return `Error: cannot verify team state for isolated-mode check. Task claim rejected. Underlying error: ${err instanceof Error ? err.message : String(err)}`
+                            return (`Error: cannot verify team state for isolated-mode check. Task claim rejected. `
+                                + `Underlying error: ${err instanceof Error ? err.message : String(err)}`)
                         }
                         const at = team.activeTask
                         // Use at.mode === "isolated", the authoritative field.
                         if (at?.type === "parallel" && at.mode === "isolated") {
-                            return `Error: team_task_claim is disabled in parallel isolated mode. Isolated members cannot share a task list.`
+                            return (`Error: team_task_claim is disabled in parallel isolated mode. `
+                                + `Isolated members cannot share a task list.`)
                         }
                         const task = await claimTask(
                             dir,
@@ -322,8 +330,15 @@ export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
                     if (isEnoent(err)) {
                         return `Error: team "${args.team_id}" not found`
                     }
-                    logSwallowed(ctx, "loadTeamState failed during recurse single-writer check; rejecting completion", err, { team: args.team_id })
-                    return `Error: cannot verify team state for recurse single-writer check. Task completion rejected to avoid bypassing orchestrator ownership. Underlying error: ${err instanceof Error ? err.message : String(err)}`
+                    logSwallowed(
+                        ctx,
+                        "loadTeamState failed during recurse single-writer check; rejecting completion",
+                        err,
+                        { team: args.team_id },
+                    )
+                    return (`Error: cannot verify team state for recurse single-writer check. `
+                        + `Task completion rejected to avoid bypassing orchestrator ownership. `
+                        + `Underlying error: ${err instanceof Error ? err.message : String(err)}`)
                 }
                 if (team?.activeTask?.type === "recurse") {
                     return (
