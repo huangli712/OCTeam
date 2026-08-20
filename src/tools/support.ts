@@ -8,12 +8,21 @@
  */
 
 import type { PluginContext } from "../core/context.js"
-import { logSwallowed } from "../core/log.js"
-import { OCTEAM_AGENTS, isOCTeamAgent } from "../core/role.js"
-import type { Team } from "../state/store.js"
-import { MEMBER_NAME_POOL, RESERVED_NAMES } from "../state/naming.js"
 import type { MemberState } from "../core/types.js"
-import type { Bounds, SignoffPolicy } from "../core/types.js"
+import type {
+    Bounds,
+    SignoffPolicy
+} from "../core/types.js"
+import { logSwallowed } from "../core/log.js"
+import {
+    OCTEAM_AGENTS,
+    isOCTeamAgent
+} from "../core/role.js"
+import type { Team } from "../state/store.js"
+import {
+    MEMBER_NAME_POOL,
+    RESERVED_NAMES
+} from "../state/naming.js"
 
 /** Resource bounds with design defaults, overridden by user input. */
 export function defaultBounds(override?: Partial<Bounds>): Bounds {
@@ -71,7 +80,11 @@ export async function abortAndResetMembers(
     const abortFailed = new Set<string>()
     const abortResults: Array<{ member: string; aborted: boolean }> = []
     for (const m of team.members) {
-        if (!m.isMaster && m.sessionId && (m.status === "running" || m.status === "errored" || m.retryingSince !== undefined)) {
+        if (
+            !m.isMaster
+            && m.sessionId
+            && (m.status === "running" || m.status === "errored" || m.retryingSince !== undefined)
+        ) {
             try {
                 await ctx.client.session.abort({
                     path: { id: m.sessionId },

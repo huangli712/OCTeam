@@ -1,5 +1,13 @@
 /** @jsxImportSource @opentui/solid */
 
+/**
+ * TUI plugin entry: registers the OCTeam session-navigator sidebar into the
+ * host's sidebar_content slot (teams/members/mailbox live in ./teams.ts,
+ * rendering in ./sidebar.tsx). Hosts without slot support fail registration
+ * gracefully; non-support errors are logged so operators can tell an
+ * unsupported host from a real defect.
+ */
+
 import type { TuiPlugin } from "@opencode-ai/plugin/tui"
 import { createMemo } from "solid-js"
 import pkg from "../../package.json" with { type: "json" }
