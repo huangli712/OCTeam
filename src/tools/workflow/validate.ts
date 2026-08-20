@@ -237,8 +237,6 @@ function validateStepKindFields(step: WorkflowToolStep, location: string): strin
         : `Error: ${location} kind "${step.kind}" must not set ${owner} fields (found "${unexpected}")`
 }
 
-// --- public shape validation ---
-
 /** Validate the structural shape of public workflow steps (fanout/join pairing, branch rules). */
 export function validatePublicWorkflowShape(steps: readonly WorkflowToolStep[]): string | null {
     const duplicateStepId = validateDuplicateStepIds(steps)
@@ -280,8 +278,6 @@ export function validatePublicWorkflowShape(steps: readonly WorkflowToolStep[]):
     }
     return null
 }
-
-// --- matrix/foreach shape ---
 
 /** Validate matrix/foreach constraints on fanout steps in the public step array. */
 export function validateMatrixForeachShapeInSteps(steps: readonly WorkflowToolStep[]): string | null {
@@ -338,13 +334,13 @@ function validateMatrixForeachShape(step: WorkflowFanoutToolStep, displayStep: n
         const totalSteps = expansionCount * templateSteps
         const MAX_EXPANDED_STEPS = 256
         if (totalSteps > MAX_EXPANDED_STEPS) {
-            return `Error: fanout step ${displayStep} expands to ${totalSteps} steps (${expansionCount} branches × ${templateSteps} per branch), exceeding the ${MAX_EXPANDED_STEPS} limit`
+            return (`Error: fanout step ${displayStep} expands to ${totalSteps} steps`
+                + ` (${expansionCount} branches × ${templateSteps} per branch),`
+                + ` exceeding the ${MAX_EXPANDED_STEPS} limit`)
         }
     }
     return null
 }
-
-// --- fanout validation ---
 
 /** Validate join_policy on a fanout step: known policy, quorum/required_branches/reducer_member consistency. */
 function validateFanoutJoinPolicy(step: WorkflowFanoutToolStep, displayStep: number): string | null {
@@ -353,7 +349,9 @@ function validateFanoutJoinPolicy(step: WorkflowFanoutToolStep, displayStep: num
         // Policy-specific fields require an explicit join_policy because they
         // have no effect under the default tolerance policy.
         if (step.required_branches !== undefined || step.quorum !== undefined || step.reducer_member !== undefined) {
-            return `Error: fanout step ${displayStep} has join_policy-specific fields (required_branches/quorum/reducer_member) but no join_policy is set. Set join_policy explicitly.`
+            return (`Error: fanout step ${displayStep} has join_policy-specific fields`
+                + ` (required_branches/quorum/reducer_member) but no join_policy is set.`
+                + ` Set join_policy explicitly.`)
         }
         return null
     }
@@ -400,13 +398,16 @@ function validateFanoutJoinPolicy(step: WorkflowFanoutToolStep, displayStep: num
     // is only for 'quorum'; required_branches only for 'required_branches';
     // reducer_member only for 'reduce'/'select'.
     if (policy !== "quorum" && step.quorum !== undefined) {
-        return `Error: fanout step ${displayStep} join_policy='${policy}' must not set \`quorum\` (only join_policy='quorum')`
+        return (`Error: fanout step ${displayStep} join_policy='${policy}' must not set \`quorum\` `
+            + `(only join_policy='quorum')`)
     }
     if (policy !== "required_branches" && step.required_branches !== undefined) {
-        return `Error: fanout step ${displayStep} join_policy='${policy}' must not set \`required_branches\` (only join_policy='required_branches')`
+        return (`Error: fanout step ${displayStep} join_policy='${policy}' must not set \`required_branches\` `
+            + `(only join_policy='required_branches')`)
     }
     if (policy !== "reduce" && policy !== "select" && step.reducer_member !== undefined) {
-        return `Error: fanout step ${displayStep} join_policy='${policy}' must not set \`reducer_member\` (only join_policy='reduce'/'select')`
+        return (`Error: fanout step ${displayStep} join_policy='${policy}' must not set \`reducer_member\` `
+            + `(only join_policy='reduce'/'select')`)
     }
     return null
 }
@@ -588,8 +589,9 @@ function validateBranchGateGotos(
     ] as const) {
         if (ref === undefined) continue
         if (resolvePublicGotoRef(steps, gateIndex, ref) < 0) {
-            return (`Error: fanout step ${fanoutDisplayStep} branch "${branchId}" step ${gateIndex + 1} (gate) ${field}`
-                + ` "${String(ref)}" must not cross fanout boundaries`)
+            return (`Error: fanout step ${fanoutDisplayStep} branch "${branchId}"`
+                + ` step ${gateIndex + 1} (gate) ${field} "${String(ref)}"`
+                + ` must not cross fanout boundaries`)
         }
     }
     return null
@@ -615,7 +617,8 @@ function validateTaskInputs(
     return null
 }
 
-/** Validate that a retry-count field is an integer in [0, MAX_RETRY_COUNT]. Returns null when absent or valid, an error string otherwise. */
+/** Validate that a retry-count field is an integer in [0, MAX_RETRY_COUNT].
+ * Returns null when absent or valid, an error string otherwise. */
 function validateRetryCountField(
     value: number | undefined,
     fieldName: string,
@@ -628,7 +631,8 @@ function validateRetryCountField(
     return null
 }
 
-/** Full semantic validation of a lowered task step: rejects gate fields, validates retry/cap consistency, checks team membership. */
+/** Full semantic validation of a lowered task step: rejects gate fields,
+ * validates retry/cap consistency, checks team membership. */
 function validateLoweredTaskStep(
     steps: readonly LoweredWorkflowStep[],
     task: LoweredWorkflowLinearStep,
@@ -877,7 +881,8 @@ function validateLoweredGateStep(
         // within their workflow scope.
         const gateStep = steps[index]
         if (targetStep && gateStep?.kind === "gate" && gateStep.branch === undefined && targetStep.branch !== undefined) {
-            return `Error: ${location} ${field} "${String(ref)}" references a branch-internal step from a top-level gate — gotos cannot cross branch boundaries`
+            return (`Error: ${location} ${field} "${String(ref)}" references a branch-internal step`
+                + ` from a top-level gate — gotos cannot cross branch boundaries`)
         }
         if (gate.on_invalid === "escalate" && field === "on_invalid_goto") {
             return (`Error: ${location} on_invalid_goto is incompatible with on_invalid='escalate'`
@@ -900,7 +905,9 @@ function validateLoweredGateStep(
             // A gate verifying a join cannot retry: the retry path re-dispatches
             // the target as a task, but a join has no actor. Reject at config time.
             if (gate.on_fail === "retry") {
-                return `Error: ${location} on_fail='retry' is incompatible with a join target (join has no actor to re-dispatch). Use on_fail='fail' or on_fail='skip' instead.`
+                return (`Error: ${location} on_fail='retry' is incompatible with a join target`
+                    + ` (join has no actor to re-dispatch).`
+                    + ` Use on_fail='fail' or on_fail='skip' instead.`)
             }
             continue
         }
@@ -991,7 +998,11 @@ function validateLoweredGateStep(
 }
 
 /** Validate a lowered fanout step: verify reducer_member is a team member when applicable. */
-function validateLoweredFanoutStep(step: LoweredWorkflowFanoutStep, displayStep: number, team: Team): string | null {
+function validateLoweredFanoutStep(
+    step: LoweredWorkflowFanoutStep,
+    displayStep: number,
+    team: Team,
+): string | null {
     if ((step.fanout.joinPolicy === "reduce" || step.fanout.joinPolicy === "select")
         && step.fanout.reducerMember !== undefined
         && !isTeamMember(team, step.fanout.reducerMember)) {
@@ -999,8 +1010,6 @@ function validateLoweredFanoutStep(step: LoweredWorkflowFanoutStep, displayStep:
     }
     return null
 }
-
-// --- graph validator ---
 
 /** Full structural and semantic validation of the lowered workflow graph against a team. */
 export function validateWorkflowGraph(args: ResolvedWorkflowToolArgs, team: Team): string | null {
@@ -1081,13 +1090,13 @@ export function validateWorkflowStepsAgainstMembers(
     return validateWorkflowArgs(resolvedArgs, team)
 }
 
-// --- source validation + arg resolution ---
-
 /** Validate that exactly one of steps or workflow_file is set. */
 export function validateWorkflowSource(args: WorkflowToolArgs): string | null {
     if (hasInlineSteps(args) === (args.workflow_file !== undefined)) {
         return "Error: team_workflow must set exactly one of steps or workflow_file"
     }
-    if (args.steps !== undefined && args.steps.length === 0) return "Error: steps must contain at least one step"
+    if (args.steps !== undefined && args.steps.length === 0) {
+        return "Error: steps must contain at least one step"
+    }
     return null
 }
