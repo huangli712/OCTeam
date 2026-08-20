@@ -23,11 +23,16 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { PluginContext } from "../../core/context.js"
 import { logSwallowed } from "../../core/log.js"
 import { isEnoent } from "../../core/utils.js"
-import { isIndexedMember } from "../../state/resolve.js"
-import { assertNoSymlinkTraversal, atomicWrite, withLock } from "../../state/locks.js"
-import { validateMemberAgent, validateMemberName } from "../support.js"
 import { validateWorkflowSteps } from "../../orchestration/workflow/loader.js"
+import { isIndexedMember } from "../../state/resolve.js"
+import { 
+    assertNoSymlinkTraversal,
+    atomicWrite,
+    withLock
+} from "../../state/locks.js"
+//
 import { validateWorkflowStepsAgainstMembers } from "./validate.js"
+import { validateMemberAgent, validateMemberName } from "../support.js"
 
 /** Agent name for planner child sessions. */
 const PLANNER_AGENT = "oct-metis"
@@ -40,8 +45,11 @@ const PLANNER_POLL_MS = 2_000
 
 /** Number of correction rounds before failing the planner session. */
 const PLANNER_MAX_RETRIES = 2
-/** Bounded attempts (and delay between them) for deleting the child session in finally. */
+
+/** Bounded attempts for deleting the child session in finally. */
 const PLANNER_DELETE_ATTEMPTS = 3
+
+/** Delay (ms) between child-session delete attempts. */
 const PLANNER_DELETE_RETRY_MS = 500
 
 /** Maximum size (10 MiB) of an existing loader file we will read for backup. */
@@ -61,6 +69,14 @@ type PlannerResult = { team: unknown; workflow: unknown }
  * success, or `{ error }` with a message fed back to the planner for a retry.
  */
 type PlannerValidate = (parsed: PlannerResult) => PlannerResult | { error: string }
+
+/** Output artifact: team and workflow data ready for serialization. */
+type PlannerArtifact = {
+    readonly directory: string
+    readonly teamId: string
+    readonly team: unknown
+    readonly workflow: unknown
+}
 
 /** Polling configuration for awaiting child session output. */
 type PollConfig = { readonly timeoutMs: number; readonly pollMs: number }
@@ -86,6 +102,21 @@ type ReviseRequest = {
     readonly previousTeam: unknown
     readonly previousWorkflow: unknown
     readonly feedback: string
+}
+
+/** Parsed arguments for the team_planner tool. */
+type TeamPlannerArgs = {
+    op: "propose" | "revise" | "write"
+    team_id: string
+    goal?: string
+    constraints?: string
+    previous_team?: unknown
+    previous_workflow?: unknown
+    feedback?: string
+    team?: unknown
+    workflow?: unknown
+    dry_run?: boolean
+    overwrite?: boolean
 }
 
 /** Type guard: check if a value is a non-null, non-array object. */
@@ -515,14 +546,6 @@ function workflowFileName(teamId: string): string {
     return `workflow.${teamId}.json`
 }
 
-/** Output artifact: team and workflow data ready for serialization. */
-type PlannerArtifact = {
-    readonly directory: string
-    readonly teamId: string
-    readonly team: unknown
-    readonly workflow: unknown
-}
-
 /** Format an artifact preview string with file paths and JSON dumps. */
 function formatArtifact(artifact: PlannerArtifact): string {
     const teamPath = path.join(artifact.directory, teamFileName(artifact.teamId))
@@ -541,21 +564,6 @@ function formatArtifact(artifact: PlannerArtifact): string {
 }
 
 // --- op handlers ------------------------------------------------------------
-
-/** Parsed arguments for the team_planner tool. */
-type TeamPlannerArgs = {
-    op: "propose" | "revise" | "write"
-    team_id: string
-    goal?: string
-    constraints?: string
-    previous_team?: unknown
-    previous_workflow?: unknown
-    feedback?: string
-    team?: unknown
-    workflow?: unknown
-    dry_run?: boolean
-    overwrite?: boolean
-}
 
 /** Handle op="propose": validate args, run planner session, return a preview. */
 async function runProposeOp(ctx: PluginContext, sessionID: string, args: TeamPlannerArgs): Promise<string> {
