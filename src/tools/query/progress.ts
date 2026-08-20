@@ -12,20 +12,46 @@
 import { createReadStream } from "node:fs"
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
-import { isEnoent } from "../../core/utils.js"
-import { logSwallowed } from "../../core/log.js"
 
 import type { PluginContext } from "../../core/context.js"
-import { formatWorkflowMermaid, type MermaidStepStatus } from "../../orchestration/records/mermaid.js"
+import type {
+    RunEvent, 
+    WorkflowRunStep, 
+    WorkflowStep, 
+    WorkflowTask
+} from "../../core/types.js"
+import { isEnoent } from "../../core/utils.js"
+import { logSwallowed } from "../../core/log.js"
+import { 
+    formatWorkflowMermaid, 
+    type MermaidStepStatus 
+} from "../../orchestration/records/mermaid.js"
 import { RunEventSchema } from "../../orchestration/records/schemas.js"
+import { listRunRecords } from "../../orchestration/records/runs.js"
+import { getActiveWorkflowStepIndices } from "../../orchestration/workflow/dag.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
 import { loadTeamState } from "../../state/store.js"
-import { listRunRecords } from "../../orchestration/records/runs.js"
 import { assertNoSymlinkTraversal } from "../../state/locks.js"
-import { isSafePathSegment, runEventsPath } from "../../state/paths.js"
-import { getActiveWorkflowStepIndices } from "../../orchestration/workflow/dag.js"
-import type { RunEvent, WorkflowRunStep, WorkflowStep, WorkflowTask } from "../../core/types.js"
+import { 
+    isSafePathSegment,
+    runEventsPath } from "../../state/paths.js"
 import type { Team } from "../../state/store.js"
+
+/** Byte cap for a single events.jsonl line; longer lines are skipped whole. */
+const MAX_RUN_EVENT_LINE_BYTES = 1024 * 1024
+
+// Cap total formatted output so limit=200 lines × large detail fields
+// cannot produce multi-hundred-MB responses. 256 KiB matches the
+// accumulated output capture cap.
+const MAX_FORMATTED_OUTPUT_BYTES = 256 * 1024
+
+/** A run-event stream result: retained event window, total matched count,
+ *  and count of malformed lines skipped whole. */
+type RunEventWindow = {
+    events: RunEvent[]
+    total: number
+    malformed: number
+}
 
 /** Join policy tag for the active fanout frontier. */
 function activeFanoutJoinPolicy(task: WorkflowTask): string {
@@ -38,6 +64,81 @@ function activeFanoutJoinPolicy(task: WorkflowTask): string {
         if (joinPolicy !== undefined) return ` join_policy=${joinPolicy}`
     }
     return ""
+}
+
+// Stream and validate run events while retaining only the latest matching window.
+async function readRunEventWindow(
+    teamDirectory: string,
+    runId: string,
+    limit: number,
+    since?: number,
+): Promise<RunEventWindow> {
+    const path = runEventsPath(teamDirectory, runId)
+    await assertNoSymlinkTraversal(teamDirectory, path)
+
+    const events: RunEvent[] = []
+    let total = 0
+    let malformed = 0
+    const consumeLine = (line: string): void => {
+        if (!line.trim()) return
+        let value: unknown
+        try {
+            value = JSON.parse(line)
+        } catch {
+            malformed += 1
+            return
+        }
+        const result = RunEventSchema.safeParse(value)
+        if (!result.success) {
+            malformed += 1
+            return
+        }
+        total += 1
+        if (since !== undefined && result.data.timestamp <= since) return
+        events.push(result.data)
+        events.sort((left, right) => left.timestamp - right.timestamp)
+        if (events.length > limit) events.splice(0, events.length - limit)
+    }
+
+    const input = createReadStream(path, { encoding: "utf8" })
+    let pending = ""
+    let pendingBytes = 0
+    let skippingOversizedLine = false
+    try {
+        for await (const chunk of input) {
+            const text = chunk as string
+            let offset = 0
+            for (;;) {
+                const newlineIndex = text.indexOf("\n", offset)
+                const segmentEnd = newlineIndex === -1 ? text.length : newlineIndex
+                const segment = text.slice(offset, segmentEnd)
+                if (!skippingOversizedLine) {
+                    const segmentBytes = Buffer.byteLength(segment, "utf8")
+                    if (pendingBytes + segmentBytes > MAX_RUN_EVENT_LINE_BYTES) {
+                        pending = ""
+                        pendingBytes = 0
+                        skippingOversizedLine = true
+                        malformed += 1
+                    } else {
+                        pending += segment
+                        pendingBytes += segmentBytes
+                    }
+                }
+                if (newlineIndex === -1) break
+                if (!skippingOversizedLine) consumeLine(pending)
+                pending = ""
+                pendingBytes = 0
+                skippingOversizedLine = false
+                offset = newlineIndex + 1
+            }
+        }
+        if (!skippingOversizedLine && pending.length > 0) consumeLine(pending)
+    } catch (err) {
+        if (!isEnoent(err)) throw err
+    } finally {
+        input.destroy()
+    }
+    return { events, total, malformed }
 }
 
 /** Convert live WorkflowStep[] into WorkflowRunStep[] for mermaid rendering. */
@@ -118,39 +219,6 @@ function liveStatusByIndex(task: WorkflowTask): Map<number, MermaidStepStatus> {
     return statuses
 }
 
-/** Elapsed time suffix for a workflow step line. */
-function formatWorkflowStepElapsed(step: WorkflowStep | undefined): string {
-    if (step?.startedAt === undefined) return ""
-    return ` elapsed=${Math.max(0, Date.now() - step.startedAt)}ms`
-}
-
-/** One-line frontier indicator for a single active step. */
-function formatWorkflowFrontierStep(steps: readonly WorkflowStep[], index: number): string {
-    const step = steps[index]
-    const branch = step?.branch
-    const branchTag = branch === undefined ? "" : `${branch.branchId}: `
-    return `${branchTag}step ${index + 1}/${steps.length}${formatWorkflowStepElapsed(step)}`
-}
-
-/** Stage description line for a workflow task (frontier or simple progress). */
-function formatWorkflowStage(task: WorkflowTask): string {
-    const steps = task.steps ?? []
-    if (steps.length === 0) return ""
-    const activeIndices = getActiveWorkflowStepIndices(task)
-    const hasBranchFrontier =
-        activeIndices.length > 1 || activeIndices.some(index => steps[index]?.branch !== undefined)
-    if (!hasBranchFrontier) {
-        return (
-            `  step ${task.currentStageIndex + 1}/${steps.length}` +
-            `${formatWorkflowStepElapsed(steps[task.currentStageIndex])}`
-        )
-    }
-    return (
-        `  frontier ${activeIndices.map(index => formatWorkflowFrontierStep(steps, index)).join(", ")}` +
-        `${activeFanoutJoinPolicy(task)}`
-    )
-}
-
 /** One-line-per-member live snapshot (current state, not history). */
 function formatSnapshot(team: Team): string[] {
     const lines: string[] = [`Team: ${team.teamName}  status: ${team.status}`]
@@ -193,96 +261,6 @@ function formatSnapshot(team: Team): string[] {
     return lines
 }
 
-/** A run-event stream result: retained event window, total matched count,
- *  and count of malformed lines skipped whole. */
-type RunEventWindow = {
-    events: RunEvent[]
-    total: number
-    malformed: number
-}
-
-/** Byte cap for a single events.jsonl line; longer lines are skipped whole. */
-const MAX_RUN_EVENT_LINE_BYTES = 1024 * 1024
-// Cap total formatted output so limit=200 lines × large detail fields
-// cannot produce multi-hundred-MB responses. 256 KiB matches the
-// accumulated output capture cap.
-const MAX_FORMATTED_OUTPUT_BYTES = 256 * 1024
-
-// Stream and validate run events while retaining only the latest matching window.
-async function readRunEventWindow(
-    teamDirectory: string,
-    runId: string,
-    limit: number,
-    since?: number,
-): Promise<RunEventWindow> {
-    const path = runEventsPath(teamDirectory, runId)
-    await assertNoSymlinkTraversal(teamDirectory, path)
-
-    const events: RunEvent[] = []
-    let total = 0
-    let malformed = 0
-    const consumeLine = (line: string): void => {
-        if (!line.trim()) return
-        let value: unknown
-        try {
-            value = JSON.parse(line)
-        } catch {
-            malformed += 1
-            return
-        }
-        const result = RunEventSchema.safeParse(value)
-        if (!result.success) {
-            malformed += 1
-            return
-        }
-        total += 1
-        if (since !== undefined && result.data.timestamp <= since) return
-        events.push(result.data)
-        events.sort((left, right) => left.timestamp - right.timestamp)
-        if (events.length > limit) events.splice(0, events.length - limit)
-    }
-
-    const input = createReadStream(path, { encoding: "utf8" })
-    let pending = ""
-    let pendingBytes = 0
-    let skippingOversizedLine = false
-    try {
-        for await (const chunk of input) {
-            const text = chunk as string
-            let offset = 0
-            for (;;) {
-                const newlineIndex = text.indexOf("\n", offset)
-                const segmentEnd = newlineIndex === -1 ? text.length : newlineIndex
-                const segment = text.slice(offset, segmentEnd)
-                if (!skippingOversizedLine) {
-                    const segmentBytes = Buffer.byteLength(segment, "utf8")
-                    if (pendingBytes + segmentBytes > MAX_RUN_EVENT_LINE_BYTES) {
-                        pending = ""
-                        pendingBytes = 0
-                        skippingOversizedLine = true
-                        malformed += 1
-                    } else {
-                        pending += segment
-                        pendingBytes += segmentBytes
-                    }
-                }
-                if (newlineIndex === -1) break
-                if (!skippingOversizedLine) consumeLine(pending)
-                pending = ""
-                pendingBytes = 0
-                skippingOversizedLine = false
-                offset = newlineIndex + 1
-            }
-        }
-        if (!skippingOversizedLine && pending.length > 0) consumeLine(pending)
-    } catch (err) {
-        if (!isEnoent(err)) throw err
-    } finally {
-        input.destroy()
-    }
-    return { events, total, malformed }
-}
-
 /** Render the event timeline with times relative to the first event. */
 function formatTimeline(events: RunEvent[], runId: string, totalBefore: number, malformed: number): string[] {
     if (events.length === 0) {
@@ -319,6 +297,39 @@ function formatTimeline(events: RunEvent[], runId: string, totalBefore: number, 
         ? `Timeline (last ${shown} of ${totalBefore}${malformedSuffix}, run ${runId.slice(0, 8)}…):`
         : `Timeline (${shown} events${malformedSuffix}, run ${runId.slice(0, 8)}…):`
     return [header, ...cappedLines]
+}
+
+/** Elapsed time suffix for a workflow step line. */
+function formatWorkflowStepElapsed(step: WorkflowStep | undefined): string {
+    if (step?.startedAt === undefined) return ""
+    return ` elapsed=${Math.max(0, Date.now() - step.startedAt)}ms`
+}
+
+/** One-line frontier indicator for a single active step. */
+function formatWorkflowFrontierStep(steps: readonly WorkflowStep[], index: number): string {
+    const step = steps[index]
+    const branch = step?.branch
+    const branchTag = branch === undefined ? "" : `${branch.branchId}: `
+    return `${branchTag}step ${index + 1}/${steps.length}${formatWorkflowStepElapsed(step)}`
+}
+
+/** Stage description line for a workflow task (frontier or simple progress). */
+function formatWorkflowStage(task: WorkflowTask): string {
+    const steps = task.steps ?? []
+    if (steps.length === 0) return ""
+    const activeIndices = getActiveWorkflowStepIndices(task)
+    const hasBranchFrontier =
+        activeIndices.length > 1 || activeIndices.some(index => steps[index]?.branch !== undefined)
+    if (!hasBranchFrontier) {
+        return (
+            `  step ${task.currentStageIndex + 1}/${steps.length}` +
+            `${formatWorkflowStepElapsed(steps[task.currentStageIndex])}`
+        )
+    }
+    return (
+        `  frontier ${activeIndices.map(index => formatWorkflowFrontierStep(steps, index)).join(", ")}` +
+        `${activeFanoutJoinPolicy(task)}`
+    )
 }
 
 /** Render a live mermaid diagram for an in-progress workflow, or null. */
