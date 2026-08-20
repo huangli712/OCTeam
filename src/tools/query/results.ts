@@ -12,16 +12,29 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
-import { truncateOutput, formatWorkflowIssueDetail } from "../../orchestration/protocol/output.js"
-import { formatWorkflowMermaid } from "../../orchestration/records/mermaid.js"
-import { resolveCallerInTeam } from "../../state/resolve.js"
-import { listRunRecords, readRunRecord } from "../../orchestration/records/runs.js"
-import { assertNeverWorkflowStepKind } from "../../orchestration/workflow/dag.js"
+import type {
+    RunRecord,
+    WorkflowGateStep,
+    WorkflowRunStep
+} from "../../core/types.js"
 import { logSwallowed } from "../../core/log.js"
 import { isEnoent } from "../../core/utils.js"
+import { 
+    truncateOutput, 
+    formatWorkflowIssueDetail 
+} from "../../orchestration/protocol/output.js"
+import { 
+    listRunRecords,
+    readRunRecord
+} from "../../orchestration/records/runs.js"
+import { formatWorkflowMermaid } from "../../orchestration/records/mermaid.js"
+import { assertNeverWorkflowStepKind } from "../../orchestration/workflow/dag.js"
+import { resolveCallerInTeam } from "../../state/resolve.js"
 import { safeReadFile } from "../../state/locks.js"
-import { runMemberOutputPath, isSafePathSegment } from "../../state/paths.js"
-import type { RunRecord, WorkflowGateStep, WorkflowRunStep } from "../../core/types.js"
+import { 
+    runMemberOutputPath,
+    isSafePathSegment
+} from "../../state/paths.js"
 
 /** Byte cap for indented step output in the workflow tree display. */
 const STEP_OUTPUT_DISPLAY_CAP = 1024
@@ -175,7 +188,6 @@ function formatWorkflowBranchLine(fanoutStep: WorkflowRunStep, branchId: string,
     return `  - Branch ${branchId} [${status}] steps ${range.startIndex + 1}-${range.endIndex + 1}`
 }
 
-
 /** Render all workflow steps into display lines, handling fanout branch trees. */
 function formatWorkflowStepLines(steps: readonly WorkflowRunStep[]): string[] {
     if (!hasWorkflowBranchTree(steps)) {
@@ -321,7 +333,8 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
                 try {
                     record = await readRunRecord(caller.directory, args.run_id)
                 } catch (err) {
-                    return `Error: run "${args.run_id}" for team "${args.team_id}" could not be read: ${err instanceof Error ? err.message : String(err)}`
+                    return (`Error: run "${args.run_id}" for team "${args.team_id}" could not be read: `
+                        + `${err instanceof Error ? err.message : String(err)}`)
                 }
                 if (!record) return `Error: run "${args.run_id}" not found for team "${args.team_id}"`
             } else {
@@ -329,7 +342,8 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
                 try {
                     records = await listRunRecords(caller.directory)
                 } catch (err) {
-                    return `Error: run records for team "${args.team_id}" could not be read: ${err instanceof Error ? err.message : String(err)}`
+                    return (`Error: run records for team "${args.team_id}" could not be read: `
+                        + `${err instanceof Error ? err.message : String(err)}`)
                 }
                 if (records.length === 0) return `No run records for team "${args.team_id}" yet.`
                 record = records[0]
@@ -361,7 +375,8 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
                         err,
                         { runId: record.runId, member: args.member },
                     )
-                    return `Error: output file for "${args.member}" is unreadable in run ${record.runId}: ${err instanceof Error ? err.message : String(err)}`
+                    return (`Error: output file for "${args.member}" is unreadable in run ${record.runId}: `
+                        + `${err instanceof Error ? err.message : String(err)}`)
                 }
             }
 
@@ -406,7 +421,8 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
                     if (code === "ENOENT") {
                         previews.push(`### ${name} (${info.bytes} bytes)\n[output file missing]`)
                     } else {
-                        previews.push(`### ${name} (${info.bytes} bytes)\n[output file unreadable: ${err instanceof Error ? err.message : String(err)}]`)
+                        previews.push(`### ${name} (${info.bytes} bytes)\n[output file unreadable: `
+                            + `${err instanceof Error ? err.message : String(err)}]`)
                     }
                 }
             }
