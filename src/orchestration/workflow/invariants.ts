@@ -14,6 +14,7 @@ import type {
     WorkflowStep,
     WorkflowTask,
 } from "../../core/types.js"
+//
 import { gateTargetIndices } from "./gate-targets.js"
 import { joinPolicySatisfied } from "./join-policy.js"
 
@@ -29,6 +30,29 @@ export type WorkflowInvariantCheckResult =
 type WorkflowInvariantContext = {
     readonly steps: readonly WorkflowStep[]
     readonly violations: string[]
+}
+
+/** Check whether an active step can advance based on its kind and state; return a violation string or null. */
+function activeStepViolation(
+    steps: readonly WorkflowStep[],
+    index: number,
+    step: WorkflowStep,
+): string | null {
+    if (step.completed) return `step ${index} is completed`
+    switch (step.kind) {
+        case "task":
+        case "gate":
+            return null
+        case "fanout":
+            return canFanoutAdvance(steps, step.fanout) ? null : `step ${index} fanout cannot advance`
+        case "join":
+            if (step.join !== undefined && isJoinSatisfied(steps, index, step.join)) {
+                return null
+            }
+            return `step ${index} join cannot advance`
+        default:
+            return assertNever(step)
+    }
 }
 
 /** Validate all runtime invariants on a workflow task's step state. */
@@ -74,28 +98,15 @@ function checkActiveStepIndices(
     }
 }
 
-/** Check whether an active step can advance based on its kind and state; return a violation string or null. */
-function activeStepViolation(steps: readonly WorkflowStep[], index: number, step: WorkflowStep): string | null {
-    if (step.completed) return `step ${index} is completed`
-    switch (step.kind) {
-        case "task":
-        case "gate":
-            return null
-        case "fanout":
-            return canFanoutAdvance(steps, step.fanout) ? null : `step ${index} fanout cannot advance`
-        case "join":
-            if (step.join !== undefined && isJoinSatisfied(steps, index, step.join)) {
-                return null
-            }
-            return `step ${index} join cannot advance`
-        default:
-            return assertNever(step)
-    }
-}
-
 /** Validate common step properties and dispatch to kind-specific checks. */
-function checkStep(context: WorkflowInvariantContext, index: number, step: WorkflowStep): void {
-    if (step.skipped === true && !step.completed) context.violations.push(`step ${index}: skipped requires completed`)
+function checkStep(
+    context: WorkflowInvariantContext,
+    index: number,
+    step: WorkflowStep,
+): void {
+    if (step.skipped === true && !step.completed) {
+        context.violations.push(`step ${index}: skipped requires completed`)
+    }
     if (step.branch !== undefined) checkBranchMetadata(context, index, step.branch)
 
     switch (step.kind) {
@@ -122,7 +133,11 @@ function checkStep(context: WorkflowInvariantContext, index: number, step: Workf
 }
 
 /** Validate a gate step's target indices, verifier conflicts, and attempt counters. */
-function checkGateStep(context: WorkflowInvariantContext, index: number, step: WorkflowGateStep): void {
+function checkGateStep(
+    context: WorkflowInvariantContext,
+    index: number,
+    step: WorkflowGateStep,
+): void {
     const targetIndices = gateTargetIndices(context.steps, index)
     const explicitTargetIndices = step.targetStepIndices !== undefined && step.targetStepIndices.length > 0
         ? step.targetStepIndices
@@ -183,7 +198,8 @@ function checkGateStep(context: WorkflowInvariantContext, index: number, step: W
         }
         const target = context.steps[gotoIdx]
         if (target.kind !== "task" && target.kind !== "gate") {
-            context.violations.push(`step ${index}: ${field} ${gotoIdx} targets a ${target.kind} step (only task/gate allowed)`)
+            context.violations.push(`step ${index}: ${field} ${gotoIdx} targets a ${target.kind} `
+                + `step (only task/gate allowed)`)
             continue
         }
         // Cross-branch check: goto target must be in the same branch (or
@@ -194,7 +210,8 @@ function checkGateStep(context: WorkflowInvariantContext, index: number, step: W
                 context.violations.push(`step ${index}: ${field} ${gotoIdx} crosses branch boundary`)
             }
         } else if (target.branch !== undefined) {
-            context.violations.push(`step ${index}: ${field} ${gotoIdx} targets inside a branch from top-level gate`)
+            context.violations.push(`step ${index}: ${field} ${gotoIdx} targets inside a branch `
+                + `from top-level gate`)
         }
     }
     for (const counter of [
@@ -212,7 +229,11 @@ function checkGateStep(context: WorkflowInvariantContext, index: number, step: W
 }
 
 /** Validate that a branch's metadata is consistent with its fanout and join markers. */
-function checkBranchMetadata(context: WorkflowInvariantContext, index: number, branch: WorkflowBranchMetadata): void {
+function checkBranchMetadata(
+    context: WorkflowInvariantContext,
+    index: number,
+    branch: WorkflowBranchMetadata,
+): void {
     const fanout = fanoutAt(context.steps, branch.fanoutIndex)
     if (fanout === null) {
         context.violations.push(`step ${index}: branch fanout ${branch.fanoutIndex} is not a fanout marker`)
@@ -255,7 +276,11 @@ function checkBranchMetadata(context: WorkflowInvariantContext, index: number, b
 }
 
 /** Validate a fanout step's join link, branch ranges, and range ordering. */
-function checkFanoutStep(context: WorkflowInvariantContext, index: number, step: WorkflowFanoutStep): void {
+function checkFanoutStep(
+    context: WorkflowInvariantContext,
+    index: number,
+    step: WorkflowFanoutStep,
+): void {
     const fanout = step.fanout
     if (fanout === undefined) {
         context.violations.push(`step ${index}: fanout metadata is missing`)
@@ -312,7 +337,11 @@ function checkFanoutStep(context: WorkflowInvariantContext, index: number, step:
 }
 
 /** Validate a join step's fanout link, branch tails, errored/survivor IDs, and policy satisfaction. */
-function checkJoinStep(context: WorkflowInvariantContext, index: number, step: WorkflowJoinStep): void {
+function checkJoinStep(
+    context: WorkflowInvariantContext,
+    index: number,
+    step: WorkflowJoinStep,
+): void {
     const join = step.join
     if (join === undefined) {
         context.violations.push(`step ${index}: join metadata is missing`)
@@ -372,7 +401,10 @@ function checkJoinStep(context: WorkflowInvariantContext, index: number, step: W
 }
 
 /** Check whether a fanout has at least one non-empty branch range with an in-bounds start index. */
-function canFanoutAdvance(steps: readonly WorkflowStep[], fanout: WorkflowFanoutMetadata | undefined): boolean {
+function canFanoutAdvance(
+    steps: readonly WorkflowStep[],
+    fanout: WorkflowFanoutMetadata | undefined,
+): boolean {
     if (fanout === undefined) return false
     const join = steps[fanout.joinIndex]
     if (join?.kind !== "join" || join.join === undefined) return false
@@ -383,36 +415,10 @@ function canFanoutAdvance(steps: readonly WorkflowStep[], fanout: WorkflowFanout
     )
 }
 
-/** Check whether a join's branches are all terminal and its join policy is satisfied. */
-function isJoinSatisfied(steps: readonly WorkflowStep[], joinIndex: number, join: WorkflowJoinMetadata): boolean {
-    const fanout = fanoutAt(steps, join.fanoutIndex)
-    if (fanout === null || fanout.joinIndex !== joinIndex) return false
-    const erroredBranchIds = new Set(join.erroredBranchIds ?? [])
-    const survivorBranchIds: string[] = []
-    for (let branchIndex = 0; branchIndex < fanout.branchIds.length; branchIndex += 1) {
-        const branchId = fanout.branchIds[branchIndex]
-        if (branchId === undefined || erroredBranchIds.has(branchId)) continue
-        const tailIndex = join.branchTailIndices[branchIndex]
-        if (tailIndex === undefined || !isTerminalStep(steps[tailIndex])) return false
-        survivorBranchIds.push(branchId)
-    }
-    return joinPolicySatisfied(join, survivorBranchIds, erroredBranchIds.size)
-}
-
 /** Return the fanout metadata at the given index, or null if it is not a fanout step. */
 function fanoutAt(steps: readonly WorkflowStep[], index: number): WorkflowFanoutMetadata | null {
     const step = steps[index]
     return step?.kind === "fanout" && step.fanout !== undefined ? step.fanout : null
-}
-
-/** Check whether a step is in a terminal state (completed or skipped). */
-function isTerminalStep(step: WorkflowStep | undefined): boolean {
-    return step?.completed === true || step?.skipped === true
-}
-
-/** Check that an index is a non-negative integer within the steps array bounds. */
-function isIndexInBounds(steps: readonly WorkflowStep[], index: number): boolean {
-    return Number.isInteger(index) && index >= 0 && index < steps.length
 }
 
 /** Check whether an index falls within the given branch range. */
@@ -428,4 +434,34 @@ function rangesOverlap(left: WorkflowBranchRange, right: WorkflowBranchRange): b
 /** Exhaustive match guard: throw if an unreachable value is reached. */
 function assertNever(value: never): never {
     throw new Error(`Unhandled workflow step kind: ${String(value)}`)
+}
+
+/** Check whether a join's branches are all terminal and its join policy is satisfied. */
+function isJoinSatisfied(
+    steps: readonly WorkflowStep[],
+    joinIndex: number,
+    join: WorkflowJoinMetadata,
+): boolean {
+    const fanout = fanoutAt(steps, join.fanoutIndex)
+    if (fanout === null || fanout.joinIndex !== joinIndex) return false
+    const erroredBranchIds = new Set(join.erroredBranchIds ?? [])
+    const survivorBranchIds: string[] = []
+    for (let branchIndex = 0; branchIndex < fanout.branchIds.length; branchIndex += 1) {
+        const branchId = fanout.branchIds[branchIndex]
+        if (branchId === undefined || erroredBranchIds.has(branchId)) continue
+        const tailIndex = join.branchTailIndices[branchIndex]
+        if (tailIndex === undefined || !isTerminalStep(steps[tailIndex])) return false
+        survivorBranchIds.push(branchId)
+    }
+    return joinPolicySatisfied(join, survivorBranchIds, erroredBranchIds.size)
+}
+
+/** Check whether a step is in a terminal state (completed or skipped). */
+function isTerminalStep(step: WorkflowStep | undefined): boolean {
+    return step?.completed === true || step?.skipped === true
+}
+
+/** Check that an index is a non-negative integer within the steps array bounds. */
+function isIndexInBounds(steps: readonly WorkflowStep[], index: number): boolean {
+    return Number.isInteger(index) && index >= 0 && index < steps.length
 }
