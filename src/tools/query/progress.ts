@@ -400,7 +400,8 @@ export function teamProgressTool(ctx: PluginContext): ToolDefinition {
                     records = await listRunRecords(team.directory)
                 } catch (err) {
                     logSwallowed(ctx, "team_progress failed to read run records", err, { team: args.team_id })
-                    return `Error: run records for team "${args.team_id}" could not be read: ${err instanceof Error ? err.message : String(err)}`
+                    return (`Error: run records for team "${args.team_id}" could not be read: `
+                        + `${err instanceof Error ? err.message : String(err)}`)
                 }
                 runId = records[0]?.runId
             }
