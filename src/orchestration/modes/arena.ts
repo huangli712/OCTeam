@@ -6,12 +6,20 @@
  */
 
 import type { PluginContext } from "../../core/context.js"
-import { type Team, saveTeamState } from "../../state/store.js"
-import type { ArenaCandidateScore, ArenaScoreboard, ArenaTask, MemberState } from "../../core/types.js"
+import type {
+    ArenaCandidateScore,
+    ArenaScoreboard,
+    ArenaTask,
+    MemberState
+} from "../../core/types.js"
 import { maybeAdvanceBarrier } from "../control/barriers.js"
 import { dispatchToMember } from "../control/dispatch.js"
-import { parseScoreboard } from "../protocol/decisions.js"
 import { finishRun } from "../control/completion.js"
+import {
+    type Team,
+    saveTeamState
+} from "../../state/store.js"
+import { parseScoreboard } from "../protocol/decisions.js"
 import { findMember } from "../../tools/support.js"
 import type { CaptureMemberOutputResult } from "../records/capture.js"
 
@@ -147,7 +155,8 @@ export function buildArenaEvaluatorPrompt(task: ArenaTask, team: Team): string {
             : `Read each candidate's files at the path shown and score them against the criteria above.\n`)
         + `Score them all identically.\n`
         + `Emit EXACTLY one scoreboard block and nothing after it:\n`
-        + `<scoreboard>{"scores":[{"member":"...","score":<n>,"metrics":{...},"passed":true|false,"rationale":"..."}],"rationale":"..."}</scoreboard>`
+        + `<scoreboard>{"scores":[{"member":"...","score":<n>,"metrics":{...},`
+        + `"passed":true|false,"rationale":"..."}],"rationale":"..."}</scoreboard>`
     )
 }
 
