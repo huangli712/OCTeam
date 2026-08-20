@@ -25,12 +25,25 @@
  */
 
 import type { PluginContext } from "../../core/context.js";
-import { type Team, saveTeamState } from "../../state/store.js";
 import type {
     WorkflowGateStep,
     WorkflowStep,
     WorkflowTask,
 } from "../../core/types.js";
+import {
+    type Team,
+    saveTeamState
+} from "../../state/store.js";
+import { maybeTriggerSignoff } from "../control/signoff.js";
+import {
+    forceApprovalRequest,
+    maybeRequestApproval
+} from "../control/approval.js";
+import { dispatchToMember } from "../control/dispatch.js";
+import { finishRun } from "../control/completion.js";
+import { recordEvent } from "../records/events.js";
+import { findMember } from "../../tools/support.js";
+//
 import {
     buildGateProducerOutput,
     buildGateVerifierPrompt,
@@ -44,9 +57,6 @@ import {
     workflowCompleteReason,
     workflowJumpLimitReason,
 } from "./reasons.js";
-import { dispatchToMember } from "../control/dispatch.js";
-import { finishRun } from "../control/completion.js";
-import { recordEvent } from "../records/events.js";
 import {
     assertNeverWorkflowStepKind,
     getActiveWorkflowStepIndices,
@@ -54,8 +64,6 @@ import {
     recordUnavailableEnsembleVerifier,
     sortedWorkflowIndices,
 } from "./dag.js";
-import { maybeTriggerSignoff } from "../control/signoff.js";
-import { forceApprovalRequest, maybeRequestApproval } from "../control/approval.js";
 import {
     completeWorkflowJoinStep,
     dispatchWorkflowJoinReducer,
@@ -64,8 +72,6 @@ import {
     markWorkflowStepCompleted,
     markWorkflowStepDispatched,
 } from "./fanout.js";
-import { findMember } from "../../tools/support.js";
-
 import { buildWorkflowUpstream } from "./upstream.js";
 
 /** Default per-gate jump cap when max_jumps is not explicitly set. */
@@ -125,7 +131,9 @@ export async function dispatchTaskStep(
             }
         }
         if (missing.length > 0) {
-            const reason = `workflow_input_skipped: step ${index + 1} declares inputs [${missing.join(", ")}] but at least one was skipped (likely by a forward goto). Refusing to dispatch a task without its declared dependencies.`
+            const reason = `workflow_input_skipped: step ${index + 1} declares inputs [${missing.join(", ")}]`
+                + ` but at least one was skipped (likely by a forward goto).`
+                + ` Refusing to dispatch a task without its declared dependencies.`
             await finishRun(ctx, team, reason, "failed")
             return false
         }
@@ -185,12 +193,15 @@ export async function dispatchEnsembleGate(
         }
     }
     if (skippedTargets.length > 0) {
-        await finishRun(
-            ctx,
-            team,
-            `workflow_input_skipped: ensemble gate step ${index + 1} verifies target(s) [${skippedTargets.join(", ")}] but at least one was skipped (likely by a forward goto). Refusing to verify with missing producer output.`,
-            "failed",
-        )
+        const reason = `workflow_input_skipped: ensemble gate step ${index + 1}`
+                + ` verifies target(s) [${skippedTargets.join(", ")}] but at least one was skipped`
+                + ` (likely by a forward goto). Refusing to verify with missing producer output.`
+            await finishRun(
+                ctx,
+                team,
+                reason,
+                "failed",
+            )
         return false
     }
     step.approvalBeforeGranted = undefined;
@@ -308,12 +319,10 @@ export async function dispatchGateStep(
         }
     }
     if (skippedTargets.length > 0) {
-        await finishRun(
-            ctx,
-            team,
-            `workflow_input_skipped: gate step ${index + 1} verifies target(s) [${skippedTargets.join(", ")}] but at least one was skipped (likely by a forward goto). Refusing to verify with missing producer output.`,
-            "failed",
-        )
+        const reason = `workflow_input_skipped: gate step ${index + 1}`
+            + ` verifies target(s) [${skippedTargets.join(", ")}] but at least one was skipped`
+            + ` (likely by a forward goto). Refusing to verify with missing producer output.`
+        await finishRun(ctx, team, reason, "failed")
         return false
     }
     step.approvalBeforeGranted = undefined;
