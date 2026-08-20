@@ -19,14 +19,14 @@ const STATUS_CLASS_DEFS: Record<MermaidStepStatus, string> = {
     skipped: "classDef skipped fill:#e9ecef,stroke:#adb5bd,stroke-dasharray:3;",
 }
 
-/** Build a deterministic Mermaid node id from a step (s<step_number>). */
-function mermaidNodeId(step: WorkflowRunStep): string {
-    return `s${step.step}`
-}
-
 /** Check if a gate step has a conditional goto (a `where` clause). */
 function hasConditionalGoto(step: WorkflowRunStep): boolean {
     return step.where !== undefined
+}
+
+/** Build a deterministic Mermaid node id from a step (s<step_number>). */
+function mermaidNodeId(step: WorkflowRunStep): string {
+    return `s${step.step}`
 }
 
 /** Sanitize a branch id for use in Mermaid subgraph names. */
