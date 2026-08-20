@@ -21,6 +21,7 @@ export const CLAIM_TTL_MS = 30_000
 
 /** Poll interval (50ms) between lock acquisition retries. */
 const LOCK_POLL_MS = 50
+
 /** Maximum time (30s) to wait for lock acquisition before timing out. */
 const LOCK_MAX_WAIT_MS = 30_000
 
@@ -30,6 +31,11 @@ const LOCK_MAX_WAIT_MS = 30_000
  * times per TTL window. Internal constant.
  */
 const LOCK_HEARTBEAT_MS = LOCK_TTL_MS / 3
+
+// Track locks that releaseLock failed to delete. The local
+// process knows it has exited the critical section, so re-acquiring
+// is safe even though the PID is still alive.
+const locallyReleasedLocks = new Set<string>()
 
 /**
  * Per-team async mutex. Serializes event-handler state mutations within a
@@ -82,7 +88,10 @@ async function fsyncDir(dir: string): Promise<void> {
         // best-effort: dir fsync unsupported or dir missing. Log non-ENOENT
         // errors (e.g. EIO) so durability issues are observable.
         if (!isEnoent(err)) {
-            logger.warn("fsyncDir: directory fsync failed", { dir, error: err instanceof Error ? err.message : String(err) })
+            logger.warn(
+                "fsyncDir: directory fsync failed",
+                { dir, error: err instanceof Error ? err.message : String(err) },
+            )
         }
     }
 }
@@ -130,10 +139,14 @@ export async function withLock<T>(
             await releaseLock(lockPath)
             locallyReleasedLocks.delete(lockPath)
         } catch (err) {
-            logger.warn("withLock: failed to release lock after fn() completed; will retry on next acquire", {
-                lockPath,
-                error: err instanceof Error ? err.message : String(err),
-            })
+            logger.warn(
+                "withLock: failed to release lock after fn() completed; "
+                + "will retry on next acquire",
+                {
+                    lockPath,
+                    error: err instanceof Error ? err.message : String(err),
+                },
+            )
             locallyReleasedLocks.add(lockPath)
         }
     }
@@ -193,9 +206,9 @@ async function maybeReapStaleLock(lockPath: string): Promise<void> {
             // A zero-byte lock may be a NEW lock between open("wx") and
             // writeFile(pid), or a stale lock truncated by an earlier pass
             // through this function. Only unlink if it's been zero-byte for more
-    // than 1 second — a freshly created lock should have its PID written
-    // within milliseconds. This narrows the race window from "any" to
-    // "stale for > 1s".
+            // than 1 second — a freshly created lock should have its PID written
+            // within milliseconds. This narrows the race window from "any" to
+            // "stale for > 1s".
             if (st.size === 0 && Date.now() - st.mtimeMs > 1000) {
                 await fs.unlink(lockPath).catch(() => {})
             }
@@ -209,9 +222,9 @@ async function maybeReapStaleLock(lockPath: string): Promise<void> {
         }
         if (shouldReapStaleLock(st.mtimeMs, Date.now(), LOCK_TTL_MS, alive)) {
             // Re-read the PID before truncating to verify the lock
-    // still belongs to the dead owner. Another process may have
-    // unlinked and re-created the lock between our initial read and
-    // this truncate, which would erase the new owner's PID.
+            // still belongs to the dead owner. Another process may have
+            // unlinked and re-created the lock between our initial read and
+            // this truncate, which would erase the new owner's PID.
             try {
                 const currentPidStr = await fs.readFile(lockPath, "utf8")
                 const currentPid = parseInt(currentPidStr.trim(), 10)
@@ -228,11 +241,6 @@ async function maybeReapStaleLock(lockPath: string): Promise<void> {
         // Lock vanished or unreadable — next open("wx") retry handles it.
     }
 }
-
-// Track locks that releaseLock failed to delete. The local
-// process knows it has exited the critical section, so re-acquiring
-// is safe even though the PID is still alive.
-const locallyReleasedLocks = new Set<string>()
 
 /**
  * Cross-process lock acquisition via exclusive-create (fs.open "wx").
@@ -332,11 +340,15 @@ async function releaseLock(lockPath: string): Promise<void> {
  * model (a member with FS write access tampering with `.octeam/` contents
  * between runs), not a concurrent in-run attacker.
  */
-export async function assertNoSymlinkTraversal(trustedRoot: string, target: string): Promise<void> {
+export async function assertNoSymlinkTraversal(
+    trustedRoot: string,
+    target: string,
+): Promise<void> {
     const root = path.resolve(trustedRoot)
     const resolved = path.resolve(target)
     if (resolved !== root && !resolved.startsWith(root + path.sep)) {
-        throw new Error(`assertNoSymlinkTraversal: target escapes trusted root: target=${target} root=${trustedRoot}`)
+        throw new Error(`assertNoSymlinkTraversal: target escapes trusted root: `
+            + `target=${target} root=${trustedRoot}`)
     }
     // Check the trusted root itself for a symlink because callers may pass
     // team.directory or a disk-replaceable worktreesRoot. A symlinked root would redirect all
@@ -398,7 +410,8 @@ export async function safeReadFile(
             throw new Error(`safeReadFile: not a regular file: ${filePath}`)
         }
         if (opts?.maxBytes !== undefined && stat.size > opts.maxBytes) {
-            throw new Error(`safeReadFile: file exceeds ${opts.maxBytes}-byte cap: ${filePath} (${stat.size} bytes)`)
+            throw new Error(`safeReadFile: file exceeds ${opts.maxBytes}-byte cap: `
+                + `${filePath} (${stat.size} bytes)`)
         }
         const encoding = opts?.encoding ?? "utf8"
         return await fh.readFile({ encoding })
