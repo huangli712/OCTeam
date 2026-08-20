@@ -10,7 +10,6 @@
 import crypto from "node:crypto";
 
 import type { PluginContext } from "../../core/context.js";
-import type { Team } from "../../state/store.js";
 import type {
     MemberState,
     WorkflowBranchMetadata,
@@ -18,10 +17,13 @@ import type {
     WorkflowTask,
     WorkflowJoinMetadata,
 } from "../../core/types.js";
+import type { Team } from "../../state/store.js";
 import { dispatchToMember } from "../control/dispatch.js";
 import { finishRun } from "../control/completion.js";
 import { recordEvent } from "../records/events.js";
 import { truncateOutput } from "../protocol/output.js";
+import { findMember } from "../../tools/support.js";
+//
 import { joinPolicyImpossible } from "./join-policy.js";
 import {
     assertNeverWorkflowStepKind,
@@ -38,7 +40,6 @@ import {
     workflowNoSessionReason,
 } from "./reasons.js";
 import { MAX_UPSTREAM_OUTPUT_BYTES } from "./upstream.js";
-import { findMember } from "../../tools/support.js";
 
 /** Result of evaluating fanout branch errors against join tolerance policy. */
 export type WorkflowFanoutErrorResult =
@@ -59,8 +60,6 @@ type WorkflowJoinAdvanceResult =
     | "failed"
     | "noop";
 
-// --- shared step helpers ---
-
 /** Mark a workflow step as dispatched with a timestamp. */
 export function markWorkflowStepDispatched(step: WorkflowStep): void {
     const now = Date.now();
@@ -74,6 +73,88 @@ export function markWorkflowStepCompleted(step: WorkflowStep): void {
     step.startedAt ??= step.dispatchedAt ?? now;
     step.completedAt = now;
     step.durationMs = Math.max(0, now - step.startedAt);
+}
+
+/** Mark all non-completed steps in a branch as skipped. */
+function markWorkflowBranchStepsSkipped(
+    steps: WorkflowStep[],
+    branch: WorkflowBranchMetadata,
+): void {
+    const fanoutStep = steps[branch.fanoutIndex];
+    const fanout = fanoutStep?.kind === "fanout" ? fanoutStep.fanout : undefined;
+    const range = fanout?.branchRanges[branch.branchIndex];
+    const startIndex = range?.startIndex ?? branch.fanoutIndex + 1;
+    const endIndex = range?.endIndex ?? branch.joinIndex - 1;
+
+    for (let index = startIndex; index <= endIndex; index += 1) {
+        const step = steps[index];
+        if (
+            step === undefined ||
+            !isSameWorkflowBranch(step, branch) ||
+            step.completed
+        )
+            continue;
+        step.completed = true;
+        step.skipped = true;
+    }
+}
+
+/** Mark a fanout branch as errored: skip its steps, update error sets, evaluate tolerance. */
+export function markWorkflowFanoutBranchErrored(
+    task: WorkflowTask,
+    memberName: string,
+): WorkflowFanoutErrorResult {
+    const steps = task.steps ?? [];
+    const activeIndex = findActiveWorkflowStepIndexForMember(task, memberName);
+    const activeStep = activeIndex === null ? undefined : steps[activeIndex];
+    if (
+        activeStep?.branch === undefined
+        && recordUnavailableEnsembleVerifier(activeStep, memberName)
+    ) {
+        // Check whether all ensemble verifiers now have results. If so,
+        // clear dispatchedAt so hasWaitingActiveWorkflowActor stops waiting
+        // and the engine can aggregate on the next tick.
+        if (activeStep && activeStep.kind === "gate" && activeStep.verifiers) {
+            const allResolved = activeStep.verifiers.every(
+                v => activeStep.ensembleResults?.[v] !== undefined,
+            );
+            if (allResolved) {
+                // Clearing dispatchedAt lets the next sweep
+                // detect allResolved and advance. Direct call would need
+                // ctx/team which aren't available in this pure function.
+                activeStep.dispatchedAt = undefined;
+            }
+        }
+        return { kind: "within_tolerance" };
+    }
+    const activeBranch =
+        activeIndex === null ? null : (activeStep?.branch ?? null);
+    // Use the recorded-branch fallback only when the member has no active step.
+    // This handles an ensemble verifier error after its branch leaves the active
+    // set. An error from an active top-level step must remain a top-level error.
+    const branch = activeBranch
+        ?? (activeIndex === null ? recordedErroredBranchForMember(steps, memberName) : null);
+    if (branch === null) return { kind: "not_fanout" };
+
+    const joinStep = steps[branch.joinIndex];
+    if (joinStep?.kind !== "join") return { kind: "not_fanout" };
+    const join = joinStep.join;
+    if (join === undefined)
+        return { kind: "not_fanout" };
+
+    const erroredBranchIds = [
+        ...new Set([...(join.erroredBranchIds ?? []), branch.branchId]),
+    ];
+    joinStep.join = {
+        ...join,
+        erroredBranchIds,
+        survivorBranchIds: branchIdsForJoin(steps, join).filter(
+            (branchId) => !erroredBranchIds.includes(branchId),
+        ),
+    };
+    markWorkflowBranchStepsSkipped(steps, branch);
+    removeActiveWorkflowBranch(task, branch);
+    return evaluateWorkflowFanoutError(steps, branch.joinIndex);
 }
 
 /** Check if a member has a live (non-errored) session. */
@@ -94,8 +175,6 @@ export function liveWorkflowActor(
     const fallback = findMember(team, fallbackName ?? "");
     return hasLiveSession(fallback) ? fallback : undefined;
 }
-
-// --- joined output construction ---
 
 /** Build joined output string from all surviving branches in a fanout. */
 function buildJoinedWorkflowOutput(
@@ -215,8 +294,6 @@ export function buildBranchWorkflowOutput(
     return branchBlocks.length === 0 ? "" : branchLabel + branchBlocks.join("\n\n");
 }
 
-// --- reduce/select reducer dispatch ---
-
 /** Build the prompt for a reduce join policy reducer. */
 function buildWorkflowReducePrompt(
     steps: WorkflowStep[],
@@ -241,48 +318,6 @@ function buildWorkflowSelectPrompt(
         + ` Emit ONLY <selection>{"winner":"branch_id","rationale":"..."}</selection>.\n\n`
         + buildJoinedWorkflowOutput(steps, joinIndex);
 }
-
-/** Dispatch the reducer/selector member for a reduce or select join policy. */
-export async function dispatchWorkflowJoinReducer(
-    ctx: PluginContext,
-    team: Team,
-    task: WorkflowTask,
-    index: number,
-): Promise<boolean> {
-    const step = task.steps?.[index];
-    if (step?.kind !== "join") return false;
-    const joinPolicy = step.join.joinPolicy;
-    const reducerMember = step.join.reducerMember;
-    if (
-        (joinPolicy !== "reduce" && joinPolicy !== "select") ||
-        reducerMember === undefined
-    ) return false;
-    const reducer = liveWorkflowActor(team, reducerMember, undefined);
-    if (reducer === undefined) return false;
-    // Clear any stale response the reducer left from an earlier workflow step so a
-    // crash during the reduce wait cannot be mistaken for a fresh reduce turn on resume.
-    delete task.responses[reducer.name];
-    step.dispatchedActor = reducer.name;
-    step.correlationId = crypto.randomUUID();
-    // Mark dispatched before dispatchToMember so a crash between the state
-    // change and dispatch cannot cause a duplicate prompt on resume. If
-    // dispatchToMember throws, dispatch.ts rolls back the member state; the
-    // next idle event handles the unavailable reducer.
-    markWorkflowStepDispatched(step);
-    await dispatchToMember(
-        ctx,
-        reducer,
-        joinPolicy === "select"
-            ? buildWorkflowSelectPrompt(task.steps ?? [], index)
-            : buildWorkflowReducePrompt(task.steps ?? [], index),
-        reducer.worktreePath ?? ctx.directory,
-        team,
-        { stepIndex: index, correlationId: step.correlationId },
-    );
-    return true;
-}
-
-// --- branch id helpers ---
 
 /** Push a branch id into an array if not already present. */
 function pushUniqueBranchId(
@@ -355,8 +390,6 @@ function joinWithBranchStatus(
     };
 }
 
-// --- join advance ---
-
 /** Complete a join step: dispatch reducer if needed, mark completed, or return waiting. */
 export async function completeWorkflowJoinStep(
     ctx: PluginContext,
@@ -423,8 +456,6 @@ export async function completeWorkflowJoinStep(
     return "completed";
 }
 
-// --- fanout error evaluation ---
-
 /** Evaluate whether a fanout's error count exceeds its join tolerance policy. */
 function evaluateWorkflowFanoutError(
     steps: WorkflowStep[],
@@ -464,30 +495,6 @@ function evaluateWorkflowFanoutError(
               };
     }
     return { kind: "within_tolerance" };
-}
-
-/** Mark all non-completed steps in a branch as skipped. */
-function markWorkflowBranchStepsSkipped(
-    steps: WorkflowStep[],
-    branch: WorkflowBranchMetadata,
-): void {
-    const fanoutStep = steps[branch.fanoutIndex];
-    const fanout = fanoutStep?.kind === "fanout" ? fanoutStep.fanout : undefined;
-    const range = fanout?.branchRanges[branch.branchIndex];
-    const startIndex = range?.startIndex ?? branch.fanoutIndex + 1;
-    const endIndex = range?.endIndex ?? branch.joinIndex - 1;
-
-    for (let index = startIndex; index <= endIndex; index += 1) {
-        const step = steps[index];
-        if (
-            step === undefined ||
-            !isSameWorkflowBranch(step, branch) ||
-            step.completed
-        )
-            continue;
-        step.completed = true;
-        step.skipped = true;
-    }
 }
 
 /** Remove all active steps belonging to a branch from the task's active set. */
@@ -533,64 +540,6 @@ function recordedErroredBranchForMember(
         }
     }
     return null;
-}
-
-/** Mark a fanout branch as errored: skip its steps, update error sets, evaluate tolerance. */
-export function markWorkflowFanoutBranchErrored(
-    task: WorkflowTask,
-    memberName: string,
-): WorkflowFanoutErrorResult {
-    const steps = task.steps ?? [];
-    const activeIndex = findActiveWorkflowStepIndexForMember(task, memberName);
-    const activeStep = activeIndex === null ? undefined : steps[activeIndex];
-    if (
-        activeStep?.branch === undefined
-        && recordUnavailableEnsembleVerifier(activeStep, memberName)
-    ) {
-        // Check whether all ensemble verifiers now have results. If so,
-        // clear dispatchedAt so hasWaitingActiveWorkflowActor stops waiting
-        // and the engine can aggregate on the next tick.
-        if (activeStep && activeStep.kind === "gate" && activeStep.verifiers) {
-            const allResolved = activeStep.verifiers.every(
-                v => activeStep.ensembleResults?.[v] !== undefined,
-            );
-            if (allResolved) {
-                // Clearing dispatchedAt lets the next sweep
-                // detect allResolved and advance. Direct call would need
-                // ctx/team which aren't available in this pure function.
-                activeStep.dispatchedAt = undefined;
-            }
-        }
-        return { kind: "within_tolerance" };
-    }
-    const activeBranch =
-        activeIndex === null ? null : (activeStep?.branch ?? null);
-    // Use the recorded-branch fallback only when the member has no active step.
-    // This handles an ensemble verifier error after its branch leaves the active
-    // set. An error from an active top-level step must remain a top-level error.
-    const branch = activeBranch
-        ?? (activeIndex === null ? recordedErroredBranchForMember(steps, memberName) : null);
-    if (branch === null) return { kind: "not_fanout" };
-
-    const joinStep = steps[branch.joinIndex];
-    if (joinStep?.kind !== "join") return { kind: "not_fanout" };
-    const join = joinStep.join;
-    if (join === undefined)
-        return { kind: "not_fanout" };
-
-    const erroredBranchIds = [
-        ...new Set([...(join.erroredBranchIds ?? []), branch.branchId]),
-    ];
-    joinStep.join = {
-        ...join,
-        erroredBranchIds,
-        survivorBranchIds: branchIdsForJoin(steps, join).filter(
-            (branchId) => !erroredBranchIds.includes(branchId),
-        ),
-    };
-    markWorkflowBranchStepsSkipped(steps, branch);
-    removeActiveWorkflowBranch(task, branch);
-    return evaluateWorkflowFanoutError(steps, branch.joinIndex);
 }
 
 /** Handle a dispatch failure: mark the branch errored or fail the run. */
@@ -640,4 +589,44 @@ function dispatchFailureActorName(step: WorkflowStep): string | undefined {
         default:
             throw assertNeverWorkflowStepKind(step);
     }
+}
+
+/** Dispatch the reducer/selector member for a reduce or select join policy. */
+export async function dispatchWorkflowJoinReducer(
+    ctx: PluginContext,
+    team: Team,
+    task: WorkflowTask,
+    index: number,
+): Promise<boolean> {
+    const step = task.steps?.[index];
+    if (step?.kind !== "join") return false;
+    const joinPolicy = step.join.joinPolicy;
+    const reducerMember = step.join.reducerMember;
+    if (
+        (joinPolicy !== "reduce" && joinPolicy !== "select") ||
+        reducerMember === undefined
+    ) return false;
+    const reducer = liveWorkflowActor(team, reducerMember, undefined);
+    if (reducer === undefined) return false;
+    // Clear any stale response the reducer left from an earlier workflow step so a
+    // crash during the reduce wait cannot be mistaken for a fresh reduce turn on resume.
+    delete task.responses[reducer.name];
+    step.dispatchedActor = reducer.name;
+    step.correlationId = crypto.randomUUID();
+    // Mark dispatched before dispatchToMember so a crash between the state
+    // change and dispatch cannot cause a duplicate prompt on resume. If
+    // dispatchToMember throws, dispatch.ts rolls back the member state; the
+    // next idle event handles the unavailable reducer.
+    markWorkflowStepDispatched(step);
+    await dispatchToMember(
+        ctx,
+        reducer,
+        joinPolicy === "select"
+            ? buildWorkflowSelectPrompt(task.steps ?? [], index)
+            : buildWorkflowReducePrompt(task.steps ?? [], index),
+        reducer.worktreePath ?? ctx.directory,
+        team,
+        { stepIndex: index, correlationId: step.correlationId },
+    );
+    return true;
 }
