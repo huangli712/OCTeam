@@ -40,6 +40,31 @@ import {
 } from "./lower.js"
 import { expandMatrixForeachFanout } from "./lower.js"
 
+/** Field names allowed on EVERY workflow step kind regardless of its `kind`. */
+const COMMON_STEP_FIELDS = [
+    "kind", "id", "inputs", "expose_output", "approval_before", "approval_after",
+    "max_output_bytes", "timeout_ms", "on_timeout", "max_timeout_retries",
+] as const
+
+/** Field names allowed only on a specific step kind (its exclusive fields). */
+const STEP_KIND_FIELDS: Record<WorkflowToolStep["kind"], readonly string[]> = {
+    task: ["member", "fallback_member", "task", "retry_on", "max_task_retries"],
+    gate: [
+        "verifier", "fallback_verifier", "verifiers", "ensemble_policy", "ensemble_quorum",
+        "criteria", "target_step", "targets", "on_fail", "max_retries", "on_invalid",
+        "on_malformed", "max_malformed_retries", "max_invalid_retries", "on_pass_goto",
+        "on_fail_goto", "on_invalid_goto", "where", "max_jumps", "loop",
+    ],
+    fanout: [
+        "branches", "max_errored", "join_policy", "quorum", "required_branches",
+        "reducer_member", "use_survivors", "matrix", "foreach", "as", "steps",
+    ],
+    join: ["join_policy", "quorum", "required_branches", "reducer_member", "use_survivors"],
+}
+
+/** Maximum retry count accepted from workflow input. */
+const MAX_RETRY_COUNT = 5
+
 /** Check whether \`name\` is a member of the given team. */
 function isTeamMember(team: Team, name: string): boolean {
     return team.members.some(member => member.name === name && !member.isMaster)
@@ -50,7 +75,114 @@ function isFanoutToolStep(step: WorkflowToolStep): step is WorkflowFanoutToolSte
     return step.kind === "fanout"
 }
 
-// --- duplicate id validation ---
+/** Track which branch a team member has been assigned to; error on concurrent assignment. */
+function registerFanoutBranchActor(
+    branchByMember: Map<string, string>,
+    member: string | undefined,
+    fanoutDisplayStep: number,
+    branchId: string,
+): string | null {
+    if (member === undefined) return null
+    const existingBranch = branchByMember.get(member)
+    if (existingBranch !== undefined && existingBranch !== branchId) {
+        return (`Error: fanout step ${fanoutDisplayStep} uses member "${member}"`
+            + ` in concurrent branches "${existingBranch}" and "${branchId}"`)
+    }
+    branchByMember.set(member, branchId)
+    return null
+}
+
+/** Check whether args include inline steps (vs. a workflow_file). */
+export function hasInlineSteps(args: WorkflowToolArgs): boolean {
+    return args.steps !== undefined
+}
+
+/** Expand matrix and foreach fanouts, returning a user-facing error for branch-limit failures. */
+function safeExpandMatrixForeach(steps: readonly WorkflowToolStep[]): WorkflowToolStep[] | string {
+    try {
+        return expandMatrixForeachFanout(steps)
+    } catch (err) {
+        return `Error: ${err instanceof Error ? err.message : String(err)}`
+    }
+}
+
+/** Resolve workflow args: load loader if needed, expand matrix/foreach, validate source. */
+export async function resolveWorkflowArgs(
+    ctx: PluginContext, args: WorkflowToolArgs,
+): Promise<ResolvedWorkflowToolArgs | string> {
+    const sourceError = validateWorkflowSource(args)
+    if (sourceError) return sourceError
+    if (args.steps !== undefined) {
+        const shapeError = validateMatrixForeachShapeInSteps(args.steps)
+        if (shapeError !== null) return shapeError
+        const validated = validateWorkflowSteps(args.steps)
+        if ("error" in validated) return validated.error
+        const expanded = safeExpandMatrixForeach(validated.steps)
+        if (typeof expanded === "string") return expanded
+        // Enforce the global step cap after expansion.
+        if (expanded.length > WORKFLOW_MAX_TOTAL_STEPS) {
+            return `Error: workflow expands to ${expanded.length} steps, exceeding the ${WORKFLOW_MAX_TOTAL_STEPS} limit`
+        }
+        return { ...args, steps: expanded }
+    }
+    if (!args.workflow_file) {
+        return "Error: either steps or workflow_file is required"
+    }
+    const loaded = await loadWorkflowFile(ctx.directory, args.workflow_file, args.vars ?? {})
+    if ("error" in loaded) return loaded.error
+    const shapeError = validateMatrixForeachShapeInSteps(loaded.steps)
+    if (shapeError !== null) return shapeError
+    const expanded = safeExpandMatrixForeach(loaded.steps)
+    if (typeof expanded === "string") return expanded
+    return { ...args, steps: expanded }
+}
+
+/** Resolve and validate a gate's targets, returning either resolved indices or an error. */
+export function resolveAndValidateGateTargets(
+    steps: readonly LoweredWorkflowStep[],
+    gate: LoweredWorkflowLinearStep,
+    gateIndex: number,
+    displayStep: number,
+): { readonly indices: readonly number[] } | { readonly error: string } {
+    const location = stepLocation(gate, displayStep, true)
+    if (gate.kind !== "gate") return { error: `Error: ${location} is not a gate step` }
+    const targetIndices: number[] = []
+    if (gate.targets !== undefined) {
+        for (let index = 0; index < gate.targets.length; index += 1) {
+            const targetRef = gate.targets[index]
+            if (targetRef === undefined) {
+                return { error: `Error: ${location} targets[${index}] "undefined" must reference a previous task step` }
+            }
+            if (resolvesToMarkerStep(steps, gateIndex, targetRef)) {
+                return ({ error: `Error: ${location} targets[${index}] "${String(targetRef)}"`
+                    + ` must not reference a fanout marker step` })
+            }
+            const targetIndex = resolveGateTargetRef(steps, gateIndex, targetRef)
+            if (targetIndex < 0) {
+                return ({ error: `Error: ${location} targets[${index}] "${String(targetRef)}"`
+                    + ` must reference a previous task step${typeof targetRef === "string" ? " by id" : ""}` })
+            }
+            if (!targetIndices.includes(targetIndex)) targetIndices.push(targetIndex)
+        }
+        targetIndices.sort((a, b) => a - b)
+        return { indices: targetIndices }
+    }
+    const targetRef = gate.target_step
+    if (targetRef !== undefined && resolvesToMarkerStep(steps, gateIndex, targetRef)) {
+        return ({ error: `Error: ${location} target_step "${String(targetRef)}"`
+            + ` must not reference a fanout/join marker step` })
+    }
+    const targetIndex = resolveGateTargetIndex(steps, gateIndex)
+    if (targetIndex < 0) {
+        if (targetRef === undefined) {
+            return { error: `Error: ${location} has no preceding task step to verify` }
+        }
+        return ({ error: `Error: ${location} target_step "${String(targetRef)}"`
+            + ` must reference a previous task step${typeof targetRef === "string" ? " by id" : ""}` })
+    }
+    targetIndices.push(targetIndex)
+    return { indices: targetIndices }
+}
 
 /** Check for duplicate step ids across public steps and fanout branches. */
 export function validateDuplicateStepIds(steps: readonly WorkflowToolStep[]): string | null {
@@ -81,28 +213,6 @@ function validateStepId(ids: Map<string, number>, id: string | undefined, displa
     if (previous !== undefined) return `Error: duplicate step id "${id}" at steps ${previous} and ${displayStep}`
     ids.set(id, displayStep)
     return null
-}
-
-/** Field names allowed on EVERY workflow step kind regardless of its `kind`. */
-const COMMON_STEP_FIELDS = [
-    "kind", "id", "inputs", "expose_output", "approval_before", "approval_after",
-    "max_output_bytes", "timeout_ms", "on_timeout", "max_timeout_retries",
-] as const
-
-/** Field names allowed only on a specific step kind (its exclusive fields). */
-const STEP_KIND_FIELDS: Record<WorkflowToolStep["kind"], readonly string[]> = {
-    task: ["member", "fallback_member", "task", "retry_on", "max_task_retries"],
-    gate: [
-        "verifier", "fallback_verifier", "verifiers", "ensemble_policy", "ensemble_quorum",
-        "criteria", "target_step", "targets", "on_fail", "max_retries", "on_invalid",
-        "on_malformed", "max_malformed_retries", "max_invalid_retries", "on_pass_goto",
-        "on_fail_goto", "on_invalid_goto", "where", "max_jumps", "loop",
-    ],
-    fanout: [
-        "branches", "max_errored", "join_policy", "quorum", "required_branches",
-        "reducer_member", "use_survivors", "matrix", "foreach", "as", "steps",
-    ],
-    join: ["join_policy", "quorum", "required_branches", "reducer_member", "use_survivors"],
 }
 
 /** Reject a field that belongs to another step kind; the error names the
@@ -318,23 +428,6 @@ function validateFanoutBranches(step: WorkflowFanoutToolStep, displayStep: numbe
     return null
 }
 
-/** Track which branch a team member has been assigned to; error on concurrent assignment. */
-function registerFanoutBranchActor(
-    branchByMember: Map<string, string>,
-    member: string | undefined,
-    fanoutDisplayStep: number,
-    branchId: string,
-): string | null {
-    if (member === undefined) return null
-    const existingBranch = branchByMember.get(member)
-    if (existingBranch !== undefined && existingBranch !== branchId) {
-        return (`Error: fanout step ${fanoutDisplayStep} uses member "${member}"`
-            + ` in concurrent branches "${existingBranch}" and "${branchId}"`)
-    }
-    branchByMember.set(member, branchId)
-    return null
-}
-
 /** Validate that branch task/gate steps do not set prohibited timeout policies. */
 function validateBranchTimeoutPolicy(
     step: WorkflowToolStep,
@@ -494,55 +587,6 @@ function validateBranchGateGotos(
     return null
 }
 
-// --- gate target resolution+validation (lowered) ---
-
-/** Resolve and validate a gate's targets, returning either resolved indices or an error. */
-export function resolveAndValidateGateTargets(
-    steps: readonly LoweredWorkflowStep[],
-    gate: LoweredWorkflowLinearStep,
-    gateIndex: number,
-    displayStep: number,
-): { readonly indices: readonly number[] } | { readonly error: string } {
-    const location = stepLocation(gate, displayStep, true)
-    if (gate.kind !== "gate") return { error: `Error: ${location} is not a gate step` }
-    const targetIndices: number[] = []
-    if (gate.targets !== undefined) {
-        for (let index = 0; index < gate.targets.length; index += 1) {
-            const targetRef = gate.targets[index]
-            if (targetRef === undefined) {
-                return { error: `Error: ${location} targets[${index}] "undefined" must reference a previous task step` }
-            }
-            if (resolvesToMarkerStep(steps, gateIndex, targetRef)) {
-                return ({ error: `Error: ${location} targets[${index}] "${String(targetRef)}"`
-                    + ` must not reference a fanout marker step` })
-            }
-            const targetIndex = resolveGateTargetRef(steps, gateIndex, targetRef)
-            if (targetIndex < 0) {
-                return ({ error: `Error: ${location} targets[${index}] "${String(targetRef)}"`
-                    + ` must reference a previous task step${typeof targetRef === "string" ? " by id" : ""}` })
-            }
-            if (!targetIndices.includes(targetIndex)) targetIndices.push(targetIndex)
-        }
-        targetIndices.sort((a, b) => a - b)
-        return { indices: targetIndices }
-    }
-    const targetRef = gate.target_step
-    if (targetRef !== undefined && resolvesToMarkerStep(steps, gateIndex, targetRef)) {
-        return ({ error: `Error: ${location} target_step "${String(targetRef)}"`
-            + ` must not reference a fanout/join marker step` })
-    }
-    const targetIndex = resolveGateTargetIndex(steps, gateIndex)
-    if (targetIndex < 0) {
-        if (targetRef === undefined) {
-            return { error: `Error: ${location} has no preceding task step to verify` }
-        }
-        return ({ error: `Error: ${location} target_step "${String(targetRef)}"`
-            + ` must reference a previous task step${typeof targetRef === "string" ? " by id" : ""}` })
-    }
-    targetIndices.push(targetIndex)
-    return { indices: targetIndices }
-}
-
 /** Validate that a task step's \`inputs\` reference previous task or join steps within scope. */
 function validateTaskInputs(
     steps: readonly LoweredWorkflowStep[],
@@ -563,8 +607,6 @@ function validateTaskInputs(
     return null
 }
 
-/** Maximum retry count accepted from workflow input. */
-const MAX_RETRY_COUNT = 5
 /** Validate that a retry-count field is an integer in [0, MAX_RETRY_COUNT]. Returns null when absent or valid, an error string otherwise. */
 function validateRetryCountField(
     value: number | undefined,
@@ -1040,49 +1082,4 @@ export function validateWorkflowSource(args: WorkflowToolArgs): string | null {
     }
     if (args.steps !== undefined && args.steps.length === 0) return "Error: steps must contain at least one step"
     return null
-}
-
-/** Check whether args include inline steps (vs. a workflow_file). */
-export function hasInlineSteps(args: WorkflowToolArgs): boolean {
-    return args.steps !== undefined
-}
-
-/** Expand matrix and foreach fanouts, returning a user-facing error for branch-limit failures. */
-function safeExpandMatrixForeach(steps: readonly WorkflowToolStep[]): WorkflowToolStep[] | string {
-    try {
-        return expandMatrixForeachFanout(steps)
-    } catch (err) {
-        return `Error: ${err instanceof Error ? err.message : String(err)}`
-    }
-}
-
-/** Resolve workflow args: load loader if needed, expand matrix/foreach, validate source. */
-export async function resolveWorkflowArgs(
-    ctx: PluginContext, args: WorkflowToolArgs,
-): Promise<ResolvedWorkflowToolArgs | string> {
-    const sourceError = validateWorkflowSource(args)
-    if (sourceError) return sourceError
-    if (args.steps !== undefined) {
-        const shapeError = validateMatrixForeachShapeInSteps(args.steps)
-        if (shapeError !== null) return shapeError
-        const validated = validateWorkflowSteps(args.steps)
-        if ("error" in validated) return validated.error
-        const expanded = safeExpandMatrixForeach(validated.steps)
-        if (typeof expanded === "string") return expanded
-        // Enforce the global step cap after expansion.
-        if (expanded.length > WORKFLOW_MAX_TOTAL_STEPS) {
-            return `Error: workflow expands to ${expanded.length} steps, exceeding the ${WORKFLOW_MAX_TOTAL_STEPS} limit`
-        }
-        return { ...args, steps: expanded }
-    }
-    if (!args.workflow_file) {
-        return "Error: either steps or workflow_file is required"
-    }
-    const loaded = await loadWorkflowFile(ctx.directory, args.workflow_file, args.vars ?? {})
-    if ("error" in loaded) return loaded.error
-    const shapeError = validateMatrixForeachShapeInSteps(loaded.steps)
-    if (shapeError !== null) return shapeError
-    const expanded = safeExpandMatrixForeach(loaded.steps)
-    if (typeof expanded === "string") return expanded
-    return { ...args, steps: expanded }
 }
