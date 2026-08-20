@@ -32,6 +32,18 @@ type DisplayWorkflowRunStep = WorkflowRunStep & {
     malformedAttempts?: number
 }
 
+/** Check whether the step list has any fanout/join/branch steps. */
+function hasWorkflowBranchTree(steps: readonly WorkflowRunStep[]): boolean {
+    return steps.some(step => step.kind === "fanout" || step.kind === "join" || step.branch !== undefined)
+}
+/** Append a formatted step line and its task output to a lines array. */
+function appendWorkflowStepLines(lines: string[], step: WorkflowRunStep, indent: string): void {
+    lines.push(`${indent}${formatWorkflowStepLine(step)}`)
+    if (step.kind === "task" && step.output) {
+        lines.push(formatIndentedOutput(step.output, indent))
+    }
+}
+
 /** Label for a gate's target step (for display in step lines). */
 function workflowTargetLabel(step: WorkflowRunStep): string {
     if (step.targetSteps !== undefined && step.targetSteps.length > 0) {
@@ -72,19 +84,6 @@ function workflowFanoutPolicyTag(fanout: NonNullable<WorkflowRunStep["fanout"]>)
     if (fanout.requiredBranchIds !== undefined) controls.push(`required_branches=${fanout.requiredBranchIds.join(",")}`)
     if (fanout.reducerMember !== undefined) controls.push(`reducer_member=${fanout.reducerMember}`)
     return controls.length > 0 ? `  [${controls.join(", ")}]` : ""
-}
-
-/** Append a formatted step line and its task output to a lines array. */
-function appendWorkflowStepLines(lines: string[], step: WorkflowRunStep, indent: string): void {
-    lines.push(`${indent}${formatWorkflowStepLine(step)}`)
-    if (step.kind === "task" && step.output) {
-        lines.push(formatIndentedOutput(step.output, indent))
-    }
-}
-
-/** Check whether the step list has any fanout/join/branch steps. */
-function hasWorkflowBranchTree(steps: readonly WorkflowRunStep[]): boolean {
-    return steps.some(step => step.kind === "fanout" || step.kind === "join" || step.branch !== undefined)
 }
 
 /** One-line summary of a run record for the runs list. */
