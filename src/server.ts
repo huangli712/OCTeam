@@ -6,19 +6,32 @@
 
 import type { Hooks, PluginInput, PluginModule } from "@opencode-ai/plugin"
 
-import { createPluginContext, warnIfProjectScopeLacksIsolation } from "./core/context.js"
-import type { PluginContext, StorageScope } from "./core/context.js"
+import type {
+    PluginContext,
+    StorageScope
+} from "./core/context.js"
+import {
+    createPluginContext,
+    warnIfProjectScopeLacksIsolation
+} from "./core/context.js"
+import {
+    initLogger,
+    logSwallowed
+} from "./core/log.js"
+import {
+    reconcileActivation,
+    reconcileCrashedTeams
+} from "./orchestration/lifecycle/reconcile.js"
+import { rebuildSessionIndex } from "./state/resolve.js"
+import { createConfigHook } from "./agents/index.js"
 import { createTools } from "./tools/index.js"
+//
 import {
     createCompactingHook,
     createEventHandler,
     createTransformHook,
     startSweepTimer,
 } from "./hooks.js"
-import { reconcileActivation, reconcileCrashedTeams } from "./orchestration/lifecycle/reconcile.js"
-import { rebuildSessionIndex } from "./state/resolve.js"
-import { initLogger, logSwallowed } from "./core/log.js"
-import { createConfigHook } from "./agents/index.js"
 
 const id = "octeam"
 
