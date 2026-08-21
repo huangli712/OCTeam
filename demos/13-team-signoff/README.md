@@ -381,12 +381,12 @@ T+8m     Run: bun check-math-pipeline-quorum.ts <run_dir>
         {
             "name": "carol",
             "role": "coder",
-            "prompt": "You are a coder. You are Stage 3: you will receive bob's output (which includes alice's spec) as context. Implement `class Queue<T>` with enqueue/dequeue/front/isEmpty/size. Use an internal array with two pointers. Embed the full TypeScript code in a ```typescript fenced block. End your output with a line exactly formatted: <!-- IMPL: Queue -->"
+            "prompt": "You are a coder. You are Stage 3: you will receive bob's output (which includes alice's spec) as context. Implement `class Queue<T>` with enqueue/dequeue/front/isEmpty/size. Use an internal array with two pointers, clearing the dequeued slot's reference when advancing head, AND keep memory bounded for a steady-state queue (equal enqueue/dequeue rates, never draining): either wrap indices around the backing array (circular buffer) or periodically compact the backing array once dead slots outnumber live elements, so storage stays proportional to the number of live elements. Embed the full TypeScript code in a ```typescript fenced block. End your output with a line exactly formatted: <!-- IMPL: Queue -->"
         },
         {
             "name": "dave",
             "role": "tester",
-            "prompt": "You are a tester. You are Stage 4: you will receive carol's output (which includes both Stack and Queue implementations) as context. Write 8 test cases covering ALL methods of both data structures: Stack push/pop, Stack peek, Stack isEmpty, Stack size, Queue enqueue/dequeue, Queue front, Queue isEmpty, Queue size. Run them against the implementations. End your output with a line exactly formatted: <!-- PASS_COUNT: <n>/8 -->"
+            "prompt": "You are a tester. You are Stage 4: you will receive carol's output (which includes both Stack and Queue implementations) as context. Write 8 test cases covering ALL methods of both data structures: Stack push/pop, Stack peek, Stack isEmpty, Stack size, Queue enqueue/dequeue, Queue front, Queue isEmpty, Queue size. Queue cases must include two long-lived never-draining scenarios: (1) a growing queue (net enqueue per loop iteration) and (2) a steady-state queue with stable length (one enqueue + one dequeue per iteration, seeded so it never empties) verifying FIFO order, size, and front stay correct throughout. Run them against the implementations. End your output with a line exactly formatted: <!-- PASS_COUNT: <n>/8 -->"
         },
         {
             "name": "erin",
@@ -396,7 +396,7 @@ T+8m     Run: bun check-math-pipeline-quorum.ts <run_dir>
         {
             "name": "frank",
             "role": "reviewer",
-            "prompt": "You are a reviewer. After the pipeline completes, you will be automatically dispatched with a signoff review prompt containing a summary of all 5 stages. Review the spec, both implementations, test results, and documentation. If the complete deliverable meets quality standards, emit <signoff>{\"approved\": true, \"rationale\": \"...\"}</signoff>. If not, emit <signoff>{\"approved\": false, \"rationale\": \"specific issues...\"}</signoff>."
+            "prompt": "You are a reviewer. After the pipeline completes, you will be automatically dispatched with a signoff review prompt containing a summary of all 5 stages. Review the deliverable against these stated stage requirements: (1) the spec covers all listed Stack and Queue methods; (2) both implementations match the spec and the stated implementation requirements — including the Queue's bounded memory under steady-state never-draining usage (circular buffer or periodic compaction); (3) tests pass and include the two required long-lived Queue scenarios (growing and steady-state); (4) documentation is accurate. Emit <signoff>{\"approved\": true, \"rationale\": \"...\"}</signoff> when all four hold; reject ONLY with <signoff>{\"approved\": false, \"rationale\": \"specific issues...\"}</signoff> citing concrete defects against these requirements."
         }
     ]
 }
@@ -422,11 +422,11 @@ T+8m     Run: bun check-math-pipeline-quorum.ts <run_dir>
             },
             {
                 "member": "carol",
-                "task": "Implement class Queue<T> (enqueue/dequeue/front/isEmpty/size). Embed in ```typescript block. End with <!-- IMPL: Queue -->"
+                "task": "Implement class Queue<T> (enqueue/dequeue/front/isEmpty/size) with an internal array + two pointers; clear dequeued slot references and keep memory bounded for steady-state never-draining usage (circular buffer or periodic compaction, storage proportional to live elements). Embed in ```typescript block. End with <!-- IMPL: Queue -->"
             },
             {
                 "member": "dave",
-                "task": "Write and run 8 test cases covering all methods of Stack and Queue: Stack push/pop, peek, isEmpty, size; Queue enqueue/dequeue, front, isEmpty, size. End with <!-- PASS_COUNT: <n>/8 -->"
+                "task": "Write and run 8 test cases covering all methods of Stack and Queue: Stack push/pop, peek, isEmpty, size; Queue enqueue/dequeue, front, isEmpty, size; include two long-lived never-draining Queue cases: one growing (net enqueue per iteration) and one steady-state (enqueue+dequeue per iteration), each verifying FIFO order, size, and front. End with <!-- PASS_COUNT: <n>/8 -->"
             },
             {
                 "member": "erin",
