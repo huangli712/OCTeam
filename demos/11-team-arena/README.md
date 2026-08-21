@@ -71,15 +71,15 @@
     },
     {
       "name": "dave",
-      "role": "reviewer",
+      "role": "evaluator",
       "worktree": true,
-      "prompt": "You are an evaluator. You run the same objective benchmark command against each candidate's worktree and emit a scoreboard. Run the eval command for EVERY candidate at the absolute worktree path shown. Write the benchmark wrapper script yourself based on the eval command, run it per candidate, and produce the score.\n\nEmit EXACTLY one scoreboard block and nothing after it: <scoreboard>{\"scores\":[{\"member\":\"...\",\"score\":<n>,\"metrics\":{...},\"passed\":true|false,\"rationale\":\"...\"}],\"rationale\":\"...\"}</scoreboard>"
+      "prompt": "You are an evaluator. You run the same objective benchmark command against each candidate's worktree and emit a scoreboard. Run the eval command for EVERY candidate at the absolute worktree path shown. Write the benchmark wrapper script yourself based on the eval command, run it per candidate, and produce the score.\n\nCRITICAL FORMAT CONSTRAINTS (the engine machine-parses your scoreboard; violations void the whole evaluation):\n- Every value inside \"metrics\" MUST be a finite NUMBER — no strings, no arrays, no booleans, no null. Put algorithm names, checksums, pass lists, and any other descriptive evidence in the \"rationale\" string instead.\n- The scoreboard block must be the LAST content of your final turn: nothing after it.\n\nEmit EXACTLY one scoreboard block and nothing after it: <scoreboard>{\"scores\":[{\"member\":\"...\",\"score\":<n>,\"metrics\":{\"throughput_ops_per_sec\":<n>},\"passed\":true|false,\"rationale\":\"...\"}],\"rationale\":\"...\"}</scoreboard>"
     }
   ]
 }
 ```
 
-**Role selection rationale**: The first three candidates uniformly use `coder` (`oct-junior` agent, can write code and run tests) in independent worktrees to implement their respective sorting approaches; evaluator uses `reviewer` (read-only agent, focused on running the objective benchmark and producing a structured scoreboard).
+**Role selection rationale**: The first three candidates uniformly use `coder` (`oct-junior` agent, can write code and run tests) in independent worktrees to implement their respective sorting approaches; evaluator uses the dedicated `evaluator` role (`oct-junior` agent — it must write the benchmark wrapper script and run it per candidate worktree, which a read-only `reviewer` agent cannot do; with `reviewer` the run fails as `arena_failed:eval_invalid`).
 
 ### 1.3 Master Launch Call
 
@@ -125,14 +125,16 @@ T+11m    engine parses scoreboard → selectArenaWinner → result delivered to 
 
 ### 1.5 Check Script
 
-> This scenario does not have a standalone check script; evaluation relies on the evaluator's `<scoreboard>` JSON output and the engine's built-in `selectArenaWinner` logic. For external verification, read `runs/<run_id>/dave.md` (evaluator output), extract the scoreboard JSON, and cross-check that `scores[].score` values are finite numbers and `passed` is `true`.
+> Verify with `bun demos/11-team-arena/check-coding-sort-benchmark.ts <run_dir>` (exit codes: 0 PASS | 1 FAIL | 2 usage/IO error).
+>
+> The script extracts the `<scoreboard>` JSON from the evaluator's `dave.md`, requires all 3 candidates present with finite positive scores and a `throughput_ops_per_sec` metric each, requires at least 1 `passed=true`, and confirms the winner holds the maximum score.
 
 ### 1.6 Evaluator Scoreboard Example
 
 The evaluator (dave), after running the three benchmarks, should produce a scoreboard in the following format:
 
 ```
-<scoreboard>{"scores":[{"member":"alice","score":12450000,"metrics":{"throughput_ops_per_sec":12450000,"algorithm":"quickSort","dataset_size":1000000},"passed":true,"rationale":"quickSort on random 10^6: 12.45M ops/sec, fastest of three"},{"member":"bob","score":8700000,"metrics":{"throughput_ops_per_sec":8700000,"algorithm":"mergeSort","dataset_size":1000000},"passed":true,"rationale":"mergeSort on random 10^6: 8.70M ops/sec, stable but slower due to allocation"},{"member":"carol","score":11200000,"metrics":{"throughput_ops_per_sec":11200000,"algorithm":"introSort","dataset_size":1000000},"passed":true,"rationale":"introSort on random 10^6: 11.20M ops/sec, close second to quickSort"}],"rationale":"Benchmark: bun run benchmark.bun.ts on random 10^6-int array. Alice wins with quickSort at 12.45M ops/sec; introSort is 10% slower; mergeSort trails due to extra allocation. Winner metric: max throughput_ops_per_sec."}</scoreboard>
+<scoreboard>{"scores":[{"member":"alice","score":12450000,"metrics":{"throughput_ops_per_sec":12450000,"dataset_size":1000000},"passed":true,"rationale":"quickSort on random 10^6: 12.45M ops/sec, fastest of three"},{"member":"bob","score":8700000,"metrics":{"throughput_ops_per_sec":8700000,"dataset_size":1000000},"passed":true,"rationale":"mergeSort on random 10^6: 8.70M ops/sec, stable but slower due to allocation"},{"member":"carol","score":11200000,"metrics":{"throughput_ops_per_sec":11200000,"dataset_size":1000000},"passed":true,"rationale":"introSort on random 10^6: 11.20M ops/sec, close second to quickSort"}],"rationale":"Benchmark: bun run benchmark.bun.ts on random 10^6-int array. Alice wins with quickSort at 12.45M ops/sec; introSort is 10% slower; mergeSort trails due to extra allocation. Winner metric: max throughput_ops_per_sec."}</scoreboard>
 ```
 
 The engine parses this JSON and selects `alice` as the winner by `winner_metric: "throughput_ops_per_sec"` and `score_direction: "max"`.
@@ -180,15 +182,15 @@ The engine parses this JSON and selects `alice` as the winner by `winner_metric:
     },
     {
       "name": "dave",
-      "role": "physicist",
+      "role": "evaluator",
       "worktree": true,
-      "prompt": "You are a physicist. You evaluate each candidate's integrator by reading their output (the DRIFT marker), re-running their code if possible, and scoring by energy conservation quality. A lower drift is better (min direction). A drift < 1e-3 demonstrates symplectic or near-symplectic behavior (pass).\n\nEmit EXACTLY one scoreboard block and nothing after it: <scoreboard>{\"scores\":[{\"member\":\"...\",\"score\":<n>,\"metrics\":{\"drift\":<n>},\"passed\":true|false,\"rationale\":\"...\"}],\"rationale\":\"...\"}</scoreboard>"
+      "prompt": "You are a physicist. You evaluate each candidate's integrator by reading their output (the DRIFT marker), re-running their code if possible, and scoring by energy conservation quality. A lower drift is better (min direction). A drift < 1e-3 demonstrates symplectic or near-symplectic behavior (pass).\n\nCRITICAL FORMAT CONSTRAINTS (the engine machine-parses your scoreboard; violations void the whole evaluation):\n- Every value inside \"metrics\" MUST be a finite NUMBER — no strings, no arrays, no booleans, no null. Put method names, E_final values, and any other descriptive evidence in the \"rationale\" string instead.\n- The scoreboard block must be the LAST content of your final turn: nothing after it.\n\nEmit EXACTLY one scoreboard block and nothing after it: <scoreboard>{\"scores\":[{\"member\":\"...\",\"score\":<n>,\"metrics\":{\"drift\":<n>},\"passed\":true|false,\"rationale\":\"...\"}],\"rationale\":\"...\"}</scoreboard>"
     }
   ]
 }
 ```
 
-**Role selection rationale**: The first three candidates use `simulator` (specialized in numerical simulation, `oct-junior` agent) in independent worktrees to implement their respective integrators; evaluator uses `physicist` (understands energy conservation and symplectic integrators, can independently recompute and judge drift).
+**Role selection rationale**: The first three candidates use `simulator` (specialized in numerical simulation, `oct-junior` agent) in independent worktrees to implement their respective integrators; evaluator uses the dedicated `evaluator` role (`oct-junior` agent — it may re-run candidate code to recompute drift, so it needs command execution, which a read-only role cannot do).
 
 ### 2.3 Master Launch Call
 
@@ -230,14 +232,16 @@ T+12m    engine parses scoreboard → selectArenaWinner → selects lowest drift
 
 ### 2.5 Check Script
 
-> This scenario relies on the evaluator's `<scoreboard>` JSON output and the engine's built-in winner selection logic. External verification: read `runs/<run_id>/dave.md`, extract the scoreboard JSON, and cross-check that each candidate's `score` value matches their DRIFT marker, and the candidate with the smallest `score` has `passed` as `true`.
+> Verify with `bun demos/11-team-arena/check-physics-integrator-drift.ts <run_dir>` (exit codes: 0 PASS | 1 FAIL | 2 usage/IO error).
+>
+> The script extracts the `<scoreboard>` JSON from the evaluator's `dave.md`, requires all 3 candidates present with finite non-negative drift scores and a `drift` metric each, requires at least 1 `passed=true`, confirms the winner holds the minimum score, and physics-checks that the winning symplectic candidate has drift < 1e-3.
 
 ### 2.6 Evaluator Scoreboard Example
 
 The evaluator (dave), after reviewing the three implementations, should produce a scoreboard in the following format:
 
 ```
-<scoreboard>{"scores":[{"member":"alice","score":0.239,"metrics":{"drift":0.239,"method":"explicit Euler","E_final":0.6195},"passed":false,"rationale":"Explicit Euler: energy grows systematically from 0.5 to 0.6195 (drift 0.239 >> 1e-3). Non-conservative, fails symplecticity check."},{"member":"bob","score":0.318,"metrics":{"drift":0.318,"method":"implicit Euler","E_final":0.341},"passed":false,"rationale":"Implicit Euler: energy decays from 0.5 to 0.341 (drift 0.318 >> 1e-3). Non-conservative, fails symplecticity check."},{"member":"carol","score":0.00041,"metrics":{"drift":0.00041,"method":"Velocity Verlet","E_final":0.499795},"passed":true,"rationale":"Velocity Verlet: energy oscillates near 0.5, relative drift 4.1e-4 < 1e-3. Symplectic behavior confirmed. Pass."}],"rationale":"Evaluated drift from <!-- DRIFT --> markers + recomputation. Carol's Velocity Verlet stays within symplectic bound (drift 4.1e-4). Alice and Bob both exceed 1e-3 threshold by 2+ orders of magnitude. Winner metric: min drift."}</scoreboard>
+<scoreboard>{"scores":[{"member":"alice","score":0.239,"metrics":{"drift":0.239,"E_final":0.6195},"passed":false,"rationale":"Explicit Euler: energy grows systematically from 0.5 to 0.6195 (drift 0.239 >> 1e-3). Non-conservative, fails symplecticity check."},{"member":"bob","score":0.318,"metrics":{"drift":0.318,"E_final":0.341},"passed":false,"rationale":"Implicit Euler: energy decays from 0.5 to 0.341 (drift 0.318 >> 1e-3). Non-conservative, fails symplecticity check."},{"member":"carol","score":0.00041,"metrics":{"drift":0.00041,"E_final":0.499795},"passed":true,"rationale":"Velocity Verlet: energy oscillates near 0.5, relative drift 4.1e-4 < 1e-3. Symplectic behavior confirmed. Pass."}],"rationale":"Evaluated drift from <!-- DRIFT --> markers + recomputation. Carol's Velocity Verlet stays within symplectic bound (drift 4.1e-4). Alice and Bob both exceed 1e-3 threshold by 2+ orders of magnitude. Winner metric: min drift."}</scoreboard>
 ```
 
 The engine selects `carol` (drift 0.00041) as the winner using `score_direction: "min"`.
@@ -285,15 +289,15 @@ The engine selects `carol` (drift 0.00041) as the winner using `score_direction:
     },
     {
       "name": "dave",
-      "role": "mathematician",
+      "role": "evaluator",
       "worktree": true,
-      "prompt": "You are a mathematician. You evaluate each candidate's quadrature implementation by reading their absolute error (QUAD marker), optionally recomputing the integral, and scoring by accuracy. A lower error is better (min direction). An error < 1e-5 demonstrates a well-implemented method (pass).\n\nEmit EXACTLY one scoreboard block and nothing after it: <scoreboard>{\"scores\":[{\"member\":\"...\",\"score\":<n>,\"metrics\":{\"error\":<n>},\"passed\":true|false,\"rationale\":\"...\"}],\"rationale\":\"...\"}</scoreboard>"
+      "prompt": "You are a mathematician. You evaluate each candidate's quadrature implementation by reading their absolute error (QUAD marker), optionally recomputing the integral, and scoring by accuracy. A lower error is better (min direction). An error < 1e-5 demonstrates a well-implemented method (pass).\n\nCRITICAL FORMAT CONSTRAINTS (the engine machine-parses your scoreboard; violations void the whole evaluation):\n- Every value inside \"metrics\" MUST be a finite NUMBER — no strings, no arrays, no booleans, no null. Put method names, exact values, and any other descriptive evidence in the \"rationale\" string instead.\n- The scoreboard block must be the LAST content of your final turn: nothing after it.\n\nEmit EXACTLY one scoreboard block and nothing after it: <scoreboard>{\"scores\":[{\"member\":\"...\",\"score\":<n>,\"metrics\":{\"error\":<n>},\"passed\":true|false,\"rationale\":\"...\"}],\"rationale\":\"...\"}</scoreboard>"
     }
   ]
 }
 ```
 
-**Role selection rationale**: The first three candidates uniformly use `coder` (`oct-junior` agent, can write code and run tests) in independent worktrees to implement their respective quadrature methods; evaluator uses `mathematician` (understands numerical analysis, can recognize the theoretical error orders of different methods).
+**Role selection rationale**: The first three candidates uniformly use `coder` (`oct-junior` agent, can write code and run tests) in independent worktrees to implement their respective quadrature methods; evaluator uses the dedicated `evaluator` role (`oct-junior` agent — it may recompute the integral to verify claimed errors, so it needs command execution, which a read-only role cannot do).
 
 ### 3.3 Master Launch Call
 
@@ -335,14 +339,16 @@ T+12m    engine parses scoreboard → selectArenaWinner → selects smallest err
 
 ### 3.5 Check Script
 
-> This scenario relies on the evaluator's `<scoreboard>` JSON output and the engine's built-in winner selection logic. External verification: read `runs/<run_id>/dave.md`, extract the scoreboard JSON, and cross-check that each candidate's `score` value matches their QUAD marker, and the candidate with the smallest `score` has `passed` as `true`.
+> Verify with `bun demos/11-team-arena/check-math-quad-error.ts <run_dir>` (exit codes: 0 PASS | 1 FAIL | 2 usage/IO error).
+>
+> The script extracts the `<scoreboard>` JSON from the evaluator's `dave.md`, requires all 3 candidates present with finite non-negative error scores and an `error` metric each, requires at least 1 `passed=true`, confirms the winner holds the minimum score, and math-checks that the Gaussian-Legendre winner has error < 1e-10.
 
 ### 3.6 Evaluator Scoreboard Example
 
 The evaluator (dave), after reviewing the three implementations, should produce a scoreboard in the following format:
 
 ```
-<scoreboard>{"scores":[{"member":"alice","score":0.000785,"metrics":{"error":0.000785,"method":"composite trapezoidal (n=100)","exact":0.785398},"passed":false,"rationale":"Trapezoidal rule: O(h²) convergence, 100 subintervals gives error ~7.85e-4 >> 1e-5. Fails accuracy threshold."},{"member":"bob","score":6.5e-8,"metrics":{"error":6.5e-8,"method":"composite Simpson's (n=100)","exact":0.785398},"passed":true,"rationale":"Simpson's rule: O(h⁴) convergence on this smooth integrand, 100 subintervals yields error ~6.5e-8 < 1e-5. Pass."},{"member":"carol","score":4.4e-16,"metrics":{"error":4.4e-16,"method":"20-point Gaussian-Legendre","exact":0.785398},"passed":true,"rationale":"Gaussian-Legendre (n=20): exact for polynomials up to degree 39; 1/(1+x^2) has Bernstein-ellipse radius ρ=1+√2≈2.414, so theoretical error ~ρ^(-2n)≈5e-16 — at IEEE-754 round-off floor. Pass."}],"rationale":"Evaluated absolute error from <!-- QUAD --> markers. Carol's 20-point Gaussian-Legendre achieves machine-precision accuracy (~5e-16); Bob's Simpson's is 8 orders of magnitude worse but still below 1e-5; Alice's trapezoidal is 4 orders above threshold. Winner metric: min error."}</scoreboard>
+<scoreboard>{"scores":[{"member":"alice","score":0.000785,"metrics":{"error":0.000785,"exact":0.785398},"passed":false,"rationale":"Trapezoidal rule: O(h²) convergence, 100 subintervals gives error ~7.85e-4 >> 1e-5. Fails accuracy threshold."},{"member":"bob","score":6.5e-8,"metrics":{"error":6.5e-8,"exact":0.785398},"passed":true,"rationale":"Simpson's rule: O(h⁴) convergence on this smooth integrand, 100 subintervals yields error ~6.5e-8 < 1e-5. Pass."},{"member":"carol","score":4.4e-16,"metrics":{"error":4.4e-16,"exact":0.785398},"passed":true,"rationale":"Gaussian-Legendre (n=20): exact for polynomials up to degree 39; 1/(1+x^2) has Bernstein-ellipse radius ρ=1+√2≈2.414, so theoretical error ~ρ^(-2n)≈5e-16 — at IEEE-754 round-off floor. Pass."}],"rationale":"Evaluated absolute error from <!-- QUAD --> markers. Carol's 20-point Gaussian-Legendre achieves machine-precision accuracy (~5e-16); Bob's Simpson's is 8 orders of magnitude worse but still below 1e-5; Alice's trapezoidal is 4 orders above threshold. Winner metric: min error."}</scoreboard>
 ```
 
 The engine selects `carol` (error ~4.4e-16) as the winner using `score_direction: "min"`.
@@ -404,15 +410,15 @@ The engine selects `carol` (error ~4.4e-16) as the winner using `score_direction
     },
     {
       "name": "frank",
-      "role": "physicist",
+      "role": "evaluator",
       "worktree": true,
-      "prompt": "You are a physicist. You evaluate each candidate's iterative Poisson solver. Write a unified convergence.ts benchmark script in YOUR OWN worktree that:\n  1. Reads each candidate's TypeScript solver from their captured output at runs/<run_id>/<name>.md (extract the ```typescript fenced block)\n  2. Runs EACH candidate's OWN solver UNCHANGED against a common N=100 Poisson problem setup (Dirichlet BC u=0 on the unit square, f = 2π²sin(πx)sin(πy), exact solution u = sin(πx)sin(πy)). The common harness provides only grid/BC/RHS/residual-norm; each candidate's solver runs with its OWN iteration logic — do NOT substitute a unified solver or override methods.\n  3. Runs each to ||r||₂/||b||₂ < 1e-6 using a UNIFIED iteration-count convention (1 iteration = 1 solver step; for Multigrid V-cycle, 1 iteration = 1 V-cycle)\n  4. Records each candidate's iteration count as the 'score' field\nA lower iteration count is better (min direction). A count > 100,000 is considered non-convergent (pass=false). After writing convergence.ts, run `bun run convergence.ts` in your worktree to verify before emitting the scoreboard.\n\nEmit EXACTLY one scoreboard block and nothing after it: <scoreboard>{\"scores\":[{\"member\":\"...\",\"score\":<n>,\"metrics\":{\"iterations\":<n>},\"passed\":true|false,\"rationale\":\"...\"}],\"rationale\":\"...\"}</scoreboard>"
+      "prompt": "You are a physicist. You evaluate each candidate's iterative Poisson solver. Write a unified convergence.ts benchmark script in YOUR OWN worktree that:\n  1. Reads each candidate's TypeScript solver from their captured output at runs/<run_id>/<name>.md (extract the ```typescript fenced block)\n  2. Runs EACH candidate's OWN solver UNCHANGED against a common N=100 Poisson problem setup (Dirichlet BC u=0 on the unit square, f = 2π²sin(πx)sin(πy), exact solution u = sin(πx)sin(πy)). The common harness provides only grid/BC/RHS/residual-norm; each candidate's solver runs with its OWN iteration logic — do NOT substitute a unified solver or override methods.\n  3. Runs each to ||r||₂/||b||₂ < 1e-6 using a UNIFIED iteration-count convention (1 iteration = 1 solver step; for Multigrid V-cycle, 1 iteration = 1 V-cycle)\n  4. Records each candidate's iteration count as the 'score' field\nA lower iteration count is better (min direction). A count > 100,000 is considered non-convergent (pass=false). After writing convergence.ts, run `bun run convergence.ts` in your worktree to verify before emitting the scoreboard.\n\nCRITICAL FORMAT CONSTRAINTS (the engine machine-parses your scoreboard; violations void the whole evaluation):\n- Every value inside \"metrics\" MUST be a finite NUMBER — no strings, no arrays, no booleans, no null. Put method names, residuals, and any other descriptive evidence in the \"rationale\" string instead.\n- The scoreboard block must be the LAST content of your final turn: nothing after it.\n\nEmit EXACTLY one scoreboard block and nothing after it: <scoreboard>{\"scores\":[{\"member\":\"...\",\"score\":<n>,\"metrics\":{\"iterations\":<n>},\"passed\":true|false,\"rationale\":\"...\"}],\"rationale\":\"...\"}</scoreboard>"
     }
   ]
 }
 ```
 
-**Role selection rationale**: The five candidates uniformly use `simulator` (specialized in numerical simulation, `oct-junior` agent) in independent worktrees to implement their respective iterative solvers; evaluator uses `physicist` (understands PDE numerical methods, can independently judge convergence). Note that 6 members (5 candidates + 1 evaluator) reaches arena v1's recommended ceiling.
+**Role selection rationale**: The five candidates uniformly use `simulator` (specialized in numerical simulation, `oct-junior` agent) in independent worktrees to implement their respective iterative solvers; evaluator uses the dedicated `evaluator` role (`oct-junior` agent — it must write and run convergence.ts in its own worktree, so it needs command execution, which a read-only role cannot do). Note that 6 members (5 candidates + 1 evaluator) reaches arena v1's recommended ceiling.
 
 ### 4.3 Master Launch Call
 
@@ -459,14 +465,16 @@ T+30m    engine parses scoreboard → selectArenaWinner → selects fewest itera
 
 ### 4.5 Check Script
 
-> This scenario relies on the evaluator's `<scoreboard>` JSON output and the engine's built-in winner selection logic. External verification: read `runs/<run_id>/frank.md`, extract the scoreboard JSON, cross-check that each candidate's iteration count matches their CONV marker, and the physics expectation is that Multigrid wins (≤20 iterations) and Richardson comes last (≥20000 iterations).
+> Verify with `bun demos/11-team-arena/check-physics-poisson-convergence.ts <run_dir>` (exit codes: 0 PASS | 1 FAIL | 2 usage/IO error).
+>
+> The script extracts the `<scoreboard>` JSON from the evaluator's `frank.md`, requires all 5 candidates present with finite positive integer iteration scores and an `iterations` metric each, requires at least 3 `passed=true`, confirms the winner holds the minimum score, and physics-checks that the Multigrid winner has ≤ 20 iterations and Jacobi has ≥ 5000 iterations.
 
 ### 4.6 Evaluator Scoreboard Example
 
 The evaluator (frank), after running the five benchmarks, should produce a scoreboard in the following format:
 
 ```
-<scoreboard>{"scores":[{"member":"alice","score":6120,"metrics":{"iterations":6120,"method":"Jacobi","residual":9.87e-7},"passed":true,"rationale":"Jacobi: slow convergence (~6k iterations), typical for simple relaxation on 100x100 grid. < 100k => pass."},{"member":"bob","score":2980,"metrics":{"iterations":2980,"method":"Gauss-Seidel","residual":9.92e-7},"passed":true,"rationale":"Gauss-Seidel: ~2x faster than Jacobi due to immediate use of updated values, ~3k iterations on 100x100. Pass."},{"member":"carol","score":312,"metrics":{"iterations":312,"method":"SOR (ω=1.9)","residual":9.65e-7},"passed":true,"rationale":"SOR with near-optimal ω≈1.9: convergence accelerated ~10x vs GS, ~300 iterations. Excellent for this problem class. Pass."},{"member":"dave","score":28150,"metrics":{"iterations":28150,"method":"Richardson (ω≈h²/8)","residual":9.91e-7},"passed":true,"rationale":"Richardson with optimal ω=2/(λ_min+λ_max): convergence factor ~1-2λ_min/λ_max≈0.9995, needs ~28000 iterations to reach 1e-6. Slowest of the five but still < 100k threshold. Pass."},{"member":"erin","score":9,"metrics":{"iterations":9,"method":"Multigrid V(2,2)","residual":8.73e-7},"passed":true,"rationale":"Multigrid V-cycle (2 pre/2 post smoothing, full-weighting restriction, bilinear prolongation): mesh-independent convergence! Only 9 iterations to reach sub-1e-6 residual. Near-optimal O(N) solver. Pass."}],"rationale":"Convergence benchmark via bun run convergence.ts on N=100 Poisson problem (10000 unknowns). Erin's Multigrid dominates at 9 iterations (O(N) optimal); SOR is two orders of magnitude slower at ~300; Gauss-Seidel ~3k; Jacobi ~6k; Richardson trails at ~28k. Winner metric: min iterations."}</scoreboard>
+<scoreboard>{"scores":[{"member":"alice","score":6120,"metrics":{"iterations":6120,"residual":9.87e-7},"passed":true,"rationale":"Jacobi: slow convergence (~6k iterations), typical for simple relaxation on 100x100 grid. < 100k => pass."},{"member":"bob","score":2980,"metrics":{"iterations":2980,"residual":9.92e-7},"passed":true,"rationale":"Gauss-Seidel: ~2x faster than Jacobi due to immediate use of updated values, ~3k iterations on 100x100. Pass."},{"member":"carol","score":312,"metrics":{"iterations":312,"residual":9.65e-7},"passed":true,"rationale":"SOR with near-optimal ω≈1.9: convergence accelerated ~10x vs GS, ~300 iterations. Excellent for this problem class. Pass."},{"member":"dave","score":28150,"metrics":{"iterations":28150,"residual":9.91e-7},"passed":true,"rationale":"Richardson with optimal ω=2/(λ_min+λ_max): convergence factor ~1-2λ_min/λ_max≈0.9995, needs ~28000 iterations to reach 1e-6. Slowest of the five but still < 100k threshold. Pass."},{"member":"erin","score":9,"metrics":{"iterations":9,"residual":8.73e-7},"passed":true,"rationale":"Multigrid V-cycle (2 pre/2 post smoothing, full-weighting restriction, bilinear prolongation): mesh-independent convergence! Only 9 iterations to reach sub-1e-6 residual. Near-optimal O(N) solver. Pass."}],"rationale":"Convergence benchmark via bun run convergence.ts on N=100 Poisson problem (10000 unknowns). Erin's Multigrid dominates at 9 iterations (O(N) optimal); SOR is two orders of magnitude slower at ~300; Gauss-Seidel ~3k; Jacobi ~6k; Richardson trails at ~28k. Winner metric: min iterations."}</scoreboard>
 ```
 
 The engine selects `erin` (9 iterations) as the winner using `score_direction: "min"` — multigrid's near-optimal convergence demonstrates an order-of-magnitude advantage on a 10000-unknown system.
@@ -475,19 +483,19 @@ The engine selects `erin` (9 iterations) as the winner using `score_direction: "
 
 ## Quick-Start Prompts
 
-Paste any of the following prompts into the master session and the AI will automatically complete the full loop. In arena mode, evaluation reads the **evaluator** member's .md file for the `<scoreboard>` JSON + the engine's built-in `selectArenaWinner` logic.
+Paste any of the following prompts into the master session and the AI will automatically complete the full loop. In arena mode, evaluation reads the **evaluator** member's .md file for the `<scoreboard>` JSON + the engine's built-in `selectArenaWinner` logic. Note: the engine's `parseScoreboard` requires every value inside `metrics` to be a finite number — strings or arrays in `metrics` void the whole scoreboard (`arena_failed:eval_invalid`); keep descriptive evidence in the `rationale` strings.
 
 ### Scenario 1: Three Sorting Implementations Benchmark for Fastest (Programming)
 
 ```text
 Run the complete closed loop for demos/11-team-arena/README.md "Scenario 1" and auto-score.
 Steps:
-1. Read README "1.2 Team Configuration", create team per team_create JSON (3 candidate coders + 1 evaluator reviewer, each candidate worktree: true, evaluator also set worktree: true)
+1. Read README "1.2 Team Configuration", create team per team_create JSON (3 candidate coders + 1 evaluator (evaluator role), each candidate worktree: true, evaluator also set worktree: true)
 2. team_activate to activate
 3. Read README "1.3 Master Launch Call", launch arena per team_arena JSON (implement → evaluate, eval_command runs benchmark script)
 4. Poll team_results until master receives summary (after all candidates idle, evaluator runs benchmark, produces scoreboard; engine auto-selects winner) (poll every 30s)
 5. Locate <run_dir> (contains evaluator dave.md)
-6. Read dave.md, extract <scoreboard> JSON, view winner and each candidate's score
+6. Run `bun demos/11-team-arena/check-coding-sort-benchmark.ts <run_dir>` — exit 0 = PASS (winner = max throughput_ops_per_sec)
 Success criteria: evaluator produces valid <scoreboard> JSON; engine selects highest throughput by throughput_ops_per_sec max. At least 2 candidates passed=true.
 ```
 
@@ -496,12 +504,12 @@ Success criteria: evaluator produces valid <scoreboard> JSON; engine selects hig
 ```text
 Run the complete closed loop for demos/11-team-arena/README.md "Scenario 2" and auto-score.
 Steps:
-1. Read README "2.2 Team Configuration", create team per team_create JSON (3 candidate simulators + 1 evaluator physicist, each candidate worktree: true, evaluator also set worktree: true)
+1. Read README "2.2 Team Configuration", create team per team_create JSON (3 candidate simulators + 1 evaluator (evaluator role), each candidate worktree: true, evaluator also set worktree: true)
 2. team_activate to activate
 3. Read README "2.3 Master Launch Call", launch arena per team_arena JSON (implement → evaluate, eval_criteria energy conservation judgment)
 4. Poll team_results until master receives summary (after all candidates idle, evaluator reviews DRIFT, produces scoreboard; engine auto-selects winner) (poll every 30s)
 5. Locate <run_dir> (contains evaluator dave.md)
-6. Read dave.md, extract <scoreboard> JSON, view winner and each candidate's drift value
+6. Run `bun demos/11-team-arena/check-physics-integrator-drift.ts <run_dir>` — exit 0 = PASS (winner = min drift, symplectic drift < 1e-3)
 Success criteria: evaluator produces valid <scoreboard> JSON; engine selects symplectic integrator with smallest drift by score min. Velocity Verlet candidate passed=true and score < 1e-3.
 ```
 
@@ -510,12 +518,12 @@ Success criteria: evaluator produces valid <scoreboard> JSON; engine selects sym
 ```text
 Run the complete closed loop for demos/11-team-arena/README.md "Scenario 3" and auto-score.
 Steps:
-1. Read README "3.2 Team Configuration", create team per team_create JSON (3 candidate coders + 1 evaluator mathematician, each candidate worktree: true, evaluator also set worktree: true)
+1. Read README "3.2 Team Configuration", create team per team_create JSON (3 candidate coders + 1 evaluator (evaluator role), each candidate worktree: true, evaluator also set worktree: true)
 2. team_activate to activate
 3. Read README "3.3 Master Launch Call", launch arena per team_arena JSON (implement → evaluate, eval_criteria accuracy judgment)
 4. Poll team_results until master receives summary (after all candidates idle, evaluator reviews QUAD, produces scoreboard; engine auto-selects winner) (poll every 30s)
 5. Locate <run_dir> (contains evaluator dave.md)
-6. Read dave.md, extract <scoreboard> JSON, view winner and each candidate's error
+6. Run `bun demos/11-team-arena/check-math-quad-error.ts <run_dir>` — exit 0 = PASS (winner = min error, Gaussian-Legendre < 1e-10)
 Success criteria: evaluator produces valid <scoreboard> JSON; engine selects quadrature method with smallest error by score min. Gaussian-Legendre candidate passed=true and score < 1e-10 (Gaussian quadrature should reach machine precision on smooth integrand).
 ```
 
@@ -524,11 +532,11 @@ Success criteria: evaluator produces valid <scoreboard> JSON; engine selects qua
 ```text
 Run the complete closed loop for demos/11-team-arena/README.md "Scenario 4" and auto-score (challenge-level: 5 candidates + 1 evaluator, N=100 large sparse system).
 Steps:
-1. Read README "4.2 Team Configuration", create team per team_create JSON (5 candidate simulators + 1 evaluator physicist, each candidate worktree: true, evaluator also set worktree: true)
+1. Read README "4.2 Team Configuration", create team per team_create JSON (5 candidate simulators + 1 evaluator (evaluator role), each candidate worktree: true, evaluator also set worktree: true)
 2. team_activate to activate
 3. Read README "4.3 Master Launch Call", launch arena per team_arena JSON (implement → evaluate, eval_command + eval_criteria dual benchmark)
 4. Poll team_results until master receives summary (after all candidates idle, evaluator runs convergence benchmark, produces scoreboard; engine auto-selects winner) (poll every 30s)
 5. Locate <run_dir> (contains evaluator frank.md)
-6. Read frank.md, extract <scoreboard> JSON, view winner and each candidate's iteration count
+6. Run `bun demos/11-team-arena/check-physics-poisson-convergence.ts <run_dir>` — exit 0 = PASS (winner = min iterations; Multigrid ≤ 20, Jacobi ≥ 5000)
 Success criteria: evaluator produces valid <scoreboard> JSON; engine selects fastest-converging solver by iterations min. Multigrid V-cycle candidate should have ≤20 iterations, Richardson should have ≥20000 iterations (verifying order-of-magnitude discrimination of convergence speed). At least 3 candidates passed=true.
 ```
