@@ -4,21 +4,6 @@
  */
 
 /**
- * Permission action for an OCTeam agent — mirrors opencode's
- * PermissionActionConfig ("ask" | "allow" | "deny").
- */
-export type OcteamPermissionAction = "ask" | "allow" | "deny"
-
-/**
- * Nested permission object matching the SDK v2 PermissionObjectConfig.
- * Used for tools like `task` that support per-argument rules, e.g.
- * `task: { "*": "deny", "oct-librarian": "allow" }`.
- */
-export type OcteamPermissionObject = {
-    [key: string]: OcteamPermissionAction
-}
-
-/**
  * Member-reachable team collaboration tools. EVERY member-reachable preset
  * MUST spread this into its permission map alongside "*": "deny" — a missing
  * key cuts members off from that tool (A-1: team_done was absent from all 9
@@ -32,6 +17,21 @@ export const MEMBER_TEAM_TOOLS_PERMISSION: OcteamAgentPermission = {
     team_task_update: "allow",
     team_task_get: "allow",
     team_done: "allow",
+}
+
+/**
+ * Permission action for an OCTeam agent — mirrors opencode's
+ * PermissionActionConfig ("ask" | "allow" | "deny").
+ */
+export type OcteamPermissionAction = "ask" | "allow" | "deny"
+
+/**
+ * Nested permission object matching the SDK v2 PermissionObjectConfig.
+ * Used for tools like `task` that support per-argument rules, e.g.
+ * `task: { "*": "deny", "oct-librarian": "allow" }`.
+ */
+export type OcteamPermissionObject = {
+    [key: string]: OcteamPermissionAction
 }
 
 /**
