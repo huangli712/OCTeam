@@ -111,7 +111,10 @@ export function computeDuration(messages: MessageRow[]): string {
 }
 
 /**
- * Load all direct child sessions of the given session.
+ * Load direct child sessions of the given session: sessions in the current
+ * directory plus sessions in the discovered member-worktree directories
+ * (worktree discovery goes through loadTeams, so user-scope worktrees are
+ * not included).
  * Uses HTTP API for messages (api.client) — TUI state (api.state) only
  * has message data for sessions that have been viewed.
  *

@@ -42,7 +42,9 @@ import type { ResolvedMember } from "../../state/resolve.js"
  * Reject shared-task access from a member in a parallel isolated run. Isolated
  * members must not read or mutate the shared task list — doing so forms a side
  * channel that defeats isolation. Returns an error string to surface, or null
- * when access is allowed. Fails closed: an unreadable state file rejects too.
+ * when access is allowed. Fails closed on a state load rejection (a sibling
+ * whose unreadable state is served from the in-process cache bypasses that
+ * refusal).
  */
 async function rejectIfIsolated(
     ctx: PluginContext,
@@ -91,9 +93,11 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
                 return `Error: team "${args.team_id}" could not be loaded (state file unreadable)`
             }
             // Keep the recurse guard, count check, dependency validation, and create
-            // under both the cross-process claim mutex and the in-process team mutex.
-            // This prevents recurse from starting mid-create and duplicating an
-            // automatically generated subtask.
+            // under the claim mutex and the in-process team mutex. Within this
+            // process, a recurse startup in the same critical section cannot
+            // interleave with a create (cross-process recurse startup does not
+            // take the claim mutex, and the loaded team state may be up to 1s
+            // stale from the cache, so a narrow cross-process race remains).
             let task: Task | undefined
             let limitError = false
             let blockedByError: string | undefined
@@ -121,7 +125,10 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
                     return
                 }
                 const allTasks = await listAllTasks(caller.directory)
-                // Validate blocked_by inside the mutex for TOCTOU safety.
+                // Validate blocked_by inside the mutex. TOCTOU note: blocker
+                // deletion runs under its own per-task update lock, so a
+                // blocker can still vanish between this validation and the
+                // create (claimTask re-checks blocker status at claim time).
                 if (args.blocked_by && args.blocked_by.length > 0) {
                     // Cap blocker count to prevent oversized task files.
                     if (args.blocked_by.length > 32) {

@@ -3,14 +3,16 @@
  *   Phase A (router): a single member inspects the input and emits a
  *     <route>{...} decision naming the branch(es) to dispatch to.
  *   Phase B (targets): the selected branches' members run in parallel; their
- *     barrier converges to delivery (mirrors parallel, including failure
- *     isolation and optional signoff).
+ *     barrier converges to delivery (like parallel's barrier + optional
+ *     signoff, but with member-error tolerance 0 — any target member error
+ *     fails the run; survivors are not delivered).
  *
  * STATE MACHINE:
  *   Phase A: router_dispatch → parse_route → fan_out_to_targets
  *   Phase B: target_barrier → [signoff →] deliver
  *   - All targets complete → check signoff → deliver (idle: route_complete)
- *   - Route parse failure → deliver (failed: route_complete:decision_parse_failure)
+ *   - Route parse failure (after maxRouteParseFailures re-dispatches, default 2)
+ *       → deliver (failed: route_complete:decision_parse_failure)
  *   - Valid decision but zero matching branches → deliver (failed: route_complete:no_matching_branch)
  */
 
@@ -35,8 +37,9 @@ const MAX_ROUTE_PARSE_FAILURES = 2
  * branches, and the <route> decision format the router must emit.
  *
  * Lives in the orchestration layer so both the initial dispatch path
- * (tools/router.ts) and the crash-recovery path (resume.ts) consume the same
- * source — preventing prompt-format drift between first-run and resume.
+ * (tools/modes/router.ts) and the crash-recovery path (lifecycle/resume.ts)
+ * consume the same source — preventing prompt-format drift between first-run
+ * and resume.
  */
 export function buildRouterPrompt(teamName: string, input: string, branches: RouteBranch[]): string {
     const list = branches

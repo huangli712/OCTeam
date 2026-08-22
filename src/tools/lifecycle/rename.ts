@@ -97,9 +97,10 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                     staleState = true
                     return
                 }
-                // Re-check name collision: use O_CREAT|O_EXCL to atomically
-                // claim the new dir name. This is TOCTOU-safe because mkdir
-                // is atomic — if it succeeds, we are the sole creator.
+                // Re-check name collision: claim the new dir name with a
+                // non-recursive mkdir (EEXIST = collision). This is TOCTOU-safe
+                // because mkdir is atomic — if it succeeds, we are the sole
+                // creator.
                 // The placeholder is kept and replaced in place by fs.rename below.
                 // Do not use mkdir+rmdir because that reopens the collision window.
                 // Instead, keep the empty dir as the rename destination —
@@ -202,7 +203,9 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                         )
                     })
                 } catch (writeErr) {
-                    // Rollback: restore the old directory and in-memory state.
+                    // Rollback (best-effort): restore the old directory and
+                    // in-memory state; a failed reverse rename or spec write
+                    // is logged and leaves the split state for manual recovery.
                     team.teamName = args.team_id
                     team.directory = oldDir
                     // If the spec was written to the new directory with

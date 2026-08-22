@@ -11,7 +11,9 @@ import { truncateOutput } from "../protocol/output.js";
 import { recordEvent } from "../records/events.js";
 import { finishRun } from "../control/completion.js";
 
-/** Hard byte cap on assembled upstream context to prevent unbounded prompt growth. */
+/** Byte budget for assembled upstream context to prevent unbounded prompt
+ *  growth. Soft cap: truncation markers and block separators are not counted
+ *  against it, so the assembled text can slightly exceed this figure. */
 const UPSTREAM_TOTAL_CAP = 65_536;
 
 /** Contract injected into read-only stages so a clean report can end the loop early via <no_issues/>. */
@@ -20,9 +22,10 @@ const NO_ISSUES_CONTRACT =
     "(or <无问题/>). Emit it ONLY when truly clean — it ends the loop.";
 
 /**
- * Assemble upstream context from completed prior stages' outputs, capped at
- * UPSTREAM_TOTAL_CAP bytes. Returns the concatenated blocks (or an empty
- * string when no prior stage produced output).
+ * Assemble upstream context from completed prior stages' outputs, budgeted
+ * at UPSTREAM_TOTAL_CAP bytes (soft cap — the truncation marker and block
+ * separators are added outside the budget). Returns the concatenated blocks
+ * (or an empty string when no prior stage produced output).
  */
 export function buildUpstreamContext(
     stages: Stage[],

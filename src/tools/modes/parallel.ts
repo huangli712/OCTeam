@@ -67,8 +67,8 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                 .optional()
                 .describe(
                     "member that performs a real reduce when reduce_policy != summarize. "
-                    + "If omitted, the reduce guidance is delivered to master "
-                    + "(legacy behavior).",
+                    + "Required when reduce_policy is 'select', 'merge', or 'rubric' "
+                    + "(the tool errors without it).",
                 ),
             ...signoffSchemaFields,
             ...commonOrchestrationFields,

@@ -3,14 +3,16 @@
  * transition sites (dispatch / capture / retry / error / stage / round / signoff
  * / terminated) and appends one RunEvent per line to runs/<runId>/events.jsonl.
  *
- * Fire-and-forget (returns void, never awaited at call sites) so observability
- * can never add latency or backpressure to the state machine — same philosophy
- * as logEvent. A missing runId silently skips the event; orchestration startup
- * assigns run IDs, so only legacy in-flight tasks can take that path.
+ * Fire-and-forget in practice (most call sites do not await it) so
+ * observability adds no latency or backpressure to the state machine — same
+ * philosophy as logEvent — though it returns a Promise<void> and a few call
+ * sites do await it. A missing runId silently skips the event (an active task
+ * without a lazily-assigned run ID yet takes that path).
  *
- * Appends are serialized per run so file order matches emission order. Readers
- * still sort by timestamp for compatibility with event files written by older
- * versions; stable sorting preserves serialized order for equal timestamps.
+ * Appends are serialized per run so file order matches emission order.
+ * readRunEvents sorts by line number (file order); team_progress sorts its own
+ * bounded window by timestamp, and stable sorting preserves serialized order
+ * for equal timestamps.
  */
 
 import type { Team } from "../../state/store.js"

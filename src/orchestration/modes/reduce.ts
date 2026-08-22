@@ -51,7 +51,8 @@ export async function maybeTriggerReduce(ctx: PluginContext, team: Team): Promis
     // Clear the reducer's stale mapper-stage response so a crash between this
     // dispatch and the reducer's capture cannot promote it as reducedResult
     // on resume (resume.ts sees responses[reducer] truthy → handleReduceIdle
-    // → task.reducedResult = stale mapper output). Mirrors fanout.ts:249-251.
+    // → task.reducedResult = stale mapper output). Mirrors the reducer-response
+    // cleanup in workflow/fanout.ts (reducer re-dispatch path).
     // Snapshot the value first so empty-output retries can restore it
     // and rebuild the same input set as the first attempt.
     task._reducerMapperSnapshot = task.responses[reducer.name]
@@ -78,9 +79,11 @@ export async function handleReduceIdle(
     if (member.name !== task.reducerMember) return
 
     const reduced = task.responses[member.name]
-    // An errored reducer cannot produce or be retried. Clear reduceStage and
-    // fall back to non-reduced parallel delivery so successful mapper output
-    // is preserved and the run cannot stall.
+    // An errored reducer cannot produce or be retried. Check the parallel
+    // error tolerance first: within tolerance, clear reduceStage and fall back
+    // to non-reduced parallel delivery so successful mapper output is
+    // preserved and the run cannot stall; over tolerance (or zero survivors),
+    // the run fails like any other member error.
     if (member.status === "errored") {
         task.reduceStage = false
         task.reducedResult = undefined
@@ -120,7 +123,9 @@ export async function handleReduceIdle(
     }
     if (reduced === undefined) {
         // No new output was captured for the reducer this turn (stale idle or
-        // empty extraction). Re-dispatch the reducer instead of silently
+        // empty extraction). Re-dispatch the reducer (bounded by maxRetries,
+        // default 0 — with the default, the first empty output fails the run
+        // as parallel_reduce_failed:empty_output) instead of silently
         // completing with an empty result — an empty reduction would discard
         // all mapper outputs.
         const maxRetries = task.maxRetries ?? 0

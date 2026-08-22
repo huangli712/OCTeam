@@ -75,10 +75,13 @@ export async function checkTermination(
     }
 
     // Member error (tolerance-aware fail-fast). Concurrent modes (parallel/
-    // delegate) tolerate up to maxErroredMembers; the barrier (handleParallelIdle)
-    // / handleDelegateIdle owns succeed-with-survivors. checkTermination owns ONLY
-    // the fail decisions: all-errored, or over-tolerance. Sequential modes
-    // (pipeline/loop/consensus) get tolerance 0 — one active member, no survivors.
+    // delegate/recurse/quorum) tolerate up to maxErroredMembers; the barrier
+    // (handleParallelIdle) / handleDelegateIdle owns succeed-with-survivors.
+    // checkTermination owns ONLY the fail decisions: all-errored, or
+    // over-tolerance. Sequential modes (pipeline/loop/consensus — and every
+    // other type such as route/tollgate/arbitrate/workflow via the
+    // per-mode handlers) get tolerance 0: the first relevant member error
+    // fails the run.
     const erroredMembers = team.members.filter(m => !m.isMaster && m.status === "errored")
     if (erroredMembers.length > 0) {
         // If signoff is in progress, the signoff handler owns errored-

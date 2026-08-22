@@ -89,8 +89,9 @@ const server = async (input: PluginInput, options?: Record<string, unknown>): Pr
         )
     }
 
-    // Restart invariant: clear all teams' activatedAt so none is auto-active
-    // after a restart. Users must team_activate explicitly.
+    // Restart invariant: clear project-scope teams' activatedAt so none is
+    // auto-active after a restart (user-scope teams are skipped — they may be
+    // active in sibling processes). Users must team_activate explicitly.
     // Activation recovery must fail closed because stale activatedAt state
     // would violate the explicit-activation invariant.
     try {
@@ -117,7 +118,8 @@ const server = async (input: PluginInput, options?: Record<string, unknown>): Pr
 
     // Background sweep timer: reaps stale resources, enforces termination, and
     // reconciles missed idle events. Runs for the lifetime of the plugin.
-    // Retain the timer controller for a future plugin-reload teardown path.
+    // The controller is a local value with no teardown wiring today (no
+    // plugin-reload path exists); .unref() prevents loop keepalive.
     const sweepTimer = startSweepTimer(ctx)
     void sweepTimer // retained for future teardown; .unref() prevents loop keepalive
 

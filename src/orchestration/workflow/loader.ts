@@ -689,8 +689,8 @@ async function loadWorkflowFileUnchecked(
 
     const templated: unknown = (() => {
         // strict_vars is read from the RAW (pre-template) parsed object so the
-        // config itself is never subject to templating. Default: false keeps
-        // backward-compat (unknown ${x} stays literal).
+        // config itself is never subject to templating. Default: false (unknown
+        // ${x} stays literal); "strict_vars": true opts into strict mode.
         const strictVars = isRecord(parsed) && parsed.strict_vars === true
         try {
             return applyTemplateVars(parsed, vars, strictVars)
@@ -710,7 +710,7 @@ async function loadWorkflowFileUnchecked(
     if (!isRecord(templated)) {
         return { error: `Error: workflow_file "${relPath}" must contain a workflow steps array` }
     }
-    // version: optional (absent => 1 for backward compatibility), but when
+    // version: optional (absent => treated as schema v1), but when
     // present must be an integer we recognize. An unknown version is rejected
     // explicitly so a schema-evolved file fails loud, not silent.
     if (templated.version !== undefined) {

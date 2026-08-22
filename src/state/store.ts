@@ -56,11 +56,13 @@ const SAVE_RETRY_BACKOFF_MS = 50
  * once true, processIdle/saveTeamState skip persistence so a racing handler
  * holding the same in-memory reference cannot recreate the just-removed
  * directory via atomicWrite's mkdir({recursive:true}).
- * None of these fields is written to state.json (see stripRuntimeFields).
+ * None of these fields is written to state.json (see stripRuntimeFields),
+ * except `spawning`/`spawningOwner`, which ARE persisted so a crashed spawn
+ * lease survives restart and the reconciler can clear a dead owner's guard.
  *
- * `spawning` is a runtime guard set by startOrchestration between Phase 1
- * (busy pre-check) and Phase 3 (activeTask commit). It prevents a second
- * concurrent caller from entering Phase 2 (ensureMembersReady) and
+ * `spawning` is a cross-process spawn guard set by startOrchestration between
+ * Phase 1 (busy pre-check) and Phase 3 (activeTask commit). It prevents a
+ * second concurrent caller from entering Phase 2 (ensureMembersReady) and
  * duplicating member-session spawns while the first has released the mutex.
  */
 export type Team = TeamState & {
@@ -144,10 +146,11 @@ function stripRuntimeFields(team: Team): TeamState {
 /**
  * Minimal top-level schema check for a persisted TeamState. The `as TeamState`
  * cast is compile-time only; a corrupt, truncated, or hand-edited state.json can
- * deserialize to an arbitrary shape. Validate just the identity fields every
- * load path immediately dereferences so bad data is rejected at the boundary
- * instead of propagating undefined access. Nested optional fields (activeTask,
- * bounds) are intentionally not checked.
+ * deserialize to an arbitrary shape. Validates the fields every load path
+ * immediately dereferences (identity, status/version enums, concurrency-control
+ * fields, bounds, and per-member shape including agent hardening) so bad data
+ * is rejected at the boundary instead of propagating undefined access. Deeply
+ * optional payloads like activeTask are not checked.
  *
  * Agent hardening: each member's `agent` field MUST name one of OCTeam's
  * hardened oct-* agents (role.ts). A tampered state.json that wrote a bare
@@ -223,8 +226,8 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
             // boolean true. isMaster is a runtime-only flag on the synthetic
             // master record. A tampered state.json could write isMaster:"true",
             // isMaster:1, or isMaster:{} to bypass an === true check and gain
-            // master privileges. undefined (absent) is the only safe persisted
-            // value; any other value is tampering.
+            // master privileges. undefined (absent), false, and null are the
+            // only safe persisted values; any other value is tampering.
             const isMasterVal = (m as { isMaster?: unknown }).isMaster
             if (isMasterVal !== undefined && isMasterVal !== false && isMasterVal !== null) return false
         // Validate required per-member fields: name (used as a path segment in
@@ -319,8 +322,9 @@ function isValidTeamSpec(value: unknown): value is TeamSpec {
 /**
  * Apply a freshly-read disk state onto a cached Team via three-way merge
  * (disk vs last-known disk snapshot vs current runtime fields): stale keys
- * and removed members are dropped, disk member fields overwrite live ones,
- * and runtime-only fields (mutex, tombstone, spawn state, caches) survive.
+ * and removed members are dropped, member fields the caller changed relative
+ * to the ancestor snapshot win over disk, and runtime-only fields (mutex,
+ * tombstone, spawn state, caches) survive.
  * `diskMtime` restamps the cache-invalidation watermark.
  */
 function applyReloadedTeamState(cached: Team, state: TeamState, diskMtime: number): void {
@@ -986,7 +990,9 @@ export async function saveTeamState(team: Team): Promise<void> {
     }, dir)
 }
 
-/** Read the immutable TeamSpec (config.json) for a team, or null if absent. */
+/** Read the TeamSpec (config.json) for a team, or null if absent. The spec is
+ * written at team_create and rewritten by the lifecycle editors
+ * (add/remove/rename/fixmember), so treat it as authoritative-but-mutable. */
 export async function readTeamSpec(
     storageRoot: string,
     teamName: string,
@@ -1047,7 +1053,9 @@ async function readJsonOrNull<T>(
     }
 }
 
-/** Write the immutable TeamSpec (config.json) atomically. Used at team_create.
+/** Write the TeamSpec (config.json) atomically. Used at team_create and by the
+ * lifecycle editors (add/remove/rename/fixmember, including their compensating
+ * rewrites on rollback).
  *
  * `trustedRoot` (optional, recommended) is forwarded to atomicWrite's ancestor
  * chain check (assertNoSymlinkTraversal) so an intermediate-dir symlink cannot

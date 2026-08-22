@@ -108,7 +108,10 @@ function snapshotTeam(team: Team): RepairSnapshot {
     }
 }
 
-/** Restore a previously captured snapshot, reverting all mutable fields. */
+/** Restore a previously captured snapshot, reverting the tracked mutable
+ *  fields. In-memory/persistence only — external side effects already
+ *  performed before the rollback (session aborts, re-dispatches, mailbox or
+ *  event writes) are not undone. */
 function restoreSnapshot(team: Team, snapshot: RepairSnapshot): void {
     team.status = snapshot.status
     team.runnerPid = snapshot.runnerPid
@@ -445,8 +448,8 @@ async function dispatchWorkflowFixOp(
 export function teamFixWorkflowTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Master-only workflow repair tool. Redispatch, skip, advance, or fail a busy "
-            + "or interrupted team_workflow run without cancelling the whole team.",
+            "Master-only workflow repair tool. Redispatch, skip, advance, fail, or "
+            + "reassign a busy or interrupted team_workflow run without cancelling the whole team.",
         args: {
             team_id: tool.schema.string().min(1),
             op: tool.schema.enum(["redispatch", "skip", "advance", "fail", "reassign"]),

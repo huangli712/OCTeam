@@ -1,6 +1,8 @@
 /**
- * Member readiness transaction: create worktrees and sessions, deliver role
- * prompts, wait for initialization, and roll back partial spawn failures.
+ * Member readiness: create worktrees and sessions, deliver role prompts, and
+ * wait for initialization, compensating partial spawn failures best-effort
+ * (a session that cannot be deleted after retries stays indexed as an orphan
+ * with a warning; worktree cleanup failure is logged and rethrown).
  *
  * Must run outside team.mutex because idle initialization acquires that mutex.
  */
@@ -180,9 +182,11 @@ function planMemberSpawn(team: Team): {
 /**
  * Spawn one member's session and deliver its role prompt.
  *
- * Worktree creation, session creation, and role-prompt delivery form one
- * transaction: on any failure, every side effect is rolled back before the
- * error is re-thrown.
+ * Worktree creation, session creation, and role-prompt delivery are sequenced
+ * with best-effort compensation on failure: session indexes and member state
+ * roll back, but a session that survives delete retries stays as an indexed
+ * orphan (warned) and a failed worktree cleanup is logged then rethrown —
+ * side effects are not atomically undone.
  */
 async function spawnMemberSafely(
     ctx: PluginContext,
@@ -203,7 +207,8 @@ async function spawnMemberSafely(
         worktreeCreated = true
     }
     try {
-        // Session creation and role-prompt delivery form one transaction.
+        // Session creation and role-prompt delivery are sequenced with
+        // best-effort compensation (not an atomic transaction).
         const result = await ctx.client.session.create({
             body: {
                 parentID: team.leadSessionId,
@@ -330,8 +335,11 @@ async function spawnMemberSafely(
  * dispatch begins.
  *
  * This function must run outside team.mutex. The readiness barrier waits for
- * idle initialization, whose event handler acquires that mutex. Spawn failures
- * roll back session indexes, member state, worktrees, and temporary branches.
+ * idle initialization, whose event handler acquires that mutex. Spawn
+ * failures compensate best-effort: session indexes and member state roll
+ * back, worktrees and temporary branches are cleaned when their teardown
+ * succeeds (a failed session deletion leaves an indexed orphan with a
+ * warning; a failed worktree cleanup is logged and rethrown).
  */
 export async function ensureMembersReady(
     ctx: PluginContext,

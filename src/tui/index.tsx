@@ -4,8 +4,9 @@
  * TUI plugin entry: registers the OCTeam session-navigator sidebar into the
  * host's sidebar_content slot (teams/members/mailbox live in ./teams.ts,
  * rendering in ./sidebar.tsx). Hosts without slot support fail registration
- * gracefully; non-support errors are logged so operators can tell an
- * unsupported host from a real defect.
+ * gracefully; any error whose message matches the support/slot patterns is
+ * treated as an unsupported host (a real defect with a coincidentally
+ * matching message would also be swallowed here), other errors are logged.
  */
 
 import type { TuiPlugin } from "@opencode-ai/plugin/tui"

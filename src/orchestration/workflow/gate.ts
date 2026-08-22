@@ -21,8 +21,8 @@ import { isSameWorkflowBranch } from "./dag.js";
 import { MAX_UPSTREAM_OUTPUT_BYTES } from "./upstream.js";
 
 // Gate target resolution lives in gate-targets.ts to
-// break the dag→invariants→gate→dag import cycle. Re-export to preserve
-// the public API for existing consumers (engine.ts, verdict.ts, etc.).
+// break the dag→invariants→gate→dag import cycle. Re-exported so engine.ts,
+// verdict.ts, and the other consumers can import them from this module.
 export {
     precedingTaskIndex,
     gateTargetIndex,
@@ -61,7 +61,8 @@ type ParsedCondition =
     | { error: string }
 
 /**
- * Build the verifier's dispatch prompt: the preceding task's output, the
+ * Build the verifier's dispatch prompt: the target's producer output (a task
+ * output or a join's combined output, per the gate's resolved target(s)), the
  * criteria, and the exact <verdict> block the verifier must emit.
  */
 export function buildGateVerifierPrompt(

@@ -19,10 +19,9 @@
  * runs concurrently. Iterates BOTH scopes: project (session-segmented) + user
  * (flat).
  *
- * Layer note: lives in orchestration/lifecycle/ (not state/) for historical
- * reasons — the original implementation persisted terminated run records here.
- * That persistence was removed; the module stays put to avoid wide import
- * churn.
+ * Layer note: lives in orchestration/lifecycle/ (not state/) — it orchestrates
+ * recovery policy over state-layer primitives and keeps startup wiring in one
+ * place.
  */
 
 import fs from "node:fs/promises"
@@ -71,8 +70,11 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
             // team may belong to a live sibling process (see comment below);
             // reclaiming a running member's reservations mid-processing would
             // cause duplicate delivery on the next poll. If the process truly
-            // crashed, the member's status will be stale and the next sweep
-            // tick's missed-idle reconciliation will handle it.
+            // crashed, the member's status stays stale-running and its
+            // reservations remain held: this pass skips them, and the crashed-
+            // team failure below clears activeTask so no later sweep
+            // re-processes that team — the reserved files age out via the
+            // reservation TTL instead.
             if (m.status === "running") continue
             try {
                 await releaseStaleReservations(team.directory, m.name)
@@ -139,8 +141,12 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
                     failures.push(err)
                 }
             } else if (team.activeTask) {
-                // No PID or process is alive: preserve state for eventual
-                // team_resume but keep status=busy (concurrent-instance safety).
+                // No PID or process is alive: preserve the checkpoint for a
+                // future team_resume attempt while keeping status=busy in this
+                // pass (concurrent-instance safety). team_resume itself
+                // requires status "failed", so this preserved form is not
+                // directly resumable until a later reconciliation or sweep
+                // marks the team failed.
                 team.lastInterruptedTask = team.activeTask
                 try {
                     await saveTeamState(team)
@@ -197,12 +203,14 @@ export async function reconcileCrashedTeams(ctx: PluginContext): Promise<void> {
 }
 
 /**
- * Restart invariant: never auto-activate. Clears every team's persisted
- * activatedAt on plugin startup so that, after an OpenCode restart, ALL teams
- * are inactive regardless of their prior state. The in-memory active pointer is
- * likewise empty — indexScope no longer restores it from activatedAt. The user
- * must call team_activate explicitly to make a team available. Runs once in
- * server() init, AFTER rebuildSessionIndex.
+ * Restart invariant: never auto-activate in this process's scope. Clears
+ * project-scope teams' persisted activatedAt on plugin startup so that, after
+ * an OpenCode restart, no project-scope team is auto-active. User-scope teams
+ * are deliberately skipped: they may be legitimately active in sibling
+ * processes, and clearing them would deactivate a live team. The in-memory
+ * active pointer is likewise empty — indexScope no longer restores it from
+ * activatedAt. The user must call team_activate explicitly to make a team
+ * available. Runs once in server() init, AFTER rebuildSessionIndex.
  */
 export async function reconcileActivation(ctx: PluginContext): Promise<void> {
     const failures: unknown[] = []
@@ -246,9 +254,11 @@ export async function reconcileActivation(ctx: PluginContext): Promise<void> {
 /**
  * Session-scoping cleanup on session.deleted. Removes any project-scope teams
  * owned by the deleted session (the whole <projectStorageRoot>/<sid>/ dir) and
- * drops its index entry (both member and master maps). For a deleted MEMBER
- * session (no owned dir), only the unindex applies. User-scope is flat —
- * nothing to remove there.
+ * drops its index entry (both member and master maps). Refuses (throws) when a
+ * team's worktrees are unverifiable or dirty — in that case nothing is removed
+ * on disk, but the index unindex below still applies to this process. For a
+ * deleted MEMBER session (no owned dir), only the unindex applies. User-scope
+ * is flat — nothing to remove there.
  */
 export async function handleSessionDeleted(ctx: PluginContext, sessionID: string): Promise<void> {
     try {

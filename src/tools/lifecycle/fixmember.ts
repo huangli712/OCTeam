@@ -460,8 +460,12 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                 })().catch(e => e as Error)
 
                 if (writeErr) {
-                    // Rollback snapshot — capture ALL mutated fields BEFORE any
-                    // write attempt so we can restore them atomically on failure.
+                    // Rollback snapshot — the mutated fields were captured BEFORE
+                    // any write attempt so they can be restored on failure
+                    // (best-effort: the mailbox-dir restore covers the inbox
+                    // file path; the processed log and reserved dir migrations
+                    // are not reversed, and task-owner changes from the rename
+                    // migration stay applied).
                     // Restore agent, role, and model fields with rename-related state
                     // so the in-memory member remains aligned with disk after a save failure.
                     if (renaming) {
@@ -579,10 +583,13 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                         destroyed = false
                         logSwallowed(ctx, "fixmember: old worktree destroy failed", err, { member: args.member_name }, "debug")
                     }
-                    // Only clear worktree/session state when the destroy actually
-                    // succeeded. If it failed, the worktree still exists on disk,
-                    // so clearing worktreePath/sessionId would report success while
-                    // orphaning a live worktree; keep the fields and warn instead.
+                    // Clear worktree/session state when the teardown did not
+                    // throw. A destroyWorktree false RETURN (cleanWorktree
+                    // refused or failed without throwing) still clears the
+                    // fields and reports the destroy as done; only a thrown
+                    // error keeps the fields and warns — in that case the
+                    // worktree still exists on disk, so clearing
+                    // worktreePath/sessionId would orphan a live worktree.
                     if (destroyed) {
                         // Unindex the old session and persist the cleared fields so
                         // a restart cannot reload the destroyed worktree as active.

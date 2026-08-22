@@ -6,14 +6,17 @@
  *
  * 3-phase lock order (mirrors startOrchestration in orchestration/lifecycle/startup.ts, NOT
  * team_cancel which is single-phase):
- *   Phase 1 (mutex): snapshot lastInterruptedTask → local, reset errored→idle,
- *                    save. DO NOT commit activeTask (a stray session.idle
+ *   Phase 1 (mutex): snapshot lastInterruptedTask → local, reset errored→idle
+ *                    (arena candidates/evaluator exempt), save. DO NOT commit
+ *                    activeTask (a stray session.idle
  *                    during Phase 2 must hit processIdle's
  *                    `!activeTask` early-return, not a premature barrier).
  *   Phase 2 (outside mutex): ensureMembersReady (spawn missing sessions).
  *   Phase 3 (mutex): commit activeTask, dispatch per mode, clear checkpoint.
- * Phase 2+3 wrapped in try/catch: on failure ACTIVELY reset to
- * failed + restore checkpoint for retry.
+ * Phase 2+3 wrapped in try/catch: on failure ACTIVELY reset to failed and
+ * preserve the checkpoint object for retry (note it is the same clone Phase 3
+ * partially dispatched, not a pristine pre-resume copy); the resume lease is
+ * cleared on this path too so a retry can proceed.
  *
  * Per mode:
  *   parallel/consensus: re-dispatch incomplete members; if zero dispatched,
@@ -21,7 +24,8 @@
  *                       "all-complete pre-delivery crash" stall to wall-clock).
  *   pipeline/loop: advanceToStage(stages[idx]) — uses responses[] internally,
  *                  NO runs/<runId>/<member>.md read.
- *   delegate: reap stale claims + reset claimed/in_progress→pending.
+ *   delegate: reap stale claims + reset claimed/in_progress→pending, except
+ *             tasks whose owner still has a live, running session.
  *
  * parallel incomplete = requireDoneAck ? !declaredDone : !responses.
  */
@@ -111,7 +115,7 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                     // (clearing here loses the checkpoint if Phase 2/3 throws).
                     // Reset errored members → idle (errored-is-terminal broken ONLY in
                     // this resume path, intentionally — they were interrupted mid-work).
-                    // Arena carve-out (4d): reviving an arena candidate or evaluator
+                    // Arena exception: reviving an arena candidate or evaluator
                     // destroys arena's terminal-error semantics — a tolerated errored
                     // candidate would be re-dispatched (reviving a competitor changes the
                     // field, breaking failure isolation) and an errored evaluator would be

@@ -5,7 +5,10 @@
  * STATE MACHINE:
  *   round_N_dispatch → barrier_wait → consensus_reached | max_rounds | next_round
  *   - All members agree → deliver (idle: consensus_reached)
- *   - Max rounds exceeded without agreement → deliver (failed: consensus_max_rounds)
+ *   - Max rounds reached without agreement → pause for a consensus_deadlock
+ *     approval when HITL is enabled (approve → idle: consensus_max_rounds_accepted,
+ *     reject → failed: consensus_human_rejected); without HITL → deliver
+ *     (failed: consensus_max_rounds)
  *   - Else → next round dispatch with prior-round summary
  */
 

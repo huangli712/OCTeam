@@ -176,15 +176,18 @@ function collectEnsembleVerdicts(
  * verifier may be re-dispatched).
  *
  *   parse_failure -> routes through on_malformed (with fallback to on_invalid):
- *     fail          -> terminate as workflow_invalid:<reason>:<verifier>
+ *     fail          -> terminate as workflow_invalid:<reason>:<verifier>, or
+ *                      follow on_invalid_goto when configured
  *     retry_verifier-> re-dispatch THIS gate's verifier (bounded by
  *                      max_malformed_retries, default 0 when unset)
  *     skip          -> mark the gate skipped and advance (on_malformed only)
  *     escalate      -> force a human-approval pause
  *   INVALID       -> routes through on_invalid:
- *     fail          -> terminate as workflow_invalid:<reason>:<verifier>
+ *     fail          -> terminate as workflow_invalid:<reason>:<verifier>, or
+ *                      follow on_invalid_goto when configured
  *     retry_verifier-> re-dispatch THIS gate's verifier (bounded by
- *                      max_invalid_retries), then on exhaust terminate.
+ *                      max_invalid_retries), then on exhaust terminate or
+ *                      follow on_invalid_goto.
  *     escalate      -> force a human-approval pause; approve marks the gate
  *                      complete and advances, reject terminates.
  */
@@ -580,7 +583,7 @@ export async function handleGateFail(
 
 /**
  * Handle a FAIL verdict with on_fail=retry: bounded re-dispatch of the
- * preceding task. Resets steps from the producer to the gate, then
+ * gate's target step. Resets steps from the producer to the gate, then
  * re-dispatches the producer with feedback.
  */
 export async function handleGateRetry(

@@ -11,7 +11,7 @@ OCTeam is an OpenCode plugin for **persistent multi-agent teams**: one leader se
 Five facts explain almost every tool:
 
 1. **Master and members.** Your session creates the team and becomes its master. Only the master starts orchestrations; members do the work. Members run `oct-*` agent presets (read-only roles cannot edit files; write-capable roles can, in the project directory).
-2. **One active team per session.** Creating a team does not activate it. `team_activate` makes it the session's active (available) team — at most one at a time; switch explicitly by deactivating first. After a restart, teams are never auto-active; activate again.
+2. **One active team per session.** Creating a team does not activate it. `team_activate` makes it the session's active (available) team — at most one at a time; switch explicitly by deactivating first. After a restart, project-scope teams are never auto-active; activate again (user-scope teams may keep their activation — they can be in use by sibling processes).
 3. **One orchestration at a time.** A team is `live` (idle) or `busy` (one orchestration running). Lifecycle edits (add/remove/rename/delete) require the live state.
 4. **Everything is on disk.** Under `.octeam/` (project scope, segmented per lead session) or `~/.octeam/` (user scope): team config and state, member mailboxes, the shared task list, and one directory per run with full member outputs and an event timeline. Teams survive crashes; nothing important lives only in memory.
 5. **Members emit decision blocks.** Orchestration modes parse strict XML-tagged JSON (`<decision>`, `<verdict>`, ...) from member output rather than free-form text — that is what makes runs deterministic and auditable (see [modes.md](./modes.md#the-decision-block-protocol)).
@@ -145,10 +145,10 @@ During cooperative runs (and outside runs generally), members talk through mailb
 
 Nothing is lost when OpenCode exits:
 
-- **Teams** are fully on disk; after restart, `team_list` still shows them. They start inactive — `team_activate` again.
+- **Teams** are fully on disk; after restart, `team_list` still shows them. Project-scope teams start inactive — `team_activate` again (a user-scope team may still be active if a sibling process kept it so).
 - **A run that was in flight** is marked failed with a preserved checkpoint; `team_resume` re-dispatches it from where it stopped.
-- **Mailboxes** are append-only JSONL with crash-safe delivery (reserved lines are never lost or double-delivered).
-- **Stale locks and claims** are reaped automatically by the background sweep timer (30 s TTL, dead-PID checks).
+- **Mailboxes** are crash-safe JSONL with at-least-once delivery (reserved lines are never lost; a crash between reservation and acknowledgment can requeue them).
+- **Stale task claims** for active delegate/recurse runs are reaped by the background sweep timer (timestamp-based); stale file locks are recovered when their lock path is next acquired.
 
 The internals of the startup reconciliation are in [arch.md](./arch.md#startup-and-crash-recovery).
 
@@ -161,7 +161,7 @@ The internals of the startup reconciliation are in [arch.md](./arch.md#startup-a
 | `Error: team "<id>" is busy ... (workflow calls)` | Lifecycle edits (add/remove/rename) need the `live` state; wait or cancel first. |
 | Run finished `failed` with `member_error:<name>` | A member session errored past its retry budget; `team_query` the member, then retry the run. |
 | Run finished `failed` with `decision_parse_failure` (loop/route/arbitrate) or `workflow_invalid:parse_failure:<verifier>` | A member kept emitting malformed decision blocks; check the member's prompt expectations in [modes.md](./modes.md#the-decision-block-protocol). |
-| Workflow failed `workflow_failed:jump_limit` | A gate's conditional jump looped more than `max_jumps` (default 3); fix the loop or raise the cap. |
+| Workflow failed `workflow_failed:jump_limit:<verifier>` | A gate's conditional jump looped more than `max_jumps` (default 3); fix the loop or raise the cap. |
 | Workflow stuck on an incomplete step | `team_fix_workflow` (redispatch/skip/advance/reassign) — see [tools.md](./tools.md#team_fix_workflow). |
 | Member never gets work in a cooperative run | Cooperative `tasks` map by member name — unassigned members get a placeholder; check spelling. |
 | `team_arena` startup error about worktrees | Candidates must be created with `worktree: true`. |

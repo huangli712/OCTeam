@@ -9,11 +9,11 @@ This document is the contributor-facing architecture overview: how the process, 
 OCTeam runs inside the OpenCode host process and registers two `oc-plugin` entrypoints:
 
 - **`server`** (`src/server.ts`) — the composition root. It reads the storage scope from plugin options (`["octeam", { scope: "user" }]`; default `"project"`), builds the shared `PluginContext`, performs crash recovery (see [Startup and crash recovery](#startup-and-crash-recovery)), starts the background sweep timer, and wires the 42 tools plus the event, transform, compacting, and config hooks.
-- **`tui`** (`src/tui/index.tsx`) — the sidebar entrypoint. It renders team and member status by reading `.octeam` state straight from disk; the TUI and server share the same process filesystem, so no IPC is needed.
+- **`tui`** (`src/tui/index.tsx`) — the sidebar entrypoint. It renders team and member status by reading `.octeam` state straight from disk (project-scope teams of the current session only — user-scope `~/.octeam` teams are intentionally excluded from the sidebar); the TUI and server share the same process filesystem, so no IPC is needed.
 
 A team has exactly one master session (the session that created it) and up to `bounds.maxMembers` members, each a separate OpenCode session running a hardened `oct-*` agent (see [Security model](#security-model)). Only the master may start an orchestration, and at most one orchestration is active per team at a time.
 
-Session identity is resolved through an **in-memory session index** (`state/resolve.ts`): `sessionID → member` (1:1) and `sessionID → set of teams` for masters (1:many, with a single active-team pointer). The index is rebuilt once from trusted on-disk state at startup and never re-read per call, which is what makes disk-tampered `state.json` unable to grant master privileges (see `master.sentinel` below).
+Session identity is resolved through an **in-memory session index** (`state/resolve.ts`): `sessionID → member` (1:1) and `sessionID → set of teams` for masters (1:many, with a single active-team pointer). The index is rebuilt once from trusted on-disk state at startup and never re-read per call, which is what makes disk-tampered `state.json` unable to grant master privileges in project scope (in user scope, a team whose `master.sentinel` is missing falls back to trusting the mutable `leadSessionId` with a warning — see `master.sentinel` below).
 
 ## Module layering
 
@@ -43,8 +43,8 @@ hooks.ts + server.ts   event handler, sweep timer, transform hooks, composition
 
 Two side notes:
 
-- `tui/` is an independent read-only consumer of the same on-disk state and shares no runtime state with `server.ts`.
-- `core/utils.ts` is a cross-cutting output-formatting helper with no state-layer dependencies.
+- `tui/` is an independent read-only consumer of the same on-disk state (project scope only — see above) and shares no runtime state with `server.ts`.
+- `core/utils.ts` is a small cross-cutting helper (ENOENT-style filesystem-error classification and a polling `waitUntil`) with no state-layer dependencies.
 
 ### Source tree
 
@@ -63,8 +63,9 @@ src/
 │   ├── modes/              one handler per orchestration primitive (+ defaults, reduce, stages)
 │   ├── protocol/           member output parsing: decisions, output truncation
 │   ├── records/            runs, capture, events, ledger, renderers, schemas, mermaid, summary
-│   └── workflow/           engine, handler, loader, lower-side validate, gate, verdict,
-│                           fanout, join-policy, gate-targets, dag, invariants, upstream
+ │   └── workflow/           engine, handler, loader, lower-side validate, gate, verdict,
+ │                           fanout, join-policy, gate-targets, dag, invariants, upstream,
+ │                           reasons (failure-reason builders)
 ├── tools/
 │   ├── index.ts            registry: createTools → the 42 tool map
 │   ├── schema.ts           shared tool-schema helpers
@@ -81,7 +82,7 @@ src/
 
 ## On-disk state model
 
-All team state is JSON-serializable and persisted under a storage scope. Path construction is centralized in `state/paths.ts`, which validates every caller-supplied path segment (`assertSafeSegment`) to prevent traversal outside the scope.
+All team state is JSON-serializable and persisted under a storage scope. Path construction is centralized in `state/paths.ts`, which validates every caller-supplied path segment (`assertSafeSegment`) to prevent traversal outside the scope (a few internal artifacts — quarantine paths and some run-record side files — are joined directly at their single call sites).
 
 - **Project scope** — `<dir>/.octeam/<leadSessionId>/teams/<name>/`. Teams are segmented under the session that created them, so sessions see only their own teams.
 - **User scope** — `~/.octeam/teams/<name>/` (flat, shared across sessions).
@@ -90,18 +91,18 @@ Each team directory contains:
 
 | Path | Purpose |
 |------|---------|
-| `config.json` | `TeamSpec` — immutable team spec, written once at `team_create` |
+| `config.json` | `TeamSpec` — the team spec (members/bounds). Written at `team_create` and rewritten by the lifecycle editors (`team_add_member`, `team_remove_member`, `team_rename`, `team_fix_member`) under their locks |
 | `state.json` | `TeamState` — mutable runtime state, lock-protected |
 | `state.json.lock` | Cross-process file lock guarding `state.json` writes |
-| `master.sentinel` | Read-only marker of the team's true lead session, verified at index rebuild |
+| `master.sentinel` | Marker of the team's true lead session, verified at index rebuild (created mode 0644 then chmod'd 0444; the chmod is best-effort, so on-disk read-onlyness is not guaranteed) |
 | `mailbox/` | Per-recipient `*.jsonl` inbox, `*.processed.jsonl` audit log, and `*.reserved/` in-flight reservations |
 | `tasks/` | One `*.json` per shared task, plus `claims/` claim/update locks |
-| `runs/` | One directory per orchestration run (`record.json`, `<member>.md`, `events.jsonl`) |
+| `runs/` | One directory per orchestration run (`record.json`, per-member `<member>.md` output files accumulated across turns and capped at 256 KiB, `events.jsonl`, plus run-level artifacts such as `reduce.md`, `signoff-<reviewer>.md`, and `join-<step>.md`) |
 | `worktrees/` | Optional per-member git worktrees (only when a member sets `worktree: true`) |
 
 Two state-layer mechanisms are worth understanding before touching the code:
 
-- **Atomic writes** (`state/locks.ts` `atomicWrite`) — content is written to a randomized temp file, fsync'd, renamed into place, and the parent directory is fsync'd, so a crash can never leave a torn state file. Symlink targets and symlinked ancestor directories are refused.
+- **Atomic writes** (`state/locks.ts` `atomicWrite`) — content is written to a randomized temp file, fsync'd, renamed into place, and the parent directory is fsync'd on a best-effort basis (a directory-fsync failure is logged, not fatal), so a crash can leave at worst a fully-written or absent state file. Symlink targets and symlinked ancestor directories are refused (ancestor checks run when a trusted root is supplied).
 - **Cross-process merge** (`state/store.ts`) — writers hold `state.json.lock`, re-read disk, and three-way-merge (disk vs last-known snapshot vs current runtime state), so two OpenCode processes mutating the same team do not clobber each other's fields. An in-memory per-team registry keys the live `Team` object (with its process-local mutex) by resolved directory.
 
 ## Orchestration runtime
@@ -125,7 +126,7 @@ The twelve orchestration primitives (`orchestration/modes/`):
 | `team_workflow` | Deterministic, declaratively-composed step engine (see below) |
 | `team_quorum` | Replicated k-of-n voting; strict majority wins |
 
-Member outputs are parsed by a strict protocol layer (`orchestration/protocol/decisions.ts`): members must emit exact XML decision blocks (`<verdict>`, `<decision>`, `<vote>`, ...). Malformed output is counted and retried per the mode's tolerance policy rather than silently accepted. Every run produces a record under `runs/<runId>/` — a `record.json` summary, one Markdown file per member's final output, and an append-only `events.jsonl` timeline that survives restarts.
+Member outputs are parsed by a strict protocol layer (`orchestration/protocol/decisions.ts`): members must emit exact XML decision blocks (`<verdict>`, `<decision>`, `<vote>`, ...). Malformed output is counted and handled per the mode's tolerance policy rather than silently accepted. Every run produces a record under `runs/<runId>/` — a `record.json` summary, one Markdown file per member's accumulated output (capped), and an append-only `events.jsonl` timeline that survives restarts.
 
 Run control is master-only and lives in `orchestration/control/` and `tools/control/`: `team_cancel`, `team_resume` (restart an interrupted run), `team_approve`/`team_reject` (human-in-the-loop approval pauses), `team_intervene` (inject a high-priority directive into a member), and `team_fix_workflow` (surgically repair a stuck workflow run).
 
@@ -137,28 +138,28 @@ Run control is master-only and lives in `orchestration/control/` and `tools/cont
 - **Execution** (`engine.ts`) walks steps under the same event-driven state machine, with goto jumps, bounded retries per gate (attempt counters for fail/invalid/malformed/timeout), backward-jump counter resets, and loop bounds.
 - **Gates** (`gate.ts`, `verdict.ts`) verify a preceding task or join output against criteria. A gate may use a single verifier or an ensemble (majority/quorum/unanimous aggregation) and an optional `where` threshold condition with tri-state evaluation (`matches` / `does_not_match` / `unevaluable` — unevaluable always routes to INVALID, never fail-open).
 - **Fanout/join** (`fanout.ts`, `join-policy.ts`) run steps in per-branch parallel with matrix/foreach expansion and configurable join policies (all / quorum / any_success / required_branches / reduce / select).
-- **Structural invariants** (`invariants.ts`) are re-checked against the runtime step state so a corrupted resume cannot skip verification.
+- **Structural invariants** (`invariants.ts`) are re-checked by `team_fix_workflow` around its repair mutations (resume does not re-check them), so a repaired run cannot skip verification.
 - **`team_planner`** (`tools/workflow/planner.ts`) generates a team + workflow plan via a child planner session through propose → revise → write stages, with dry-run validation before any file is written.
 
 ## Messaging plane
 
-Members and the master communicate through a per-team file mailbox (`messaging/mailbox.ts`): each recipient has an append-only `*.jsonl` inbox; reads atomically reserve lines into `*.processed.jsonl` (audit log) so a crash mid-delivery cannot lose or double-deliver a message. Wake hints (`messaging/wake-hint.ts`) suggest which session to nudge next.
+Members and the master communicate through a per-team file mailbox (`messaging/mailbox.ts`): each recipient has a `*.jsonl` inbox; reads atomically reserve lines into `*.reserved/` and move them to `*.processed.jsonl` on ACK, truncating the inbox after reservation. A crash between reservation and ACK requeues the reserved lines, giving crash-safe at-least-once delivery (no loss; a redelivery is possible). Wake hints (`messaging/wake-hint.ts`) suggest which session to nudge next.
 
-**Directive authentication** (`messaging/auth.ts`): the mailbox JSONL itself lives in member-writable `.octeam/` space and must be treated as forgeable. High-priority directives are therefore authenticated through a separate in-process registry that only the host plugin writes: at send time the authenticated content (`from`, `body`, `correlationId`) is recorded under a `(teamName, to, id)` key; at consumption the replayed mailbox line must match the registered content exactly, and each entry is one-shot (consumed on ACK, after which a replay is downgraded to a regular message). A forged or tampered mailbox line cannot satisfy this check. The registry is capped (512 entries, oldest-first eviction) and recipient-scoped so broadcast recipients authenticate independently.
+**Directive authentication** (`messaging/auth.ts`): the mailbox JSONL itself lives in member-writable `.octeam/` space and must be treated as forgeable. High-priority directives are therefore authenticated through a separate in-process registry that only the host plugin writes: at send time the authenticated content (`id`, `from`, `to`, `body`, `correlationId`) is recorded under a `(teamName, to, id)` key; at consumption the replayed mailbox line must match the registered content exactly, and each entry is one-shot (consumed on ACK, after which a replay is downgraded to a regular message). A forged or tampered mailbox line cannot satisfy this check. The registry is capped (512 entries, oldest-first eviction) and recipient-scoped so broadcast recipients authenticate independently.
 
 ## Startup and crash recovery
 
 `server.ts` runs a fail-closed startup sequence — any step throwing aborts plugin startup, because a half-recovered index would rather deny legitimate sessions than authorize the wrong ones:
 
 1. **Rebuild the session index** from disk (`rebuildSessionIndex`), verifying each team's `master.sentinel` against the directory layout so a tampered `state.json.leadSessionId` cannot redirect master privilege.
-2. **Reconcile activation** — clear all teams' `activatedAt`. Teams are never auto-active after a restart; the user must `team_activate` explicitly.
-3. **Reconcile crashed teams** — release stale mailbox reservations and fail orchestrations left "busy" by a crashed process, making them resumable via `team_resume`.
+2. **Reconcile activation** — clear project-scope teams' `activatedAt` (user-scope teams are skipped deliberately: they may be legitimately active in sibling processes, so their persisted activation survives a restart of this process). Teams are never auto-activated for a scope this process owns; the user must `team_activate` explicitly.
+3. **Reconcile crashed teams** — release stale mailbox reservations (except those held by members persisted as `running`, which the crashed run's failure handling owns) and fail orchestrations left "busy" by a crashed process, making them resumable via `team_resume`.
 
-After startup, a background **sweep timer** (`hooks.ts` `startSweepTimer`) runs for the plugin's lifetime: it reaps stale task claims and file locks (30 s TTL, dead-PID checks), enforces termination conditions, and reconciles idle events the event handler might have missed.
+After startup, a background **sweep timer** (`hooks.ts` `startSweepTimer`) runs for the plugin's lifetime: it reaps stale task claims for active delegate/recurse runs (timestamp-based), checks file locks opportunistically on acquisition (stale zero-byte locks after a 1 s grace; dead-owner locks after the 30 s TTL), enforces termination conditions, and reconciles idle events the event handler might have missed.
 
 ## Security model
 
-- **Master vs member.** Authorization is enforced at a single chokepoint (`resolveCallerInTeam` in `state/resolve.ts`): member sessions can only reach the team they are indexed under (a member of team A passing `team_id="B"` is rejected), and the orchestration and run-control tools are master-only.
+- **Master vs member.** Authorization centers on `resolveCallerInTeam` in `state/resolve.ts` (member sessions can only reach the team they are indexed under — a member of team A passing `team_id="B"` is rejected); several lifecycle tools additionally re-verify mastership directly via `isIndexedMasterOf` on the loaded state. The orchestration and run-control tools are master-only.
 
 - **Path safety.** Every caller-supplied path segment (team/member/task/run ids) is validated by `state/paths.ts` (`assertSafeSegment`) before it reaches the filesystem, with defense-in-depth at the tool schema layer. Symlinked targets and ancestors are refused on both read and write paths (`assertNoSymlinkTraversal`, O_NOFOLLOW opens).
 

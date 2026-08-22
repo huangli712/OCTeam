@@ -1,8 +1,9 @@
 /**
  * Delegate handler. Drives a shared task pool: members claim tasks, work them,
  * and idle. runDelegateStyleTail owns the termination engine -- all-complete
- * delivers, all-idle-with-claimable fails as deadlock, otherwise the just-idled
- * member is RATE-LIMITED re-prompted toward remaining claimable tasks.
+ * delivers, all-idle-with-NO-claimable-tasks fails as deadlock, otherwise the
+ * just-idled member is RATE-LIMITED re-prompted toward remaining claimable
+ * tasks.
  * Recurse (recurse.ts) reuses this tail.
  *
  * STATE MACHINE:
@@ -24,7 +25,9 @@ import { captureMemberOutput } from "../records/capture.js"
 import { recordEvent } from "../records/events.js"
 import { logSwallowed } from "../../core/log.js"
 
-/** Minimum cooldown (ms) between re-prompt notifications in delegate/recurse. */
+/** Default cooldown (ms) between re-prompt notifications in delegate/recurse.
+ *  Bypassed when every idle member is still cooling: the earliest-notified
+ *  member is re-prompted immediately so the pool cannot stall on cooldowns. */
 export const NOTIFY_COOLDOWN_MS = 10_000
 
 /**
@@ -149,7 +152,7 @@ export async function runDelegateStyleTail(
         : incomplete
 
     // Claimable tasks: pending AND all blockers completed or deleted.
-    // claimTask treats deleted blockers as resolved (tasks.ts:496);
+    // claimTask treats deleted blockers as resolved (tasks.ts blockersAreResolved);
     // the tail must match, or a pending task whose only blocker was deleted
     // is forever unclaimable → false deadlock.
     const claimable = incompleteForClaimable.filter(

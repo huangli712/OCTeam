@@ -125,8 +125,10 @@ async function escalateMemberToErrored(
 /**
  * Handle session.status events. session.idle carries no error signal and a
  * retrying member never idles, so we subscribe to session.status to catch
- * retry/error and escalate a sustained retry to "errored" (otherwise the
- * barrier would wait forever). Mutates member state under the team mutex.
+ * retry/busy transitions and escalate a sustained retry to "errored"
+ * (otherwise the barrier would wait forever). session.error events are
+ * handled separately by the hooks event handler. Mutates member state under
+ * the team mutex.
  */
 export async function handleStatusEvent(
     ctx: PluginContext,

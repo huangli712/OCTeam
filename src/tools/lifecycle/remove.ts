@@ -129,7 +129,9 @@ export function teamRemoveMemberTool(ctx: PluginContext): ToolDefinition {
                 } catch (err) {
                     // State write failed but config was already written.
                     // Rollback memory, then compensating write to revert
-                    // config.json so disk stays consistent.
+                    // config.json so disk stays consistent (a failed
+                    // compensating write is logged, leaving config/state
+                    // inconsistent for manual recovery).
                     if (specIdx !== -1 && removedSpecMember) {
                         spec.members.splice(specIdx, 0, removedSpecMember)
                     }

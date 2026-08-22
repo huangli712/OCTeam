@@ -13,7 +13,9 @@
  *   - the active task did not enable `require_done_ack`
  *   - the active task is not parallel isolated/cooperative
  *
- * Idempotent: calling team_done twice in one run returns the same ack.
+ * Idempotent in effect: calling team_done twice in one run marks done once;
+ * the second call returns an "Already acknowledged." notice instead of the
+ * first call's acknowledgement text.
  */
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"

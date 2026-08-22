@@ -6,10 +6,10 @@
  * finalizes it as a leaf.
  *
  * STATE MACHINE:
- *   decompose → subtask_dispatch → [branch | finalize_leaf] → aggregate → [root_complete | stalled]
- *   - Decomposer decomposes → create subtasks, re-queue parent as aggregator
- *   - Decomposer finalizes → mark leaf complete (no children)
- *   - Root task completed → deliver (idle: recurse_root_complete)
+ *   decompose → subtask_dispatch → [branch | finalize_leaf] → aggregate → [complete | stalled]
+ *   - A member decomposes its claimed task → create subtasks, re-queue parent as aggregator
+ *   - A member solves directly → mark leaf complete (no children)
+ *   - Root task completed → deliver (idle: recurse_complete)
  *   - Aggregation stalled (dispatch cap exceeded) → deliver (failed: recurse_aggregation_stalled)
  */
 
@@ -90,8 +90,8 @@ function buildDirectSolvePrompt(subject: string): string {
  * Aggregation-phase dispatch prompt for the decomposer. Stronger than the
  * generic buildRecursePrompt(): states the completed sub-task count, forbids
  * waiting on teammate messages or re-decomposing, and prescribes the exact
- * claim-root -> read -> synthesize -> idle sequence. Output FORMAT (markers
- * like D4_FINAL) stays scene-defined — this prompt reinforces BEHAVIOR only.
+ * claim-root -> read -> synthesize -> idle sequence. The output FORMAT stays
+ * scene-defined — this prompt reinforces BEHAVIOR only.
  */
 function buildAggregationPrompt(rootSubject: string, childCount: number): string {
     return (

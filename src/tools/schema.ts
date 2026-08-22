@@ -61,10 +61,12 @@ export const parseThresholdFields = {
 }
 
 /**
- * The three signoff schema fields shared by every workflow tool that supports
- * post-completion review (9 of 12 tools — all except consensus, loop, and
- * quorum, which have their own built-in agreement gates). Spread into a tool's
- * tool.schema.object({...}) to single-source the descriptions and constraints.
+ * The three signoff schema fields shared by every orchestration tool that
+ * supports post-completion review — 8 tools: parallel, pipeline, delegate,
+ * route, recurse, arbitrate, tollgate, and workflow (consensus, loop, quorum,
+ * and arena have their own built-in completion semantics and no signoff).
+ * Spread into a tool's tool.schema.object({...}) to single-source the
+ * descriptions and constraints.
  */
 export const signoffSchemaFields = {
     signoff_policy: tool.schema

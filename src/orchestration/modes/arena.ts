@@ -93,7 +93,9 @@ export function selectArenaWinner(
  * non-master, has a session, not terminally errored); if it is not live, fail
  * closed WITHOUT entering the evaluate phase (there would be no running prompt
  * to await). Otherwise set the evaluate phase and dispatch the evaluator its
- * scoreboard prompt in its own worktree.
+ * scoreboard prompt in the evaluator's worktree when it has one (falls back
+ * to the project directory — only candidates are required to be worktree-
+ * isolated).
  */
 export async function startArenaEvaluation(ctx: PluginContext, team: Team): Promise<void> {
     const task = team.activeTask

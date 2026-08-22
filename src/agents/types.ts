@@ -19,6 +19,22 @@ export type OcteamPermissionObject = {
 }
 
 /**
+ * Member-reachable team collaboration tools. EVERY member-reachable preset
+ * MUST spread this into its permission map alongside "*": "deny" — a missing
+ * key cuts members off from that tool (A-1: team_done was absent from all 9
+ * presets and made require_done_ack runs effectively unusable). Locked by
+ * tests/agents.test.ts (table-driven: preset × member team tool).
+ */
+export const MEMBER_TEAM_TOOLS_PERMISSION: OcteamAgentPermission = {
+    team_send_message: "allow",
+    team_task_create: "allow",
+    team_task_list: "allow",
+    team_task_update: "allow",
+    team_task_get: "allow",
+    team_done: "allow",
+}
+
+/**
  * Permission map for an OCTeam agent. Explicitly includes `task` (subtask
  * delegation), which the installed v1 AgentConfig.permission type omits — this
  * local type lets us author `task: "deny"` without a tsc excess-property error.

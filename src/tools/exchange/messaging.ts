@@ -142,9 +142,11 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
                 correlationId: args.correlation_id,
                 deliveryStatus: "pending",
             }
-            // Capture the task reference before delivery so a refund can only debit
-            // the run that was charged; if that run finished during delivery the
-            // refund is skipped rather than charged to the new run. Track delivered
+            // Capture the task reference after charging (before the failure
+            // handler) so a refund debits the run that is active when the
+            // failure is handled; because the reference is captured after the
+            // charging critical section, a run switch between charge and
+            // capture can mis-attribute the refund. Track delivered
             // recipients so partial success refunds only undelivered messages.
             const taskAtDispatch = team.activeTask
             let deliveredCount = 0

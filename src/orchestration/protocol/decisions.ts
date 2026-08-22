@@ -8,8 +8,9 @@
  *     so non-English agent output is recognized.
  *   - `parseFailed` semantics differ per parser (see each docstring): for some
  *     it is a hard failure (loop aborts at 3 parse failures), for others an
- *     explicit tag-with-no-payload, and for parseDecompose it is NOT a failure
- *     signal at all (absent tag = solve directly = leaf).
+ *     explicit tag-with-no-payload. For parseDecompose an ABSENT tag is not a
+ *     failure (absent tag = solve directly = leaf), while an explicit tag with
+ *     no valid subtasks IS a counted failure.
  */
 
 import type {
@@ -48,7 +49,12 @@ type ConsensusParseResult =
         readonly reason: "tag_not_found" | "json_parse_error" | "agreed_not_boolean"
     }
 
-/** Detect duplicate keys that JSON.parse would otherwise resolve last-wins. */
+/**
+ * Detect duplicate keys that JSON.parse would otherwise resolve last-wins.
+ * Compares raw source spellings: two keys that differ only via JSON escapes
+ * (e.g. "a" vs "\u0061") compare unequal here and still last-win in
+ * JSON.parse — the common case (identical spelling) is what matters.
+ */
 function hasDuplicateKeys(jsonStr: string): boolean {
     const seen = new Set<string>()
     let i = 0
@@ -395,8 +401,10 @@ export function parseSelection(
  * Chinese-language alias into per-candidate scores. An absent tag or
  * malformed JSON returns parseFailed. `scores` must be a non-empty array; each
  * entry MUST be a valid object with a string `member` — a single invalid
- * entry makes the entire scoreboard parseFailed without lossy filtering.
- * `score` and each `metrics` value must be finite numbers; a non-finite value
+ * entry makes the entire scoreboard parseFailed without lossy filtering
+ * (exception: a `metrics` field that is present but not an object is silently
+ * omitted rather than failing the entry). `score` and each `metrics` value
+ * must be finite numbers; a non-finite value
  * makes the entire scoreboard parseFailed. `passed` defaults to false when
  * absent; `rationale` is optional. Duplicate `member` entries make the entire
  * scoreboard parseFailed so selection never sees ambiguous candidates.

@@ -186,7 +186,9 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
                 } catch (err) {
                     // State write failed but config was already written.
                     // Rollback memory, then compensating write to revert
-                    // config.json so disk stays consistent.
+                    // config.json so disk stays consistent (a failed
+                    // compensating write is logged, leaving config/state
+                    // inconsistent for manual recovery).
                     spec.members.pop()
                     team.members.pop()
                     try {

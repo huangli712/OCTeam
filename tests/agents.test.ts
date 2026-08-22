@@ -102,6 +102,65 @@ describe("executor agents (junior / deep) — deny task, NOT deny edit", () => {
     }
 })
 
+describe("member team tools — every preset allows all member-reachable team tools", () => {
+    // A-1: team_done was absent from all 9 presets, making require_done_ack
+    // runs effectively unusable (members could not call the tool). This table
+    // locks the class: any member team tool missing from any preset fails red.
+    const MEMBER_TEAM_TOOLS = [
+        "team_send_message",
+        "team_task_create",
+        "team_task_list",
+        "team_task_update",
+        "team_task_get",
+        "team_done",
+    ] as const
+
+    for (const key of ALL_AGENT_KEYS) {
+        for (const tool of MEMBER_TEAM_TOOLS) {
+            test(`${key}: permission.${tool} is "allow"`, () => {
+                expect(getAgent(key).permission?.[tool]).toBe("allow")
+            })
+        }
+    }
+
+    test("MEMBER_TEAM_TOOLS_PERMISSION covers exactly the 6 member team tools", async () => {
+        const { MEMBER_TEAM_TOOLS_PERMISSION } = await import("../src/agents/types.js")
+        expect(Object.keys(MEMBER_TEAM_TOOLS_PERMISSION).sort()).toEqual([...MEMBER_TEAM_TOOLS].sort())
+        for (const tool of MEMBER_TEAM_TOOLS) {
+            expect(MEMBER_TEAM_TOOLS_PERMISSION[tool]).toBe("allow")
+        }
+    })
+})
+
+describe("createConfigHook — member team tools survive resolution", () => {
+    test("empty config: resolved presets keep all 6 member team tool allows", async () => {
+        const cfg: { agent?: Record<string, any> } = {}
+        const hook = createConfigHook()
+        await hook(cfg as Parameters<typeof hook>[0])
+        for (const key of ALL_AGENT_KEYS) {
+            const perm = cfg.agent![key].permission as Record<string, unknown>
+            for (const tool of ["team_send_message", "team_task_create", "team_task_list", "team_task_update", "team_task_get", "team_done"] as const) {
+                expect(perm[tool]).toBe("allow")
+            }
+        }
+    })
+
+    test("pre-populated oct-* entries: monotonic merge keeps all 6 member team tool allows", async () => {
+        const cfg: { agent?: Record<string, any> } = { agent: {} }
+        for (const key of ALL_AGENT_KEYS) {
+            cfg.agent![key] = { mode: "primary", prompt: "c", permission: { edit: "allow" }, model: "m" }
+        }
+        const hook = createConfigHook()
+        await hook(cfg as Parameters<typeof hook>[0])
+        for (const key of ALL_AGENT_KEYS) {
+            const perm = cfg.agent![key].permission as Record<string, unknown>
+            for (const tool of ["team_send_message", "team_task_create", "team_task_list", "team_task_update", "team_task_get", "team_done"] as const) {
+                expect(perm[tool]).toBe("allow")
+            }
+        }
+    })
+})
+
 describe("temperature values", () => {
     test("metis has temperature 0.3", () => {
         expect(getAgent("oct-metis").temperature).toBe(0.3)

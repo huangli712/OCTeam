@@ -1,27 +1,36 @@
 /**
- * Workflow step engine -- deterministic linear step dispatch, advance, goto,
- * and redispatch primitives. handleWorkflowIdle (handler.ts) drives the
- * top-level idle routing; gate-verdict routing lives in verdict.ts.
+ * Workflow step engine -- deterministic step dispatch, advance, goto, and
+ * redispatch primitives over a flat lowered step array. handleWorkflowIdle
+ * (handler.ts) drives the top-level idle routing; gate-verdict routing lives
+ * in verdict.ts.
  *
- * STATE MACHINE (MVP: linear + gate-driven retry):
- *   steps[i]_dispatch -> steps[i]_idle -> steps[i+1]_dispatch -> ... -> all_complete
- *   - task step: dispatch the actor with upstream (prior completed TASK-step
- *     outputs) prefixed; on its idle, mark completed and advance.
- *   - gate step: dispatch the verifier with the preceding task's output +
- *     criteria; on its idle, parse <verdict>:
- *       PASS   -> mark the gate complete; advance.
+ * STATE MACHINE (active-frontier over task/gate/fanout/join steps):
+ *   activeStepIndices (sorted ready set) → dispatch each not-in-flight step
+ *   → idle → parse/capture → advance/goto/reset → all_complete
+ *   - task step: dispatch the actor with upstream (prior completed task-step
+ *     outputs plus completed joins' joinedOutput) prefixed; on its idle, mark
+ *     completed and advance.
+ *   - gate step: dispatch the verifier with the resolved target's output
+ *     (implicit nearest preceding task/join, or explicit target_step/targets)
+ *     + criteria; on its idle, parse <verdict>:
+ *       PASS   -> mark the gate complete; advance (or on_pass_goto).
  *       FAIL   -> if onFail="retry" and attempts <= maxRetries, reset and
- *                 re-dispatch the preceding task's actor with a diff diagnostic;
- *                 else fail the run (workflow_failed).
- *       INVALID / parse-failure -> fail the run as workflow_invalid. This is
- *                 producer-neutral: the target task is not retried.
+ *                 re-dispatch the target's actor with a diff diagnostic;
+ *                 else fail the run (workflow_failed) or follow on_fail_goto.
+ *       INVALID / parse-failure -> routed per on_invalid/on_malformed:
+ *                 fail, retry_verifier, skip, escalate, or on_invalid_goto.
+ *                 Producer-neutral: the target task is not retried for
+ *                 verifier-side failures.
+ *   - fanout/join markers: engine completes the fanout marker instantly and
+ *     shepherds branches (fanout.ts) until the join can fire (dag.ts).
  *   - All steps complete -> maybeTriggerSignoff -> deliver (idle: workflow_complete)
  *
  * Reuses dispatchToMember (canonical member dispatch), parseVerdict (tollgate's
  * three-valued verdict parser), maybeTriggerSignoff, and finishRun. Does NOT
  * reuse buildUpstreamContext because gate-step actors differ from task-step
  * actors and gate verdicts are control-flow, not work product; a dedicated
- * buildWorkflowUpstream includes only completed task-step outputs.
+ * buildWorkflowUpstream includes completed task-step outputs and completed
+ * joins' joinedOutput.
  */
 
 import type { PluginContext } from "../../core/context.js";
@@ -280,7 +289,7 @@ export async function dispatchEnsembleGate(
     return dispatchedAny;
 }
 
-/** Dispatch a gate step's verifier with the preceding task's output + criteria. */
+/** Dispatch a gate step's verifier with the resolved target's output + criteria. */
 export async function dispatchGateStep(
     ctx: PluginContext,
     team: Team,
@@ -354,7 +363,7 @@ export async function dispatchGateStep(
     return true;
 }
 
-/** Reset timing metadata on a workflow step so it can be re-dispatched (used by retry/goto). */
+/** Reset timing metadata on a workflow step so it can be re-dispatched (used by retry/goto paths). */
 export function resetWorkflowStepTiming(step: WorkflowStep): void {
     step.startedAt = undefined;
     step.completedAt = undefined;
@@ -723,7 +732,9 @@ export async function gotoWorkflowStep(
 }
 
 /**
- * Advance the workflow: find the next incomplete step, dispatch it (task or
+ * Advance the workflow: compute the sorted ready frontier (or, for a task
+ * with no activeStepIndices, find the next incomplete step), dispatch it
+ * (task or
  * gate), or -- if all steps are complete -- trigger signoff then deliver
  * (workflow_complete). Shared by the task-step completion path and the
  * gate-PASS path, and by resumeWorkflowMode / approval resume.

@@ -14,7 +14,8 @@ import {
 import { isIndexedMasterOf } from "../../state/resolve.js"
 import { teamDir } from "../../state/paths.js"
 
-/** List all teams in the current scope with status and member count. */
+/** List teams in the current scope with status and member count. Project
+ *  scope lists every team; user scope filters to teams the caller masters. */
 export function teamListTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description: "List all teams in the current scope with their status and member count.",

@@ -8,11 +8,13 @@
  *
  * STATE MACHINE (per gate, see handleTollgateIdle for full detail):
  *   produce → verify → [PASS→next_gate | FAIL→retry_produce | INVALID→escalate]
- *   escalate → re-verify (handler reports verifier fixed)
+ *   escalate → re-verify (unconditional once the escalation handler idles)
  *   - All gates pass → check signoff → deliver (idle: tollgate_complete)
  *   - Gate FAIL retries exhausted → deliver (failed: tollgate_failed:<producer>)
- *   - INVALID cycles exhausted → deliver (failed: tollgate_invalid:exhausted)
- *   - INVALID without escalateTo → deliver (failed: tollgate_invalid:<producer>:<reason>)
+ *   - INVALID cycles exhausted → deliver (failed: tollgate_invalid:exhausted:<member>)
+ *   - INVALID without escalateTo → pause for a leader tollgate_gate approval
+ *     (approve retries verification, reject fails); if the approval cannot be
+ *     created → deliver (failed: tollgate_invalid:<producer>:<reason>)
  */
 
 import type { PluginContext } from "../../core/context.js"
@@ -210,9 +212,10 @@ async function escalateInvalid(
  *                FAIL    -> attempts++; if within maxGateRetries, return the producer with a
  *                           diff diagnostic; else fail the run.
  *                INVALID -> isolate + escalate the verifier side.
- *   escalate — the escalation handler's idle re-enters verify (it reports the
- *              verifier fixed). getExpectedMember returns escalateTo here so the
- *              handler's idle is not treated as stray (the original deadlock).
+ *   escalate — the escalation handler's idle re-enters verification (the
+ *              handler is expected to have fixed the verifier/reference).
+ *              getExpectedMember returns escalateTo here so the handler's idle
+ *              is not treated as stray.
  * parse-failure is treated as INVALID (the verifier could not evaluate).
  */
 export async function handleTollgateIdle(
@@ -256,7 +259,8 @@ export async function handleTollgateIdle(
         return
     }
 
-    // escalate phase: handler fixed the verifier/reference -> re-verify.
+    // escalate phase: the handler is expected to have fixed the
+    // verifier/reference -> re-verify.
     if (phase === "escalate") {
         if (member.name !== task.escalateTo) return  // stray idle
         stage.verdict = undefined                    // clear stale verdict, re-evaluate

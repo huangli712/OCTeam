@@ -1,7 +1,8 @@
 /**
  * Git worktree lifecycle helpers. Co-located with the state layer so git
- * operations are reusable. All operations are best-effort: a git failure never
- * blocks team lifecycle.
+ * operations are reusable. Best-effort semantics vary by operation: teardown
+ * helpers swallow git failures so they never block team lifecycle, while
+ * createWorktree throws (a member cannot spawn without its worktree).
  */
 
 import { execFile } from "node:child_process"
@@ -22,11 +23,11 @@ const execFileP = promisify(execFile)
 
 /**
  * Safety check: does the worktree at `worktreePath` have uncommitted
- * changes (staged, unstaged, or untracked)? Returns false only when the
- * worktree path itself is absent. On any other git failure (corrupt .git,
- * not a git repo, permission denied) returns true (fail-closed) so that
- * team_delete refuses to proceed without force — protecting potentially
- * uncommitted work that could not be verified.
+ * changes (staged, unstaged, or untracked)? Returns false for a clean
+ * worktree and for an absent worktree path. On any other git failure
+ * (corrupt .git, not a git repo, permission denied) returns true
+ * (fail-closed) so that team_delete refuses to proceed without force —
+ * protecting potentially uncommitted work that could not be verified.
  */
 export async function hasUncommittedChanges(worktreePath: string): Promise<boolean> {
     try {
@@ -102,8 +103,9 @@ export async function hasUncommittedChanges(worktreePath: string): Promise<boole
  * hand-edited member.worktreePath — e.g. set on the in-memory Team object,
  * bypassing the load-time validator — could otherwise point at an unrelated
  * registered worktree of the project repo and `git worktree remove --force`
- * would destroy it. An out-of-bounds path is refused (warning + early return);
- * git errors remain best-effort.
+ * would destroy it. An out-of-bounds path is refused (warning + false);
+ * a git failure rejects (destroyWorktree catches it and returns false so the
+ * caller can keep the member's worktree fields).
  */
 export async function cleanWorktree(
     projectDir: string,

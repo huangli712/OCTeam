@@ -95,9 +95,10 @@ function hasNestedQuantifier(pattern: string): boolean {
     // Also catch repeated quantified character classes such as [a]*[a]*[a]*.
     if (/([a-zA-Z0-9])([*+])(?:\1\2){2,}/.test(stripped)) return true
     if (/((?:\[[^\]]{1,3}\])[*+])(?:\1){2,}/.test(stripped)) return true
-    // Also catch the character-class variant: [a][a][a]+ or similar via
+    // Also consider the character-class variant: [a][a][a]+ or similar via
     // repeated single-char classes under quantifiers — rare but possible.
-    // Skip: too rare and complex for a heuristic; the input cap mitigates.
+    // Not detected: too rare and complex for a heuristic; the input cap
+    // mitigates.
     // Detect overlapping alternation under a quantifier. Patterns like (a|aa)+$,
     // (a|ab)+ have exponential backtracking when two alternation branches
     // share a string-prefix overlap (one is a prefix of the other). For each

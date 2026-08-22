@@ -48,7 +48,10 @@ import {
     validateSignoff
 } from "../support.js"
 
-/** Field names allowed on EVERY workflow step kind regardless of its `kind`. */
+/** Field names recognized by the authoring schema across step kinds (used
+ *  to partition known vs unknown fields; per-kind validation still rejects
+ *  specific entries here — gates reject inputs/expose_output/max_output_bytes,
+ *  and branch steps reject the timeout controls). */
 const COMMON_STEP_FIELDS = [
     "kind", "id", "inputs", "expose_output", "approval_before", "approval_after",
     "max_output_bytes", "timeout_ms", "on_timeout", "max_timeout_retries",

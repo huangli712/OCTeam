@@ -1,24 +1,28 @@
 /**
  * File mailbox (Layer 1 of the three-layer communication model).
  *
- * Each recipient has its own append-only inbox `mailbox/{recipient}.jsonl`.
- * Broadcasts are copied into every recipient's inbox at send time (no global
- * read-flag — eliminates multi-reader bugs). Delivery uses the atomic
- * read-and-reserve protocol so the two master drainers
- * (event-handler proactive drain + Transform hook) never double-deliver.
+ * Each recipient has its own inbox `mailbox/{recipient}.jsonl`: messages are
+ * appended on send, and the inbox is truncated once its lines are reserved
+ * into `{recipient}.reserved/`. Broadcasts are copied into every recipient's
+ * inbox at send time (no global read-flag — eliminates multi-reader bugs).
+ * Delivery uses the locked read-and-reserve protocol (crash-recoverable,
+ * at-least-once: a crash between reservation and ACK requeues the reserved
+ * lines) so the two master drainers (event-handler proactive drain +
+ * Transform hook) never double-deliver in normal operation.
  *
  * TRUST BOUNDARY — message authenticity. The mailbox lives under
  * `<project>/.octeam/mailbox/`, i.e. inside the project directory that member
  * agents (any role mapped to the `oct-junior` agent: coder/debugger/optimizer/...)
- * can read and write via their edit/write/bash tools. Messages carry NO
+ * can read and write via their edit/write/bash tools. Plain messages carry NO
  * cryptographic integrity tag (no HMAC/signature): `from` and `kind` are stored
- * verbatim and only XML-escaped on output, never re-authenticated on read.
- * Consequently a member with filesystem write access to `.octeam/` CAN append a
- * forged line (e.g. `{from:"master", kind:"directive", ...}`) that will be
- * rendered as a high-priority `[DIRECTIVE]` apparently from the master — a
- * cross-member privilege-escalation vector. The master's own drain path
- * (`deliverQueuedResultsToMaster`) filters such self-directed forgeries as a
- * partial mitigation.
+ * verbatim and only XML-escaped on output. A member with filesystem write
+ * access to `.octeam/` CAN append a forged line. Directive priority is the
+ * exception: rendering checks every `kind: "directive"` line against the
+ * in-process authentication registry (auth.ts) and downgrades unauthenticated
+ * ones to regular messages, so a forged line cannot render as a high-priority
+ * `[DIRECTIVE]` — but it still renders as an ordinary message. The master's
+ * own drain path (`deliverQueuedResultsToMaster`) additionally filters
+ * self-directed forgeries as a partial mitigation.
  *
  * This is an accepted, documented limitation of the shared-process,
  * shared-filesystem architecture: an HMAC key cannot be hidden from a member
@@ -108,9 +112,13 @@ export async function writeMailboxMessage(
     backpressureMaxBytes?: number,
     authContext?: { teamName?: string; runId?: string },
 ): Promise<void> {
-    // Authenticate directives inside the lock so the auth record and mailbox
-    // write are transactionally consistent. A failed write never registers an
-    // orphan auth record that could authenticate a forged line with the same id.
+    // Serialize directive registration with the mailbox write under one lock.
+    // The append runs first and the auth record is registered only after it
+    // succeeds, so a failed write never registers an orphan auth record that
+    // could authenticate a forged line with the same id. A crash between the
+    // append and the registration leaves an unauthenticated directive line
+    // that renders as a regular message (safe direction); the lock prevents
+    // polling from observing that intermediate state.
     await withLock(mailboxLockPath(teamDirectory, recipient), async () => {
         // Backpressure check INSIDE the lock so concurrent senders cannot
         // both pass the check and collectively exceed the cap.
@@ -138,11 +146,13 @@ export async function writeMailboxMessage(
 }
 
 /**
- * Atomic read-and-reserve. Moves inbox messages into `reserved/` under the
- * mailbox file lock and returns them. Two concurrent drainers calling this see
- * disjoint sets (first wins, second sees empty inbox) — this is the core
- * duplicate-delivery guard between the event-handler master drain and the
- * Transform hook.
+ * Locked read-and-reserve. Moves inbox messages into `reserved/` under the
+ * mailbox file lock and truncates the inbox, then returns them. Two
+ * concurrent drainers calling this see disjoint sets (first wins, second sees
+ * empty inbox) — this is the core duplicate-delivery guard between the
+ * event-handler master drain and the Transform hook. Crash semantics are
+ * at-least-once: a crash between reservation and ACK is resolved by
+ * releaseStaleReservations requeueing the reserved lines.
  */
 export async function pollMailbox(
     teamDirectory: string,
@@ -217,8 +227,8 @@ export async function pollMailbox(
             // Rollback: truncate failed after reserves succeeded. Without this
             // cleanup the messages would exist in BOTH reserved/ and inbox/,
             // and releaseStaleReservations (TTL 30s) would re-append the
-            // reserved copy → duplicate injection (at-least-once degradation
-            // from the module's exactly-once contract). Unlink the reserved
+            // reserved copy → duplicate injection (degrading delivery to
+            // at-least-once). Unlink the reserved
             // copies so the original inbox entries remain authoritative for
             // the next poll attempt. Best-effort: an unlink failure leaves a
             // stranded reserved file that the stale-reaper eventually clears.
@@ -253,7 +263,7 @@ export async function ackMessages(
 ): Promise<void> {
     // Hold the mailbox lock for the whole batch so releaseStaleReservations
     // cannot re-add a message to the inbox between our append-to-processed and
-    // unlink-reservation (exactly-once violation). Matches pollMailbox and
+    // unlink-reservation (duplicate delivery). Matches pollMailbox and
     // releaseStaleReservations batch semantics. Calls pruneProcessedLogUnlocked
     // (the unlocked variant) to avoid re-acquiring the same non-reentrant lock.
     return withLock(mailboxLockPath(teamDirectory, recipient), async () => {
@@ -375,7 +385,7 @@ async function pruneProcessedLogUnlocked(teamDirectory: string, recipient: strin
     // `processedAt` field (when the message was ACKed).
     // Prefer `processedAt` for retention so a message that sat in
     // the inbox for a long time before ACK is not immediately pruned. Fall
-    // back to `timestamp` for legacy entries without processedAt. Keep
+    // back to `timestamp` for entries without processedAt. Keep
     // entries whose retention time is within PROCESSED_RETENTION_MS of now.
     // Entries without a parseable timestamp are kept (conservative — never
     // prune what we can't age-check).
@@ -577,11 +587,11 @@ export async function releaseStaleReservations(
                     continue
                 }
                 // Append succeeded — safe to remove the reserved copy. A
-                // failure here is best-effort: the message is already in the
-                // inbox and will be re-delivered; the orphaned reserved file
+                // failure here is best-effort: the message is already in
+                // the inbox and will be re-delivered; the orphaned reserved file
                 // is a benign duplicate that this same sweep will catch next
                 // tick (the requeue above is idempotent against pollMailbox's
-                // exactly-once protocol).
+                // locked read-and-reserve protocol).
                 try {
                     await fs.unlink(p)
                 } catch (err: unknown) {

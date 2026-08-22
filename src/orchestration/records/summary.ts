@@ -23,12 +23,13 @@ import {
 /**
  * Mode-aware summary. delegate aggregates from the task list (per-task results
  * were already delivered to master via team_send_message) and also uses
- * responses[] for the final output. loop uses decisionHistory (structured)
- * rather than the overwritten responses[]. parallel/pipeline concatenate
- * captured outputs.
+ * responses[] for the final output. loop renders decisionHistory (structured)
+ * as its final decision and also renders responses[] for the round outputs.
+ * parallel/pipeline concatenate captured outputs.
  *
- * Per-mode formatting lives in the summarize* helpers below; this function is
- * a thin dispatcher with an exhaustiveness guard on OrchestrationType.
+ * Per-mode formatting lives in the summarize* helpers imported from
+ * renderers.ts; this function is a thin dispatcher with an exhaustiveness
+ * guard on OrchestrationType.
  */
 export async function buildSummary(
     team: Team,

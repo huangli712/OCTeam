@@ -107,9 +107,11 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
                             }),
                     ),
             )
-            // Fail closed when a sibling state is unreadable. Treating it as
+            // Fail closed when a sibling state load rejects. Treating it as
             // inactive could allow concurrent activation, so refuse activation
-            // and surface the I/O issue to the operator.
+            // and surface the I/O issue to the operator. (A sibling whose
+            // unreadable state is served from the in-process cache resolves
+            // ok here and bypasses the refusal.)
             const failedSiblings = loaded.filter(r => !r.ok)
             if (failedSiblings.length > 0) {
                 return `Error: cannot verify sibling team states (unreadable: ${failedSiblings.length}). `

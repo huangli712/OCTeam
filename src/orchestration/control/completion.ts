@@ -1,6 +1,6 @@
 /**
- * Run-completion control: build and deliver the final summary, persist the run
- * record, emit termination telemetry, then clear the active task.
+ * Run-completion control: persist the run record and termination telemetry,
+ * then build and deliver the final summary, then clear the active task.
  */
 
 import type { PluginContext } from "../../core/context.js"
@@ -95,7 +95,8 @@ export async function deliverSummaryToLeader(
 
 /**
  * Complete a run through the canonical teardown sequence: deliver the summary,
- * clear activeTask, then expose the terminal team status.
+ * persist a terminal task-free state view, then expose the terminal team
+ * status on the live object.
  *
  * Callers that need work between delivery and cleanup must invoke
  * deliverSummaryToLeader directly and perform the remaining steps themselves.

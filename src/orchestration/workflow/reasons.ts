@@ -1,15 +1,14 @@
 /**
- * Single source of truth for team_workflow run-termination reason strings.
+ * team_workflow run-termination reason builders.
  *
- * Every finishRun reason emitted by the workflow engine is built here so the
- * surface stays consistent and grep-able. `runStatusFromReason` (runs.ts)
- * classifies a run as failed by matching the prefixes in
+ * Every finishRun reason built through a helper lives here so the surface
+ * stays consistent and grep-able; a few sites construct their reason inline
+ * instead (e.g. workflow_frontier_deadlock and workflow_input_skipped in
+ * engine.ts) and are documented at those call sites. `runStatusFromReason`
+ * (runs.ts) classifies a run as failed by matching the prefixes in
  * WORKFLOW_FAILED_REASON_PREFIXES, so any new failure reason MUST be added
  * there too — the builders below are the call-site contract, the prefixes are
  * the classifier contract.
- *
- * The builders preserve the engine's exact reason strings, keeping persisted
- * run records and existing tests compatible.
  */
 
 /**

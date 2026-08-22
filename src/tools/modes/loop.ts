@@ -28,7 +28,8 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
         description:
             "Run a corrective loop: code -> review -> decide -> repeat. The decider "
             + "(a member, NOT master) emits a <decision>{...} block each round. "
-            + "Loops until done, max_rounds, no-issues, timeout, or 3 consecutive parse failures.",
+            + "Loops until done, max_rounds, no-issues, timeout, or the "
+            + "max_decision_parse_failures cap (default 3) of consecutive parse failures.",
         args: {
             team_id: tool.schema.string().min(1),
             stages: tool.schema

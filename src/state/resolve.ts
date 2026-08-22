@@ -80,7 +80,7 @@ export function indexMember(
     memberIndex.set(sessionID, { teamName, memberName, leadSessionId, storageRoot })
 }
 
-/** Index every team in one scope. Shared by the project + user passes above. */
+/** Index every team in one scope. Shared by the project + user passes below. */
 async function indexScope(
     storageRoot: string,
     segmented: boolean,

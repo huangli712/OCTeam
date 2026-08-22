@@ -23,7 +23,9 @@ import {
 /** Total byte budget for workflow step outputs in a run summary (ledger + sections). */
 const WORKFLOW_OUTPUT_BYTE_BUDGET = 512 * 1024
 
-/** Appended when the budget is exceeded; keep its byte count in sync with the budget. */
+/** Marker describing budget exhaustion. An oversized ledger is independently
+ *  truncated before this point; this marker is appended (budget permitting)
+ *  when the overall budget check fails. */
 const WORKFLOW_OUTPUT_TRUNCATED_MARKER = "[workflow outputs truncated: 524288-byte budget exceeded]"
 
 /** Escape XML control characters in member output to prevent tag injection. */
@@ -295,9 +297,8 @@ export function summarizeConsensus(task: ActiveTask, head: string): string {
  */
 export function summarizeParallel(task: ActiveTask, head: string): string {
     // Once the reducer member has produced a combined result, deliver it
-    // verbatim instead of the [Reduce policy:X] header. (Gated on
-    // reducedResult presence, NOT the reason, so reduce_policy tests that
-    // exercise the header path stay green.)
+    // verbatim instead of the [Reduce policy:X] header. Gated on
+    // reducedResult presence, not the termination reason.
     if (task.reducedResult !== undefined) {
         return `${head}\n${task.reducedResult}`
     }

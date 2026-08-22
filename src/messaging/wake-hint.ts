@@ -13,9 +13,10 @@ import { logger } from "../core/log.js"
 // where a long unread backlog keeps re-triggering promptAsync on every sweep.
 const WAKE_HINT_THROTTLE_MS = 30_000
 
-// Bound the promptAsync call so a hanging host API does not leave
-// an unresolved promise indefinitely. Fire-and-forget wake hints should
-// never block the caller.
+// Bound the promptAsync AWAIT so a hanging host API does not block this
+// caller indefinitely. The underlying promise itself is not cancellable —
+// only the await is raced against this timeout; the host call may still
+// settle later. Fire-and-forget wake hints should never block the caller.
 const WAKE_HINT_TIMEOUT_MS = 10_000
 
 // Cap on tracked sessions. When exceeded, the oldest entries are evicted to

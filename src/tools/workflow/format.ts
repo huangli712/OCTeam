@@ -137,7 +137,8 @@ export function formatWorkflowDryRun(args: ResolvedWorkflowToolArgs): string {
                 const jumpTag = jumps.length > 0 ? `; ${jumps.join(" ")} (max_jumps=${step.max_jumps ?? 3})` : ""
                 const indent = step.branchContext === undefined ? "" : "  "
                 // Include ensemble policy and verifier details so reviewers see
-                // the complete gate configuration.
+                // the salient gate configuration (a few fields — per-step
+                // timeout controls and loop bounds among them — are not shown).
                 const verifierLabel = step.verifiers !== undefined && step.verifiers.length > 0
                     ? `${step.verifiers.join("+")} (${step.ensemble_policy ?? "majority"}`
                         + `${step.ensemble_quorum !== undefined ? ` quorum=${step.ensemble_quorum}` : ""})`

@@ -1,6 +1,8 @@
 /**
  * Team directory layout and path construction. All on-disk paths for team state,
- * mailbox, tasks, worktrees, and run records are derived from these functions.
+ * mailbox, tasks, worktrees, and run records are derived from these functions,
+ * except a few internal artifacts joined directly at their single call sites
+ * (quarantine paths in store.ts, join/reduce/signoff side files in records).
  */
 
 import path from "node:path"
@@ -40,7 +42,8 @@ export function teamDir(
 
 // --- Per-team file paths (take the resolved team directory) ---
 
-/** config.json — TeamSpec (immutable, written at team_create) */
+/** config.json — TeamSpec (written at team_create; rewritten by the lifecycle
+ *  editors add/remove/rename/fixmember under their locks) */
 export function configPath(teamDirectory: string): string {
     return path.join(teamDirectory, "config.json")
 }
@@ -57,7 +60,8 @@ export function stateLockPath(teamDirectory: string): string {
 
 /**
  * master.sentinel — write-once file pinning the team's authoritative
- * leadSessionId. Written at team_create with read-only permissions;
+ * leadSessionId. Written at team_create (mode 0644, then chmod'd to 0444 on a
+ * best-effort basis — the chmod failure is logged, not fatal);
  * never overwritten by any tool. At restart, user scope verifies it against
  * state.json while project scope verifies it against the directory-derived
  * owner. A mismatch or unreadable sentinel fails closed; a missing sentinel
@@ -75,10 +79,11 @@ export function teamLifecycleLockPath(teamDirectory: string): string {
 }
 
 /**
- * Namespace-level lock guarding team name lifecycle (create/rename/delete).
+ * Namespace-level lock guarding team name lifecycle (rename/delete).
  * Placed in the storage root (parent of all team directories) so that rename
- * and create cannot race on the old/new name slots. Each operation acquires
- * this lock in addition to the per-team lifecycle lock.
+ * and delete cannot race on the old/new name slots. Rename and delete acquire
+ * this lock in addition to the per-team lifecycle lock; team_create relies on
+ * its atomic non-recursive mkdir claim instead.
  */
 export function teamNamespaceLockPath(storageRoot: string): string {
     return path.join(storageRoot, "team.namespace.lock")
@@ -101,13 +106,16 @@ export function mailboxDir(teamDirectory: string): string {
     return path.join(teamDirectory, "mailbox")
 }
 
-/** mailbox/{recipient}.lock — file lock for atomic read-and-reserve */
+/** mailbox/{recipient}.lock — file lock serializing the read-and-reserve
+ *  step (reservation writes and later inbox truncation are crash-recoverable,
+ *  not one atomic filesystem transaction) */
 export function mailboxLockPath(teamDirectory: string, recipient: string): string {
     assertSafeSegment(recipient, "mailboxLockPath", "recipient")
     return path.join(mailboxDir(teamDirectory), `${recipient}.lock`)
 }
 
-/** mailbox/{recipient}.jsonl — pending inbox (append-only) */
+/** mailbox/{recipient}.jsonl — pending inbox (appended on send; truncated
+ *  after its lines are reserved into {recipient}.reserved/) */
 export function inboxPath(teamDirectory: string, recipient: string): string {
     assertSafeSegment(recipient, "inboxPath", "recipient")
     return path.join(mailboxDir(teamDirectory), `${recipient}.jsonl`)
@@ -249,8 +257,9 @@ export function runMemberOutputPath(
  * runs/{runId}/reduce.md — the run-level reduced artifact produced by the
  * reducer member during the reduce stage. Kept separate from the reducer's own
  * {member}.md (which holds that member's primary deliverable) so neither
- * overwrites the other. Picked up automatically by persistRun's .md readdir
- * scan, so team_result_get(member="reduce") returns it with no extra plumbing.
+ * overwrites the other. Indexed into the run record via the explicit
+ * artifacts.reduce plumbing in persistRun (the member-output readdir scan
+ * excludes it), and surfaced by team_result_get through that index.
  */
 export function runReduceOutputPath(teamDirectory: string, runId: string): string {
     return path.join(runDir(teamDirectory, runId), "reduce.md")
@@ -260,8 +269,9 @@ export function runReduceOutputPath(teamDirectory: string, runId: string): strin
  * runs/{runId}/signoff.md — the run-level signoff verdict(s) produced by
  * reviewer member(s) during the signoff stage. Kept separate from each
  * reviewer's own {member}.md (which holds that member's primary deliverable)
- * so neither overwrites the other. Picked up automatically by persistRun's
- * .md readdir scan, mirroring runReduceOutputPath.
+ * so neither overwrites the other. Indexed into the run record via the
+ * explicit signoff-artifact scan in persistRun (the member-output readdir
+ * scan excludes these files).
  */
 export function runSignoffOutputPath(
     teamDirectory: string,

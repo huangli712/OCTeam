@@ -1,12 +1,14 @@
 /**
  * Persistent per-orchestration run records.
  *
- * Full member outputs are written to runs/<runId>/<member>.md at CAPTURE time
- * (idle.ts Step 6). This module writes the run's record.json — a JSON
- * index of metadata + references to those output files — at TERMINATION time,
- * via persistRun, which is called from deliverSummaryToLeader (the single seam
- * that every real termination funnels through). Retention is enforced here
- * (keep the most recent DEFAULT_MAX_RUNS).
+ * Member outputs are written to runs/<runId>/<member>.md at CAPTURE time
+ * (idle.ts Step 6; accumulated turns, byte-capped, with reduce/signoff turns
+ * routed to their run-level artifacts). This module writes the run's
+ * record.json — a JSON index of metadata + references to those output files —
+ * at TERMINATION time, via persistRun, which is called from
+ * deliverSummaryToLeader (the single seam that every real termination funnels
+ * through). Retention is enforced here (keep the most recent
+ * DEFAULT_MAX_RUNS).
  *
  * All writes use atomicWrite (parent-dir auto-created) and run under team.mutex
  * (every deliverSummaryToLeader call site holds it), so no extra locking is
@@ -93,10 +95,9 @@ const FAILED_REASON_MARKERS = [
  * Derive run status from the verbatim termination reason (heuristic fallback).
  *
  * Prefer passing an explicit `status` to persistRun when the caller already
- * knows it (every finishRun call site does). This heuristic is kept as a
+ * knows it (every finishRun call site does). This heuristic serves as a
  * fallback for any direct deliverSummaryToLeader caller that does not thread
- * status, and for backward compatibility with persisted records from older
- * builds.
+ * status.
  */
 export function runStatusFromReason(reason: string): RunStatus {
     return FAILED_REASON_MARKERS.some(m => reason.includes(m)) ? "failed" : "completed"
@@ -158,8 +159,9 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
     const task = team.activeTask
     if (!task) return
 
-    // Lazy runId: capture sets it on first output; cover delegate (no capture)
-    // and legacy in-flight tasks loaded without a runId.
+    // Lazy runId: capture sets it on first output; cover delegate (no
+    // capture) and any active task that reaches termination before a runId
+    // was lazily assigned.
     const runId = (task.runId ??= crypto.randomUUID())
     const dir = runDir(team.directory, runId)
 

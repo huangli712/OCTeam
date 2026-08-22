@@ -12,7 +12,8 @@
  *   5. Identity validation (stray idle does not advance pipeline/loop)
  *   6. Capture output (delegated to records/capture.ts)
  *   7. Recurse decompose short-circuit (process <decompose> before wake-hint)
- *   8. Unread-message wake hint (returns; Transform hook injects content next turn)
+ *   8. Unread-message wake hint (early return only when there is unread mail
+ *      and no freshly captured output; Transform hook injects content next turn)
  *   9. Dispatch by active-task type
  *   10. Termination checks
  */

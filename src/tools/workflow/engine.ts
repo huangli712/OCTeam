@@ -1,9 +1,10 @@
 /**
- * team_workflow tool -- deterministic, declaratively-composed linear step
- * engine. Each step is either a `task` (one member produces output) or
- * a `gate` (a verifier renders a PASS/FAIL verdict over one or more prior task
- * outputs). The engine -- not the master LLM -- drives every step transition,
- * keeping intermediate results out of master context.
+ * team_workflow tool -- deterministic, declaratively-composed step engine
+ * over four step kinds: `task` (one member produces output), `gate` (a
+ * verifier renders a PASS/FAIL/INVALID verdict over one or more prior task
+ * or join outputs), `fanout`, and `join` (parallel branches and their
+ * barrier). The engine -- not the master LLM -- drives every step
+ * transition, keeping intermediate results out of master context.
  *
  * Type definitions + tool definition. Lowering + ref resolution live in lower.ts.
  * Validation lives in validate.ts. Dry-run formatting lives in format.ts.
@@ -146,9 +147,11 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
         on_malformed: tool.schema.enum(["fail", "retry_verifier", "skip", "escalate"])
             .optional()
             .describe(
-                "gate steps: parse_failure control. 'fail' (default, falls back to on_invalid) terminates;"
-                + " 'retry_verifier' re-dispatches verifier up to max_malformed_retries; 'skip' marks gate"
-                + " skipped and advances; 'escalate' pauses for human approval.",
+                "gate steps: parse_failure control. Unset inherits on_invalid"
+                + " (final fallback 'fail'). 'fail' terminates; 'retry_verifier' re-dispatches"
+                + " verifier up to max_malformed_retries; 'skip' (only available via"
+                + " on_malformed) marks gate skipped and advances; 'escalate' pauses"
+                + " for human approval.",
             ),
         max_malformed_retries: tool.schema.number().int().min(0).max(5).optional().describe(
             "gate steps: retry_verifier cap for malformed verdicts when on_malformed='retry_verifier'."

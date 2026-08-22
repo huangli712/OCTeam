@@ -21,7 +21,8 @@ import { commonOrchestrationFields } from "../schema.js"
  * answer the same question; the option with strict majority
  * (k > valid_ballots/2) wins. Members do NOT debate (use team_consensus for
  * that). Both malformed ballots and runtime errors abstain (excluded from the
- * denominator). All members run to completion (no early-exit).
+ * denominator). All participants run to completion (no early-exit); with the
+ * `members` subset argument, non-listed team members do not run.
  */
 export function teamQuorumTool(ctx: PluginContext): ToolDefinition {
     return tool({

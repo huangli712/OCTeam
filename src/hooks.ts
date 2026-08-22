@@ -136,8 +136,9 @@ function sdkEventSessionID(event: unknown): string | undefined {
  * the error is logged at "error" level (not the default "warn") so operators
  * notice state drift between memory and disk.
  *
- * Runs inside the caller's team.mutex.runExclusive block; retries extend the
- * mutex hold by at most ~200ms, acceptable for event-handler and sweep paths.
+ * Runs inside the caller's team.mutex.runExclusive block; the retry backoffs
+ * add at most ~200ms to the mutex hold, and each saveTeamState attempt's own
+ * duration (disk I/O) extends it further.
  *
  * @internal Exported for hooks-error-swallow.test.ts. Production code calls
  * this only from createEventHandler and sweepTeamOnce.
@@ -392,7 +393,7 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
             return
         }
 
-        // Member path — single team (1:1). Unchanged behavior.
+        // Member path — single team (1:1), driven by the session index.
         // resolveTeamMember returns null for the common "not a team member"
         // case (index miss) — `if (!member) return` stays silent. But it can
         // ALSO throw: when the index hits but the team state is unreadable

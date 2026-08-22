@@ -39,17 +39,18 @@ import {
 } from "./paths.js"
 
 /**
- * Canonical task-id shape. Task IDs are always crypto.randomUUID() (see
- * createTask). Exported so the tool layer (task.ts) validates the same shape at
- * the schema boundary — a single source of truth for both layers.
+ * Canonical task-id shape. Task IDs are crypto.randomUUID() by default; a
+ * caller may supply an explicit input.id, which must still match this pattern
+ * (see createTask). Exported so the tool layer (task.ts) validates the same
+ * shape at the schema boundary — a single source of truth for both layers.
  */
 export const TASK_ID_PATTERN =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
  * Raised by claimTask when the calling member already holds another task in
- * the "claimed" or "in_progress" window. Enforces the
- * claim → complete → idle → claim-next workflow (one active task per member).
+ * the "claimed" or "in_progress" window (one active task per member; member
+ * idle status is not part of this check).
  */
 export class MemberHoldsActiveTaskError extends Error {
     constructor(member: string, heldTaskId: string, heldStatus: string) {
@@ -95,8 +96,8 @@ export class TaskStatusError extends Error {
 
 /**
  * Raised by claimTask when the target task has unresolved blockedBy
- * dependencies — at least one blocker is not yet "completed". Prevents a
- * member from producing output before prerequisite tasks finish.
+ * dependencies — at least one blocker is neither "completed" nor "deleted".
+ * Prevents a member from producing output before prerequisite tasks finish.
  */
 export class TaskBlockedByError extends Error {
     constructor(taskId: string, blockerId: string, blockerStatus: string) {
@@ -138,8 +139,10 @@ export function isClaimStale(
 /**
  * Minimal top-level schema check for a persisted Task. The `as Task` cast is
  * compile-time only; a corrupt or hand-edited tasks/{id}.json can deserialize to
- * an arbitrary shape. Validate just the identity fields the task list and
- * orchestration immediately depend on; nested/optional fields are not checked.
+ * an arbitrary shape. Validates the fields the task list and orchestration
+ * immediately depend on (id, subject, status enum, runId, blockedBy entries,
+ * claimedAt, and the claimed/in_progress owner cross-rule); deeply nested
+ * payloads beyond those are not checked.
  */
 function isValidTask(value: unknown): value is Task {
     if (typeof value !== "object" || value === null) return false
@@ -170,7 +173,9 @@ function isValidTask(value: unknown): value is Task {
     )
 }
 
-/** Read a task file from disk, validate its schema, return null if not found or corrupt. */
+/** Read a task file from disk and validate its schema. Returns null when the
+ * file is absent, non-regular, over the 64 KiB cap, or schema-invalid;
+ * unparsable JSON rejects instead (only ENOENT maps to null in the catch). */
 async function readTaskFile(teamDirectory: string, taskId: string): Promise<Task | null> {
     try {
         // Cap file size and reject symlinks/non-files before reading. Task files
@@ -248,14 +253,16 @@ export async function getTask(teamDirectory: string, taskId: string): Promise<Ta
 }
 
 /**
- * Atomically claim a pending task: acquire the persistent claim lock
- * (fs.open 'wx'), double-check status === "pending", then flip to "claimed".
+ * Claim a pending task: acquire the persistent claim lock (fs.open 'wx'),
+ * double-check status === "pending", then flip to "claimed" (the lock creation
+ * and the task-state write are separate steps — a crash between them leaves a
+ * pending task plus a claim lock that the stale-lock reaper cleans up).
  * Throws TaskAlreadyClaimedError if another member holds a fresh lock or the
  * task is not pending. Throws MemberHoldsActiveTaskError if `owner` already
- * holds another task in the "claimed" or "in_progress" window — this enforces
- * the claim → complete → idle → claim-next workflow (one active task per
- * member at a time). `claimMutexHeld` is reserved for callers that already
- * hold claimMutexPath across a larger check-and-claim critical section.
+ * holds another task in the "claimed" or "in_progress" window (one active
+ * task per member at a time; member idle status is not checked here).
+ * `claimMutexHeld` is reserved for callers that already hold claimMutexPath
+ * across a larger check-and-claim critical section.
  */
 export async function claimTask(
     teamDirectory: string,

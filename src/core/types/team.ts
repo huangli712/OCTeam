@@ -93,8 +93,10 @@ export type TeamState = {
                                        // has this set. Enforced by team_activate (refuses if a
                                        // sibling is already active — auto-switching is disabled;
                                        // caller must team_deactivate first) + startup reconcile
-                                       // (clears ALL activatedAt on plugin restart so nothing
-                                       // auto-activates after a reload). Orthogonal to TeamStatus.
+                                       // (clears project-scope teams' activatedAt on plugin
+                                       // restart; user-scope teams are skipped deliberately —
+                                       // they may be active in sibling processes). Orthogonal
+                                       // to TeamStatus.
     spawning?: boolean                 // cross-process spawn guard.
     spawningOwner?: string             // UUID of the process that set
                                        // spawning. Only the owner can clear it.
@@ -109,7 +111,9 @@ export type TeamState = {
 export type MemberSpec = {
     name: string                       // unique within team, e.g. "alice" (auto-picked from a name pool if omitted at creation)
     role: string                       // role label, e.g. "coder", "verifier"
-    prompt: string                     // system prompt content (the member's instructions)
+    prompt: string                     // member instructions; delivered as <member-instruction>
+                                       // in the first real task dispatch's synthetic user message
+                                       // (NOT the OpenCode agent system prompt)
     model?: string                     // model identifier, e.g. "claude-sonnet"
     agent?: string                     // OpenCode agent type; resolved via safeMemberAgent() at dispatch (falls back to oct-oracle for non-oct-* values)
     worktree?: boolean                 // create isolated git worktree, default false

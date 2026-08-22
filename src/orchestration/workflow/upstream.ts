@@ -1,10 +1,12 @@
 /**
- * Workflow upstream-context construction: builds the prefix of prior completed
- * TASK-step outputs injected into a task step's dispatch prompt.
+ * Workflow upstream-context construction: builds the prefix of prior
+ * completed TASK-step outputs and completed joins' joinedOutput injected into
+ * a task step's dispatch prompt.
  *
  * Gate-step verdicts are skipped because they are control-flow, not work
- * product. Each output block is individually truncated, then capped at
- * MAX_UPSTREAM_OUTPUT_BYTES total bytes.
+ * product. Each output block is individually truncated, then budgeted at
+ * MAX_UPSTREAM_OUTPUT_BYTES total bytes (soft cap — the truncation marker and
+ * separators are appended outside the budget).
  */
 
 import type { WorkflowStep } from "../../core/types.js";

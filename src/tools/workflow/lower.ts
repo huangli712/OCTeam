@@ -1,6 +1,8 @@
 /**
  * Workflow step lowering: converts public WorkflowToolStep[] into the internal
- * LoweredWorkflowStep[] representation (flat fanout branches, resolved refs).
+ * LoweredWorkflowStep[] representation (flat fanout branches; numeric refs
+ * resolved to flat indices — string-id refs are preserved and resolved at
+ * runtime against lowered step ids).
  * Also handles matrix/foreach expansion and validation error label formatting.
  *
  * Dry-run preview formatting lives in format.ts.

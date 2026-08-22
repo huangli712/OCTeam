@@ -241,8 +241,10 @@ async function pollForAssistantOutput(
         const res = await ctx.client.session.messages({ path: { id: childId } })
         const output = extractAssistantText(res.data ?? [])
         if (output.trim().length > 0) {
-            // Accept only the team_planner closing tag (or its Chinese alias,
-            // see the extraction regex) as a completion signal; inner tags may
+            // Accept the team_planner closing tag as a completion signal
+            // (the completion probe also tolerates the Chinese alias 团队规划师,
+            // but the final extraction regex only accepts <team_planner>, so
+            // only the English tag yields a valid plan); inner tags may
             // appear before the full response is generated.
             const hasClosingTag = /<\/(?:team_planner|团队规划师)>/.test(output)
             if (hasClosingTag) return output

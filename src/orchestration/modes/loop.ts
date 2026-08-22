@@ -6,8 +6,14 @@
  *   decider_dispatch → parse_decision → [done | no_issues | max_rounds | parse_fail | next_round]
  *   - Decider says "done" → deliver (idle: loop_complete:decider_done)
  *   - All read-only stages report <no_issues/> → deliver (idle: loop_complete:no_issues)
- *   - Max rounds exceeded → deliver (failed: loop_complete:max_rounds)
- *   - Decision parse failure (≥3 retries) → deliver (failed: loop_complete:decision_parse_failure)
+ *   - Max rounds reached without a done decision → pause for a loop_done
+ *     approval when HITL is enabled (approve → idle: loop_complete:human_approved;
+ *     reject at the cap → failed: loop_complete:human_rejected_max_rounds, reject
+ *     below the cap → another round); without HITL → deliver (failed:
+ *     loop_complete:max_rounds)
+ *   - Decision parse failure (default cap 3 — fails on the 3rd consecutive
+ *     malformed decision after 2 re-dispatches) → deliver (failed:
+ *     loop_complete:decision_parse_failure)
  *   - Else → next round with decider feedback injected into member prompts
  */
 

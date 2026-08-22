@@ -198,8 +198,8 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
                 async (_team, task) => {
                     if (task.type !== "tollgate") return
                     // Guard against an empty stages array defensively -- the zod
-                    // schema enforces min(1), but the non-null assertion `!` is
-                    // removed so a future schema regression cannot feed
+                    // schema enforces min(1), and the guarded lookup (no non-null
+                    // assertion) ensures a schema regression cannot feed
                     // `undefined` into advanceToGatedStage.
                     const first = task.gatedStages?.[0]
                     if (!first) return

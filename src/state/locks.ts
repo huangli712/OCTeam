@@ -100,7 +100,9 @@ async function fsyncDir(dir: string): Promise<void> {
  * Cross-process exclusive file lock built on exclusive-create (fs.open 'wx').
  * A waiter never unlinks a live lock because stat/read/unlink cannot identify
  * one lock generation atomically; only a zero-byte stale lock older than 1s is
- * unlinked, and only by a later reap pass. Waiters poll until release or timeout.
+ * unlinked, and only by a later reap pass (a lock recorded in
+ * locallyReleasedLocks and still owned by this PID is unlinked immediately
+ * by the reap pass instead). Waiters poll until release or timeout.
  * While held, a heartbeat refreshes mtime; release verifies pid ownership before
  * unlinking. Used to guard state.json writes and mailbox reservations.
  */
@@ -175,9 +177,11 @@ export function shouldReapStaleLock(
  * this function, and the next open("wx") retry can then acquire. Closes the
  * gap where releaseLock failed (EPERM, crash mid-release) and the lock file
  * became a permanent orphan — all future acquireLock calls would spin to
- * timeout with no recovery. TOCTOU-safe: truncation leaves the inode in
- * place for a racing acquirer, and acquireLock retries open("wx") after
- * every reap pass; if another process grabbed it, we get EEXIST and loop.
+ * timeout with no recovery. Near-TOCTOU-safe: the PID is re-read and compared
+ * immediately before truncating (a generation change aborts the reap), though
+ * a replacement landing between that re-read and the truncate is a narrow
+ * residual race; truncation (rather than unlink) keeps the inode stable for
+ * racing waiters, and acquireLock retries open("wx") after every reap pass.
  */
 async function maybeReapStaleLock(lockPath: string): Promise<void> {
     try {
@@ -387,8 +391,9 @@ export async function assertNoSymlinkTraversal(
  * enforces an optional size cap BEFORE reading, preventing OOM from a
  * crafted oversized file or hang from a FIFO/device.
  *
- * Returns the file contents as a string, or undefined if the file does not
- * exist (ENOENT — the caller decides whether absence is an error).
+ * Returns the file contents as a string. An absent file (ENOENT) rejects
+ * from fs.open before the try block — callers wanting absence-tolerance must
+ * catch ENOENT themselves.
  */
 export async function safeReadFile(
     trustedRoot: string,
@@ -427,8 +432,10 @@ export async function safeReadFile(
  * Hardening:
  * - The temporary name carries a random suffix so concurrent writes from
  *   the same process (same pid) cannot collide on the same tmp path.
- * - Temporary data is fsync'd to disk before the rename lands, so an OS
- *   crash after rename cannot leave a zero-byte or stale state file.
+ * - Temporary data is fsync'd to disk before the rename lands, and the parent
+ *   directory is fsync'd on a best-effort basis (a directory-fsync failure is
+ *   logged, not fatal), so an OS crash leaves at worst a fully-written or
+ *   absent state file rather than a torn one.
  * - A symlink at the target path is refused, so a local attacker
  *   with FS write access cannot silently redirect the write elsewhere. When
  *   `trustedRoot` is supplied, the full ancestor chain is also walked via

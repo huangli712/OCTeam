@@ -110,7 +110,8 @@ export async function captureMemberOutput(
                 return { fresh: false, reason: "stale" }
             }
         } else if (member.lastCapturedOutput !== undefined) {
-            // Legacy snapshots are only trusted when they contain the full turn.
+            // Snapshot entries without a hash compare against the full turn
+            // text — only a full-turn match counts as stale.
             if (full === member.lastCapturedOutput) {
                 return { fresh: false, reason: "stale" }
             }
@@ -137,8 +138,8 @@ export async function captureMemberOutput(
     // runs/<runId>/signoff.md so a reviewer's verdict never overwrites (nor
     // mixes into) the reviewer's own <member>.md primary deliverable. Mirrors
     // the reduce-stage routing above.
-    //   - decider policy: only the configured decider's verdict turn is routed;
-    //     a non-decoder idling during signoffStage still writes <member>.md.
+            //   - decider policy: only the configured decider's verdict turn is routed;
+            //     a non-decider idling during signoffStage still writes <member>.md.
     //   - peer-quorum policy: every non-master member is dispatched as a
     //     reviewer, so any non-master idle during signoffStage is a verdict turn.
     const isSignoffTurn =

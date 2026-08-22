@@ -15,8 +15,9 @@ export const RESERVED_NAMES = [MASTER_NAME, ORCHESTRATOR_NAME] as const
 
 /**
  * Candidate name pool for members whose name is omitted at creation. A name is
- * drawn at random and not reused within the same team. The pool (32) exceeds the
- * 12-member team cap, so it never runs out for a single team.
+ * drawn at random and not reused within the same team. The pool (32) covers the
+ * default 12-member cap with headroom; teams that raise bounds.maxMembers
+ * toward 50 can exhaust it (team_add_member then errors with pool exhaustion).
  */
 export const MEMBER_NAME_POOL = [
     "alice", "bob", "carol", "dave", "erin", "frank", "grace", "henry",

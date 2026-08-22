@@ -6,6 +6,7 @@
  */
 
 import type { OcteamAgentConfig } from "./types.js"
+import { MEMBER_TEAM_TOOLS_PERMISSION } from "./types.js"
 
 const ULTRABRAIN_PROMPT = `
 You are oct-ultrabrain, the most powerful intelligence in the OCTeam multi-agent system.
@@ -46,16 +47,9 @@ export const ultrabrainAgent: OcteamAgentConfig = {
     color: "#06b6d4",
     permission: {
         "*": "deny",
-        // Team collaboration tools. They are instance-global (Hooks.tool);
-        // these explicit allows keep them usable once the host SDK starts
-        // honoring wildcard/unknown permission keys (v1.4.7 silently ignores
-        // them, so "*": "deny" does not block team tools yet — but an SDK
-        // upgrade would cut members off without these entries).
-        team_send_message: "allow",
-        team_task_create: "allow",
-        team_task_list: "allow",
-        team_task_update: "allow",
-        team_task_get: "allow",
+        // Team collaboration tools (shared single source of truth — includes
+        // team_done, required by require_done_ack runs).
+        ...MEMBER_TEAM_TOOLS_PERMISSION,
         edit: "deny",
         task: "deny",
         bash: "deny",

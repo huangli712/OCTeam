@@ -52,8 +52,9 @@ export async function deliverToRecipients(
             // BackpressureError rejects only the full recipient mailbox, not the
             // entire broadcast. Collect these failures so remaining recipients
             // still receive the message, then throw one BackpressureError after
-            // the loop to preserve the caller's catch behavior without causing
-            // duplicates on retry.
+            // the loop to preserve the caller's catch behavior (recipients
+            // already written before the throw stay delivered — a caller-side
+            // retry of the same broadcast re-writes them).
             if (err instanceof BackpressureError) {
                 backpressureFailures.push(r)
                 continue

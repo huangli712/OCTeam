@@ -207,9 +207,11 @@ export async function handleArbitrateIdle(
     // Phase B: ruling (only the arbiter's idle reaches here).
     const r = parseArbitrationDecision(task.responses[task.arbiterMember ?? ""] ?? "")
     if (r.parseFailed) {
-        // Bounded retry: one re-dispatch before failing the run. LLM format
-        // drift is a common operational failure, not an edge case — and here
-        // it would discard all prior debate-round tokens. Uses the shared
+        // Bounded retry: re-dispatch before failing the run, up to the ruling
+        // parse-failure threshold (default 2 → one re-dispatch; a task-level
+        // maxRulingParseFailures override allows more). LLM format drift is a
+        // common operational failure, not an edge case — and here it would
+        // discard all prior debate-round tokens. Uses the shared
         // decisionParseFailures counter (ActiveTask base field).
         task.decisionParseFailures++
         // Allow a task-level override of the ruling parse-failure threshold.

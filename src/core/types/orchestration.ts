@@ -252,7 +252,7 @@ export interface ActiveTaskBase {
     // rebuild the same input set as the first attempt.
     _reducerMapperSnapshot?: string
 
-    // signoff policy (parallel isolated/cooperative, pipeline, delegate; NOT loop).
+    // signoff policy (all orchestration modes except consensus, quorum, and arena).
     // Read un-narrowed by maybeTriggerSignoff/handleSignoffIdle, so Base.
     signoffPolicy?: SignoffPolicy
     signoffDecider?: string                  // member name (decider mode)
@@ -273,7 +273,7 @@ export interface ActiveTaskBase {
 
     // delegate mode: uses shared tasklist (team_task_*), no extra fields
     requireDoneAck?: boolean                 // parallel: all-acked barrier (read un-narrowed in maybeAdvanceBarrier)
-    maxErroredMembers?: number               // parallel/delegate: failure isolation (read un-narrowed)
+    maxErroredMembers?: number               // concurrent/phase-scoped modes (parallel, delegate, recurse, quorum, arena implement): failure isolation (read un-narrowed)
     maxRetries?: number                      // all modes: bounded retry (read un-narrowed)
 
     // per-orchestration run id (lazily generated at first output capture). Used to
@@ -381,7 +381,8 @@ export interface WorkflowTask extends ActiveTaskBase {
 /**
  * Competitive arena — N candidates implement competing solutions in
  * isolated worktrees (implement phase), then a dedicated evaluator scores
- * every candidate and a deterministic winner is selected over the
+ * every surviving candidate (errored candidates stay in `candidates` for
+ * audit only) and a deterministic winner is selected over the
  * evaluator-attested scoreboard (evaluate phase). ArenaCandidateScore /
  * ArenaScoreboard are the evaluator's structured report shape.
  */
@@ -390,7 +391,7 @@ export interface ArenaTask extends ActiveTaskBase {
     task: string                             // required: shared implement task (narrows the optional Base field)
     candidates: string[]                     // ORIGINAL full candidate set (kept for audit)
     survivingCandidates?: string[]           // eligible-to-win subset (candidates that did NOT error), set at implement->evaluate
-    evaluatorMember: string                  // the evaluator member name (scores all candidates)
+    evaluatorMember: string                  // the evaluator member name (scores the surviving candidates)
     arenaPhase?: "implement" | "evaluate"    // two-phase state machine
     evalCommand?: string                     // objective command the evaluator runs against each candidate
     evalCriteria?: string                    // scoring criteria for the evaluator

@@ -235,7 +235,8 @@ export function truncateOutput(text: string, maxBytes: number = 65536): string {
     // If the head boundary cuts inside a structured <tag>...</tag>
     // pair, move headEnd backward to before the opening tag so the
     // truncated output doesn't contain a half-open tag that corrupts
-    // downstream JSON parsing.
+    // downstream JSON parsing. Tag-name detection below is ASCII-only —
+    // a cut inside a Chinese-alias opening like <决策> is not detected.
     const headText = buf.toString("utf8", 0, headEnd)
     // 1. Check for unclosed tag name: `<sco` (no `>` yet).
     const lastOpenInHead = headText.lastIndexOf("<")
@@ -310,8 +311,11 @@ export function sumMemberTokens(messages: Array<{ info?: Message }> | undefined)
 
 /**
  * Build the role-setup prompt sent to a freshly spawned member session. The
- * role label and the member's instructions (prompt) come from the MemberSpec
- * (config.json), since MemberState does not persist them.
+ * role label comes from the MemberSpec (config.json), since MemberState does
+ * not persist it. The spec's prompt is intentionally NOT embedded here — it
+ * is delivered later as <member-instruction> on the first real task dispatch
+ * (see prependStandingInstruction in dispatch.ts); role setup is
+ * identity-only.
  */
 export function buildRolePrompt(
     spec: MemberSpec,

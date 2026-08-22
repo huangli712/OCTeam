@@ -1,6 +1,8 @@
 /**
  * Shared validation and utility helpers for all team tools (lifecycle +
- * workflow). Pure functions only — no dispatch/worktree dependencies.
+ * workflow). Mostly pure validators; the two exceptions (abortAndResetMembers
+ * and its session.abort call, and member-state resets) are clearly marked at
+ * their definitions.
  *
  * Orchestration startup logic (startOrchestration, baseTaskFields, schema
  * fields, etc.) lives in orchestration/lifecycle/startup.ts so that tools importing these
@@ -64,11 +66,12 @@ export function findMember(team: Team, name: string): MemberState | undefined {
 }
 
 /**
- * Abort every running non-master member session and reset all non-master
- * members to a clean idle state (clears declaredDone / retryingSince). Shared
- * by team_cancel and team_delete during busy-team teardown. Best-effort on
- * abort: a failed abort must not block cancel/delete. Caller MUST already hold
- * team.mutex.
+ * Abort every running non-master member session and reset the successfully
+ * aborted (and idle) non-master members to a clean idle state (clears
+ * declaredDone / retryingSince); members whose session.abort failed are left
+ * in "errored" with their error recorded. Shared by team_cancel and
+ * team_delete during busy-team teardown. Best-effort on abort: a failed abort
+ * must not block cancel/delete. Caller MUST already hold team.mutex.
  */
 export async function abortAndResetMembers(
     ctx: PluginContext,
@@ -152,8 +155,9 @@ export function validateMemberAgent(agent: string): string | null {
 
 /**
  * Validate the signoff_policy 'decider' field: requires signoff_decider to be
- * present and name a real team member. Shared by the 7 tools that expose
- * signoff (all except consensus and loop). Returns an error string or null.
+ * present and name a real team member. Shared by every tool that exposes
+ * signoff (all except consensus, loop, quorum, and arena). Returns an error
+ * string or null.
  */
 export function validateSignoff(
     args: { signoff_policy?: SignoffPolicy; signoff_decider?: string },

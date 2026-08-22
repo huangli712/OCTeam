@@ -285,7 +285,11 @@ export function isSameWorkflowBranch(
         && stepBranch.branchId === branch.branchId
 }
 
-/** Check whether a join step's fanout branches are all terminal (completed or errored). */
+/** Whether a join step's satisfaction predicate holds for its fanout — for
+ *  any_success this actively completes and skips the losing branches (the
+ *  first terminal successful branch opens the join); otherwise it checks
+ *  whether all branches are terminal (completed or errored) and the policy
+ *  is met. */
 export function isWorkflowJoinSatisfied(steps: readonly WorkflowStep[], joinStep: WorkflowStep): boolean {
     switch (joinStep.kind) {
         case "join":

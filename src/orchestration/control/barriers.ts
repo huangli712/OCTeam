@@ -1,9 +1,12 @@
 /**
- * Idempotent barrier primitives shared by concurrent orchestration modes.
+ * Idempotent-leaning barrier primitives shared by concurrent orchestration modes.
  *
  * Barriers do not block. They re-check readiness after each idle or explicit
- * completion acknowledgement and invoke the supplied transition exactly once
- * when every participant reaches a terminal state for the current phase.
+ * completion acknowledgement and invoke the supplied transition when every
+ * participant reaches a terminal state for the current phase. There is no
+ * one-shot latch: callers must make the transition itself idempotent (or
+ * transition the task so a re-check no longer fires it); the caller-held team
+ * mutex serializes concurrent checks.
  */
 
 import type { Team } from "../../state/store.js"
@@ -17,8 +20,10 @@ import type { Team } from "../../state/store.js"
  * policies can advance with the surviving participants. Missing members remain
  * not-ready defensively.
  *
- * The caller holds the team mutex, so a successful transition cannot fire twice
- * for the same phase.
+ * The caller holds the team mutex, which serializes concurrent barrier
+ * checks; re-entrancy after a completed transition is the callback's
+ * responsibility (mode handlers typically finish the run or flip task state
+ * so the readiness predicate no longer holds).
  */
 export async function maybeAdvanceBarrier(
     team: Team,

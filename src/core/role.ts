@@ -5,9 +5,12 @@
  *   - agent:       which OpenCode agent the member runs as (role → agent is
  *                  hardcoded here; team_create/team_fix_member derive it from the role).
  *   - instruction: the preset role guidance injected into the member's
- *                  role-setup prompt, wrapped in <role-instruction>, alongside
- *                  the user-written <user-instruction> (MemberSpec.prompt) when
- *                  the session is first spawned (dispatch.ts ensureMembersReady).
+ *                  role-setup prompt, wrapped in <role-instruction>, when the
+ *                  session is first spawned (control/members.ts spawnMemberSafely
+ *                  calls buildRolePrompt). The user-written MemberSpec.prompt is
+ *                  NOT part of role setup: it is delivered later as
+ *                  <member-instruction> by prependStandingInstruction on the
+ *                  member's first real task dispatch (see dispatch.ts).
  *
  * The instruction is OCTeam-level guidance carried in the synthetic USER
  * message, NOT the OpenCode agent's built-in system prompt (the platform
@@ -33,8 +36,9 @@
  * The underlying sessions have been verified to support the persistent,
  * multi-dispatch member lifecycle (OCTeam dispatches via session.create +
  * promptAsync, which does not consult agent mode -- see dispatch.ts).
- * Permissions are therefore fixed by the oct-* definitions in this repo,
- * not by host configuration.
+ * Permissions are therefore floored by the oct-* definitions in this repo:
+ * host configuration can only tighten them further (monotonic merge in the
+ * config hook), never loosen them.
  */
 
 /** A role's fixed agent and preset instruction text.
@@ -472,9 +476,10 @@ export const ROLE_NAMES: readonly string[] = Object.freeze(Object.keys(ROLES))
  * All hardened oct-* agent names used by OCTeam roles. Derived from ROLES so
  * the allowlist stays in sync as new roles/agents are added. This is the single
  * source of truth for "which agent values may a member legitimately carry" —
- * used by the tool schemas (create/add/fix), dispatch sanitization, and disk
- * reload validation to ensure a member's `agent` field can never name a bare
- * host agent (e.g. "build") that bypasses the hardened oct-* permission maps.
+ * used by the member-agent validation in the create/add/fix tool execute
+ * paths, dispatch sanitization, and disk reload validation to ensure a
+ * member's `agent` field can never name a bare host agent (e.g. "build") that
+ * bypasses the hardened oct-* permission maps.
  */
 export const OCTEAM_AGENTS: readonly string[] = Object.freeze(
     Array.from(new Set(Object.values(ROLES).map(r => r.agent))).sort(),
