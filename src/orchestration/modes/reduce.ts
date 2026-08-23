@@ -19,8 +19,10 @@ import type { CaptureMemberOutputResult } from "../records/capture.js"
 export function buildReducePrompt(body: string): string {
     return `[Reduce task]\n`
         + `You are the reducer for a parallel run. Combine the candidate `
-        + `outputs below into ONE final result per the policy. Output ONLY the final `
-        + `result, with no preamble.\n${body}`
+        + `outputs below into ONE final result per the policy. The final result `
+        + `must incorporate EVERY candidate's contribution — do not silently drop `
+        + `a candidate's work unless it is objectively incorrect (state the reason `
+        + `if you exclude one). Output ONLY the final result, with no preamble.\n${body}`
 }
 
 /**
