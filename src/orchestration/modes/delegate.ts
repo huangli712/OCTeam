@@ -15,7 +15,7 @@
 
 import type { PluginContext } from "../../core/context.js"
 import { type Team } from "../../state/store.js"
-import type { MemberState } from "../../core/types.js"
+import type { MemberState, Task } from "../../core/types.js"
 import { listAllTasks, TaskOwnershipError, TaskStatusError, updateTask } from "../../state/tasks.js"
 import { dispatchToMember } from "../control/dispatch.js"
 import { extractSessionStatusEntry, asSdkMessages } from "../protocol/output.js"
@@ -41,7 +41,7 @@ export async function runDelegateStyleTail(
     team: Team,
     member: MemberState,
     label: string,
-    buildReprompt: (claimableCount: number) => string,
+    buildReprompt: (claimable: Task[]) => string,
 ): Promise<void> {
     const tasks = await listAllTasks(team.directory)
     const incomplete = tasks.filter(t => t.status !== "completed" && t.status !== "deleted")
@@ -254,15 +254,15 @@ export async function runDelegateStyleTail(
         const curRunning = team.members.filter(mm => mm.status === "running" && !mm.isMaster).length
         if (claimable.length <= curRunning) break // enough dispatched
         m.lastNotifiedAt = now
-        await dispatchToMember(ctx, m, buildReprompt(claimable.length), m.worktreePath ?? ctx.directory, team)
+        await dispatchToMember(ctx, m, buildReprompt(claimable), m.worktreePath ?? ctx.directory, team)
     }
 }
 
 /** Delegate idle handler: runs the delegate-style tail with "delegate" label. */
 export async function handleDelegateIdle(ctx: PluginContext, team: Team, member: MemberState): Promise<void> {
-    await runDelegateStyleTail(ctx, team, member, "delegate", n =>
+    await runDelegateStyleTail(ctx, team, member, "delegate", tasks =>
         `[Team Orchestrator]\n` 
-        + `You have completed your task. ${n} task(s) available. `
+        + `You have completed your task. ${tasks.length} task(s) available. `
         + `Use team_task_list to check, team_task_update to claim, execute, then team_send_message `
         + `to report to master. Repeat until no tasks remain.`)
 }

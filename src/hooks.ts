@@ -702,7 +702,22 @@ export async function sweepTeamOnce(
             // Reap stale claims for both delegate and recurse modes.
             const taskType = team.activeTask?.type
             if (taskType === "delegate" || taskType === "recurse") {
-                await reapStaleClaims(team.directory).catch(err =>
+                // Protect claims held by members whose sessions are actively
+                // mid-turn (busy/running/retry). A long aggregation turn
+                // routinely exceeds CLAIM_TTL while its owner is still
+                // synthesizing; reaping it mid-turn orphans the output and
+                // loops the aggregation dispatch (E4).
+                const protectOwners = new Set<string>()
+                if (statusMap) {
+                    for (const m of team.members) {
+                        if (!m.sessionId) continue
+                        const entry = extractSessionStatusEntry(statusMap, m.sessionId)
+                        if (entry?.type === "busy" || entry?.type === "running" || entry?.type === "retry") {
+                            protectOwners.add(m.name)
+                        }
+                    }
+                }
+                await reapStaleClaims(team.directory, { protectOwners }).catch(err =>
                     logSwallowed(ctx, "sweepTeamOnce: reapStaleClaims failed", err, { team: team.teamName }),
                 )
             }

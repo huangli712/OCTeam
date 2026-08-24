@@ -3,12 +3,21 @@
  * another team is already active (auto-switching disabled).
  */
 
+import fs from "node:fs/promises"
+
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
 import { logSwallowed } from "../../core/log.js"
 import { isEnoent } from "../../core/utils.js"
-import { 
+import {
+    configPath,
+    deletedMarkerPath,
+    masterSentinelPath,
+    statePath,
+    teamDir,
+} from "../../state/paths.js"
+import {
     listTeamNames,
     loadTeamState,
     saveTeamState,
@@ -51,6 +60,51 @@ async function withSessionMutex<T>(key: string, fn: () => Promise<T>): Promise<T
     }
 }
 
+/** Outcome of scanning one sibling team during team_activate. */
+type SiblingScanResult =
+    | { kind: "loaded"; team: Team }
+    | { kind: "ignored" }
+    | { kind: "failed" }
+
+/**
+ * Fingerprint a sibling directory whose state.json failed to load with
+ * ENOENT, deciding whether it may be skipped for the active-team check.
+ *
+ * Ignorable = the deletion marker next to the directory exists as a regular
+ * file AND all three team identity files (state.json, config.json,
+ * master.sentinel) are confirmed absent. Such a directory cannot hold an
+ * activatedAt value, so it cannot be the session's active team.
+ *
+ * This does NOT prove the directory is delete residue: the same shape occurs
+ * briefly while a same-name team is being re-created (directory claimed,
+ * identity files not yet written, stale marker from the previous generation
+ * not yet removed by the first save). Skipping that directory is equally
+ * safe — it also has no state.json, hence no activatedAt.
+ *
+ * Unexpected errors (permissions, I/O) propagate; the caller must fail
+ * closed on them.
+ */
+async function isIgnorableSiblingDir(dir: string): Promise<boolean> {
+    let markerIsRegularFile: boolean
+    try {
+        markerIsRegularFile = (await fs.lstat(deletedMarkerPath(dir))).isFile()
+    } catch (err) {
+        if (isEnoent(err)) return false
+        throw err
+    }
+    if (!markerIsRegularFile) return false
+    for (const p of [statePath(dir), configPath(dir), masterSentinelPath(dir)]) {
+        try {
+            await fs.lstat(p)
+        } catch (err) {
+            if (isEnoent(err)) continue
+            throw err
+        }
+        return false
+    }
+    return true
+}
+
 /** Activate a team for the current session. Only one team may be active at a time. */
 export function teamActivateTool(ctx: PluginContext): ToolDefinition {
     return tool({
@@ -85,47 +139,77 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
             // mutex so a concurrent activate that just landed is visible.
             let activeSibling: Team | undefined
             const siblings = await listTeamNames(ctx.storageRoot, leadSessionId)
-            const loaded = await Promise.all(
+            const scanned: SiblingScanResult[] = await Promise.all(
                 siblings
                     .filter(name => name !== args.team_id)
-                    .map(name =>
-                        loadTeamState(ctx.storageRoot, name, leadSessionId)
-                            .then(t => ({ t, ok: true as const }))
-                            .catch(err => {
-                                // Record sibling-load failures for the fail-closed check below
-                                // and log enough context to diagnose transient I/O or permission errors.
-                                logSwallowed(
-                                    ctx,
-                                    "team_activate: sibling load failed (fail-closed: activation will be refused)",
-                                    err,
-                                    {
-                                        siblingTeam: name,
-                                        leadSessionId,
-                                    },
-                                )
-                                return { ok: false as const }
-                            }),
-                    ),
+                    .map(async (name): Promise<SiblingScanResult> => {
+                        try {
+                            const team = await loadTeamState(ctx.storageRoot, name, leadSessionId)
+                            // A cached Team whose state.json became unreadable on
+                            // disk is returned flagged instead of throwing. Its
+                            // persisted activatedAt cannot be trusted, so fail closed.
+                            if (team._stateUnreadable) return { kind: "failed" }
+                            return { kind: "loaded", team }
+                        } catch (err) {
+                            // ENOENT + deletion-marker fingerprint → this
+                            // directory cannot hold activatedAt, so skip it for
+                            // the active-team check. Everything else fails closed.
+                            if (isEnoent(err)) {
+                                const dir = teamDir(ctx.storageRoot, name, leadSessionId)
+                                try {
+                                    if (await isIgnorableSiblingDir(dir)) {
+                                        logSwallowed(
+                                            ctx,
+                                            "team_activate: sibling has a deletion marker and no team identity files; ignoring it for the active-team check",
+                                            err,
+                                            { siblingTeam: name, leadSessionId },
+                                        )
+                                        return { kind: "ignored" }
+                                    }
+                                } catch (fingerprintErr) {
+                                    logSwallowed(
+                                        ctx,
+                                        "team_activate: sibling residue check failed (fail-closed: activation will be refused)",
+                                        fingerprintErr,
+                                        { siblingTeam: name, leadSessionId },
+                                    )
+                                    return { kind: "failed" }
+                                }
+                            }
+                            // Record sibling-load failures for the fail-closed check
+                            // below and log enough context to diagnose transient I/O
+                            // or permission errors.
+                            logSwallowed(
+                                ctx,
+                                "team_activate: sibling load failed (fail-closed: activation will be refused)",
+                                err,
+                                {
+                                    siblingTeam: name,
+                                    leadSessionId,
+                                },
+                            )
+                            return { kind: "failed" }
+                        }
+                    }),
             )
-            // Fail closed when a sibling state load rejects. Treating it as
-            // inactive could allow concurrent activation, so refuse activation
-            // and surface the I/O issue to the operator. (A sibling whose
-            // unreadable state is served from the in-process cache resolves
-            // ok here and bypasses the refusal.)
-            const failedSiblings = loaded.filter(r => !r.ok)
+            // Fail closed when a sibling state load rejects or is served from
+            // the cache flagged unreadable. Treating it as inactive could allow
+            // concurrent activation, so refuse activation and surface the I/O
+            // issue to the operator.
+            const failedSiblings = scanned.filter(r => r.kind === "failed")
             if (failedSiblings.length > 0) {
                 return `Error: cannot verify sibling team states (unreadable: ${failedSiblings.length}). `
                     + `Refusing to activate to prevent concurrent activation. `
                     + `Check .octeam/ permissions and retry.`
             }
-            for (const r of loaded) {
+            for (const r of scanned) {
                 if (
-                    r.ok
-                    && r.t.leadSessionId === context.sessionID
-                    && r.t.activatedAt !== undefined
-                    && r.t.directory !== target.directory
+                    r.kind === "loaded"
+                    && r.team.leadSessionId === context.sessionID
+                    && r.team.activatedAt !== undefined
+                    && r.team.directory !== target.directory
                 ) {
-                    activeSibling = r.t
+                    activeSibling = r.team
                     break
                 }
             }

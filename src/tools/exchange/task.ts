@@ -283,6 +283,22 @@ export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
                             return (`Error: team_task_claim is disabled in parallel isolated mode. `
                                 + `Isolated members cannot share a task list.`)
                         }
+                        // Recurse root reservation: only the designated
+                        // decomposer may claim the root task. Without this,
+                        // any solver can race the decomposer to the root and
+                        // "solve" it directly, bypassing recursive
+                        // decomposition entirely (the run then completes with
+                        // no sub-tree — the E1 defect).
+                        if (
+                            at?.type === "recurse"
+                            && at.rootTaskId === args.task_id
+                            && at.decomposerMember !== undefined
+                            && caller.name !== at.decomposerMember
+                        ) {
+                            return (`Error: the root task ${args.task_id} is reserved for the decomposer `
+                                + `(@${at.decomposerMember}). Claim a sub-task instead — the root is `
+                                + `finalized by aggregating completed sub-task results.`)
+                        }
                         const task = await claimTask(
                             dir,
                             args.task_id,

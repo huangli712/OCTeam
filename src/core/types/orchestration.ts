@@ -353,6 +353,12 @@ export interface RecurseTask extends ActiveTaskBase {
     maxDecomposeParseFailures?: number       // override default (3)
     forcedDirectTaskIds?: string[]
     forcedDirectDecomposeAttempts?: Record<string, number>
+    // E3 guard: times the decomposer tried to direct-solve the root with no
+    // sub-tree. Beyond the cap the root is forced-direct (bounded fallback).
+    rootDecomposeRefusals?: number
+    // E3 sub-fix: per-task counter for width-cap decomposition retries
+    // (guide a narrower split instead of permanently banning decompose).
+    narrowDecomposeAttempts?: Record<string, number>
 }
 
 /** Verdict-gated pipeline (produce -> verify -> escalate) — advancing

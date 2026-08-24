@@ -590,11 +590,22 @@ async function tryCreateClaimLock(lockPath: string, owner: string): Promise<bool
  * status whose claim lock is stale AND whose claimedAt exceeds CLAIM_TTL, reset
  * to "pending" so another member can pick it up after a crash leaves a stale
  * lock with status="claimed".
+ *
+ * opts.protectOwners: claims held by members in this set are NOT reaped. The
+ * sweep passes the set of members whose sessions are actively running — a
+ * multi-minute aggregation turn legitimately exceeds CLAIM_TTL while its
+ * owner is still mid-turn, and reaping it orphans the turn's output (the E4
+ * defect: the idle handler then finds no claimed task and the aggregation
+ * loops until stall/timeout).
  */
-export async function reapStaleClaims(teamDirectory: string): Promise<void> {
+export async function reapStaleClaims(
+    teamDirectory: string,
+    opts: { protectOwners?: ReadonlySet<string> } = {},
+): Promise<void> {
     const tasks = await listAllTasks(teamDirectory)
     for (const task of tasks) {
         if (task.status !== "claimed") continue
+        if (opts.protectOwners?.has(task.owner ?? "")) continue
         const fresh = await lockFresh(claimLockPath(teamDirectory, task.id), CLAIM_TTL_MS)
         if (isClaimStale(fresh, task.claimedAt ?? 0, Date.now(), CLAIM_TTL_MS)) {
             try {

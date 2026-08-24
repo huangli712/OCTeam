@@ -16,7 +16,8 @@
 import type { PluginContext } from "../../core/context.js"
 import type {
     ApprovalRequest,
-    MemberState
+    MemberState,
+    Task
 } from "../../core/types.js"
 import { logSwallowed } from "../../core/log.js"
 import {
@@ -51,6 +52,14 @@ const MAX_AGGREGATION_DISPATCHES = 3
 /** Retry cap for a task that keeps re-emitting <decompose> after being forced to solve directly. */
 const MAX_FORCED_DIRECT_DECOMPOSE_RETRIES = 3
 
+/** E3 guard: times the decomposer may try to direct-solve the ROOT with no
+ * sub-tree before the engine falls back to forced-direct (bounded so the run
+ * cannot loop forever; the run timeout bounds it regardless). */
+const MAX_ROOT_DECOMPOSE_REFUSALS = 3
+
+/** Retry cap for width-capped decompositions before forcing a direct solve. */
+const MAX_NARROW_DECOMPOSE_RETRIES = 3
+
 /**
  * Build the recursive-decomposition contract prompt: claim a task, then either
  * solve it directly or emit a <decompose> block; aggregate completed sub-tasks
@@ -76,12 +85,64 @@ export function buildRecursePrompt(): string {
     )
 }
 
+/**
+ * Idle re-prompt for recurse: the shared protocol PLUS the actual claimable
+ * task list (id + subject). Solver prompts watch for task subjects by keyword;
+ * when the decomposer names tasks freely, keyword-watching members find
+ * "no task for me" and idle-loop until timeout. Surfacing the live list
+ * removes that title-contract fragility (P2 fallback assignment).
+ */
+function buildRecurseReprompt(claimable: Task[]): string {
+    if (claimable.length === 0) return buildRecursePrompt()
+    const lines = claimable
+        .slice(0, 8)
+        .map(t => `  - ${t.id} ${t.subject}`)
+        .join("\n")
+    return (
+        buildRecursePrompt()
+        + `\n\n[Claimable tasks right now (${claimable.length})]\n${lines}\n`
+        + `Claim ONE with team_task_update(task_id, status="claimed"), read it with\n`
+        + `team_task_get, then solve it directly or decompose it.`
+    )
+}
+
 /** Prompt for a member whose decomposition was refused (or re-emitted after
  * forcing): solve the task directly and do not emit another <decompose> block. */
 function buildDirectSolvePrompt(subject: string): string {
     return (
         `[Direct solve required]\n`
         + `The proposed decomposition cannot be used. Solve this task directly and do not emit another <decompose> block.\n\n`
+        + `[Your task]\n${subject}`
+    )
+}
+
+/** E3 guard: the root task must aggregate a sub-tree, not be direct-solved.
+ * Re-dispatch prompt guiding the decomposer to emit a <decompose> block. */
+function buildRootDecomposeRequiredPrompt(rootSubject: string, maxSubtasks: number): string {
+    return (
+        `[Decomposition required]\n`
+        + `The root task must be DECOMPOSED before it can be completed — its result must\n`
+        + `aggregate sub-task outputs, not replace them. Solving the root directly is not\n`
+        + `accepted. Emit exactly one:\n`
+        + `<decompose>{"subtasks":[{"subject":"...","description":"..."}, ...]}</decompose>\n`
+        + `with 2..${maxSubtasks} subtasks (independent paths or stages), then idle.\n`
+        + `Sub-tasks are created automatically by the orchestrator.\n\n`
+        + `[Root task]\n${rootSubject}`
+    )
+}
+
+/** Width-capped decomposition retry: guide a narrower split instead of
+ * permanently banning further decomposition (the old forced-direct text). */
+function buildNarrowDecomposePrompt(subject: string, maxSubtasks: number, maxNew: number): string {
+    const cap = Math.max(1, Math.min(maxSubtasks, maxNew))
+    return (
+        `[Decomposition too wide]\n`
+        + `The proposed decomposition exceeds the width cap (max ${maxSubtasks} subtasks per\n`
+        + `split; ${maxNew} new task(s) remain under the team task budget).\n`
+        + `Re-decompose into at most ${cap} subtask(s) — merge related steps or split at a\n`
+        + `coarser boundary. Emit exactly one:\n`
+        + `<decompose>{"subtasks":[ ... at most ${cap} entries ... ]}</decompose>\n`
+        + `then idle.\n\n`
         + `[Your task]\n${subject}`
     )
 }
@@ -116,7 +177,7 @@ async function runRecurseTailFromApproval(
 ): Promise<void> {
     const member = team.members.find(m => m.name === memberName)
     if (!member) return
-    await runDelegateStyleTail(ctx, team, member, "recurse", () => buildRecursePrompt())
+    await runDelegateStyleTail(ctx, team, member, "recurse", claimable => buildRecurseReprompt(claimable))
 }
 
 /** Approve a recurse decomposition: create the proposed subtasks and re-queue the parent as an aggregator. */
@@ -325,6 +386,16 @@ export async function handleRecurseIdle(
             // unrelated malformed responses do not accumulate across the run.
             task.decomposeParseFailures = 0
         } else if (dec.subtasks.length > 0 && !dec.parseFailed) {
+            // Distinguish width-cap refusals (too many subtasks, or would
+            // exceed the team task budget) from hard caps (max depth). A
+            // width refusal guides the member toward a narrower split
+            // instead of permanently banning decomposition.
+            const liveCount = tasks.filter(t => t.status !== "deleted").length
+            const overWidth =
+                (dec.subtasks.length > maxSubtasks
+                    || liveCount + dec.subtasks.length > team.bounds.maxTasks)
+                && depth < maxDepth
+                && T.blockedBy.length === 0
             if (forcedDirect) {
                 const attempts = (task.forcedDirectDecomposeAttempts?.[T.id] ?? 0) + 1
                 task.forcedDirectDecomposeAttempts = {
@@ -333,6 +404,36 @@ export async function handleRecurseIdle(
                 }
                 if (attempts > MAX_FORCED_DIRECT_DECOMPOSE_RETRIES) {
                     await finishRun(ctx, team, `recurse_forced_direct_decompose_failed:${attempts}_attempts`, "failed")
+                    return
+                }
+            } else if (overWidth) {
+                const attempts = (task.narrowDecomposeAttempts?.[T.id] ?? 0) + 1
+                task.narrowDecomposeAttempts = {
+                    ...(task.narrowDecomposeAttempts ?? {}),
+                    [T.id]: attempts,
+                }
+                if (attempts > MAX_NARROW_DECOMPOSE_RETRIES) {
+                    task.forcedDirectTaskIds = [...(task.forcedDirectTaskIds ?? []), T.id]
+                } else {
+                    delete task.responses[member.name]
+                    recordEvent(team, {
+                        timestamp: Date.now(),
+                        kind: "errored",
+                        member: member.name,
+                        detail: `recurse: decomposition of task ${T.id} too wide (${dec.subtasks.length}); re-dispatched for narrower split (attempt ${attempts})`,
+                    })
+                    await dispatchToMember(
+                        ctx,
+                        member,
+                        buildNarrowDecomposePrompt(
+                            T.subject,
+                            maxSubtasks,
+                            team.bounds.maxTasks - liveCount,
+                        ),
+                        member.worktreePath ?? ctx.directory,
+                        team,
+                    )
+                    await saveTeamState(team)
                     return
                 }
             } else {
@@ -398,6 +499,42 @@ export async function handleRecurseIdle(
                     await dispatchToMember(ctx, owner, prompt, owner.worktreePath ?? ctx.directory, team)
                 }
                 return
+            }
+            // E3 guard: the root must not be finalized without a sub-tree —
+            // a root completed with zero children means the decomposer
+            // direct-solved it and recursion never happened. Refuse and
+            // re-dispatch with a decompose instruction; after
+            // MAX_ROOT_DECOMPOSE_REFUSALS attempts, fall back to
+            // forced-direct so the run cannot loop unbounded.
+            if (
+                T.id === task.rootTaskId
+                && T.blockedBy.length === 0
+                && !forcedDirect
+            ) {
+                task.rootDecomposeRefusals = (task.rootDecomposeRefusals ?? 0) + 1
+                if (task.rootDecomposeRefusals > MAX_ROOT_DECOMPOSE_REFUSALS) {
+                    task.forcedDirectTaskIds = [...(task.forcedDirectTaskIds ?? []), T.id]
+                } else {
+                    recordEvent(team, {
+                        timestamp: Date.now(),
+                        kind: "errored",
+                        member: member.name,
+                        detail: `recurse: root direct-solve refused (attempt ${task.rootDecomposeRefusals}); decomposition required`,
+                    })
+                    delete task.responses[member.name]
+                    const owner = findMember(team, member.name)
+                    if (owner?.sessionId) {
+                        await dispatchToMember(
+                            ctx,
+                            owner,
+                            buildRootDecomposeRequiredPrompt(T.subject, maxSubtasks),
+                            owner.worktreePath ?? ctx.directory,
+                            team,
+                        )
+                    }
+                    await saveTeamState(team)
+                    return
+                }
             }
             const result = output
             await updateTask(team.directory, T.id, { status: "completed", result }, {

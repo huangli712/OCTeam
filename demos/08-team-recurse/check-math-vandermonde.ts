@@ -12,6 +12,13 @@
  *      (independent proof paths converged).
  *   3. Every <!-- LEMMA_HOLDS: <bool> --> marker that appears is "true"
  *      (no leaf disproved its lemma).
+ *   4. Run terminal state: <run_dir>/record.json status === "completed"
+ *      (guards against shallow passes on failed/stalled runs).
+ *   5. Tree shape: the root task (depth 0) has >= 2 depth-1 subtasks and is
+ *      completed — real recursive decomposition happened (guards against
+ *      degenerate direct-solve completions).
+ *   6. Participation: >= 3 distinct members produced substantive output
+ *      (>= 200 chars) — guards against single-member pseudo-collaboration.
  *
  * Usage:  bun check-math-vandermonde.ts <run_dir>
  *   <run_dir>  directory containing the per-member markdown outputs
@@ -37,6 +44,24 @@ const LEMMA_RE = /<!--\s*LEMMA_HOLDS:\s*(true|false)\s*-->/g;
 
 // Minimum-required distinct proof paths; algebraic + combinatorial must be among them.
 const REQUIRED_APPROACHES = ["algebraic", "combinatorial"];
+
+// Vocabulary normalization for APPROACH values: members drift between
+// synonyms and separator styles (generating_function, double-counting, ...).
+// Fold natural variants onto the canonical enum before membership checks.
+const APPROACH_ALIASES: Record<string, string> = {
+    "generating": "generating-function",
+    "gf": "generating-function",
+    "generatingfunction": "generating-function",
+    "double-counting": "combinatorial",
+    "double-count": "combinatorial",
+    "bijective": "combinatorial",
+    "counting": "combinatorial",
+};
+
+function normalizeApproach(raw: string): string {
+    const folded = raw.toLowerCase().replace(/[_\s]+/g, "-");
+    return APPROACH_ALIASES[folded] ?? folded;
+}
 
 interface MemberDoc {
     name: string; // markdown basename without extension
@@ -123,11 +148,69 @@ async function main(): Promise<void> {
         process.exit(2);
     }
 
+    // Assertion 4 (terminal state): the run itself must have completed.
+    // A shallow pass (markers present but run failed/stalled) is not a pass.
+    const teamDir = resolve(runDir, "../..");  // also used for mailbox below
+    try {
+        const recordRaw = await readFile(join(runDir, "record.json"), "utf8");
+        const record = JSON.parse(recordRaw) as { status?: string; reason?: string };
+        console.log(`  run terminal state: status=${record.status ?? "?"} reason=${record.reason ?? "?"}`);
+        if (record.status !== "completed") {
+            fail(`run did not complete (status=${String(record.status)}, reason=${String(record.reason)})`);
+        }
+    } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+            fail(`record.json not found in "${runDir}" — cannot verify run terminal state`);
+        }
+        fail(`could not parse record.json in "${runDir}"`);
+    }
+
+    // Assertion 5 (tree shape): read the team's task files and verify the
+    // root (depth 0) has >= 2 depth-1 subtasks and is completed. A completed
+    // root with no depth-1 children is a degenerate direct-solve.
+    interface TaskShape { id: string; status: string; depth: number; subject: string }
+    try {
+        const tasksDir = join(teamDir, "tasks");
+        const taskFiles = (await readdir(tasksDir)).filter(e => e.endsWith(".json"));
+        const taskShapes: TaskShape[] = [];
+        for (const f of taskFiles) {
+            try {
+                const t = JSON.parse(await readFile(join(tasksDir, f), "utf8")) as Partial<TaskShape>;
+                if (typeof t.id === "string" && typeof t.status === "string") {
+                    taskShapes.push({
+                        id: t.id,
+                        status: t.status,
+                        depth: typeof t.depth === "number" ? t.depth : 0,
+                        subject: typeof t.subject === "string" ? t.subject : "",
+                    });
+                }
+            } catch {
+                // skip unparsable task files
+            }
+        }
+        const roots = taskShapes.filter(t => t.depth === 0);
+        if (roots.length === 0) {
+            fail(`no root (depth 0) task found in "${tasksDir}" — cannot verify decomposition`);
+        }
+        const depthOne = taskShapes.filter(t => t.depth === 1 && t.status !== "deleted");
+        console.log(`  task tree: root=${roots[0]!.status}, depth-1 subtasks=${depthOne.length}`);
+        if (depthOne.length < 2) {
+            fail(`root has only ${depthOne.length} depth-1 subtask(s); real decomposition requires >= 2`);
+        }
+        if (!roots.every(r => r.status === "completed")) {
+            fail(`root task(s) not completed: ${roots.map(r => r.status).join(", ")}`);
+        }
+    } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+            fail(`tasks directory not found under "${teamDir}" — cannot verify tree shape`);
+        }
+        fail(`could not verify tree shape: ${(err as Error).message}`);
+    }
+
     // Merge mailbox messages: recurse members deliver markers via
     // team_send_message, which land in <team_dir>/mailbox/*.jsonl —
     // not always in the captured .md turn output.
     try {
-        const teamDir = resolve(runDir, "../..");
         const mailboxDocs = await loadMailboxMessages(teamDir);
         for (const md of mailboxDocs) {
             const existing = docs.find(d => d.name === md.name);
@@ -164,7 +247,7 @@ async function main(): Promise<void> {
     const approaches = new Set<string>();
     for (const d of docs) {
         for (const a of collectMatches(d.raw, APPROACH_RE)) {
-            approaches.add(a);
+            approaches.add(normalizeApproach(a));
         }
     }
     console.log(`  leaf APPROACH markers: ${JSON.stringify([...approaches])}`);
@@ -175,6 +258,15 @@ async function main(): Promise<void> {
         if (!approaches.has(required)) {
             fail(`required APPROACH "${required}" not found among leaves (saw: ${JSON.stringify([...approaches])})`);
         }
+    }
+
+    // Assertion 6 (participation): >= 3 distinct members with substantive
+    // output. A single-member run (direct-solve / pseudo-collaboration where
+    // "teammate" results are cited but never produced) must not pass.
+    const substantive = docs.filter(d => d.raw.trim().length >= 200);
+    console.log(`  substantive contributors (>=200 chars): ${substantive.map(d => d.name).join(", ")}`);
+    if (substantive.length < 3) {
+        fail(`only ${substantive.length} member(s) produced substantive output; require >= 3`);
     }
 
     // Assertion 3: every LEMMA_HOLDS marker that appears must be "true".
