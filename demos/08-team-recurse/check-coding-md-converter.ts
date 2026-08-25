@@ -108,49 +108,67 @@ async function loadMailboxMessages(teamDir: string): Promise<MemberDoc[]> {
 /**
  * Scan all markdown docs for a ```typescript block that defines `convert`,
  * load it via the Function constructor, and return the convert function.
- * The decomposer embeds the aggregated convert(); we accept it from any member.
+ *
+ * Robustness (N2 fix): solver members often fence only their own module or a
+ * thin assembly stub — `convert()` referencing parseBlocks/parseInline that
+ * live in OTHER members' reports. Such a stub loads fine but throws
+ * ReferenceError on first call. So: candidates are ordered decomposer-first
+ * (the aggregated report embeds the full self-contained trio), each candidate
+ * is smoke-tested by calling convert("# Hi"), and load/smoke failures fall
+ * through to the next candidate instead of failing the check.
  */
 function extractConvert(docs: MemberDoc[]): (markdown: string) => string {
-    let found: { member: string; code: string } | null = null;
-    for (const doc of docs) {
+    const ordered = [...docs].sort((a, b) => {
+        const rank = (d: MemberDoc): number => (d.name === DECOMPOSER ? 0 : 1);
+        return rank(a) - rank(b) || a.name.localeCompare(b.name);
+    });
+
+    const candidates: Array<{ member: string; code: string }> = [];
+    for (const doc of ordered) {
         TS_BLOCK_RE.lastIndex = 0;
         let m: RegExpExecArray | null;
         while ((m = TS_BLOCK_RE.exec(doc.raw)) !== null) {
             const code = m[1];
             // Heuristic: the aggregated convert() definition lives here.
             if (/(\bfunction\s+convert\b|\bconst\s+convert\s*=)/.test(code)) {
-                found = { member: doc.name, code };
-                break;
+                candidates.push({ member: doc.name, code });
             }
         }
-        if (found) break;
     }
 
-    if (!found) {
+    if (candidates.length === 0) {
         fail("no ```typescript block defining `convert` found in any member report");
     }
 
-    let fn: (markdown: string) => string;
-    try {
-        // Member code is TypeScript (annotations, possibly module `export`).
-        // Transpile types to JS and strip `export` so `new Function` (a
-        // function body, not a module) can load it. Shared convention.
-        const transpiled = new Bun.Transpiler({ loader: "ts" }).transformSync(found!.code);
-        const codeLoadable = transpiled.replace(/\bexport\s+/g, "");
-        // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
-        const factory = new Function(
-            `${codeLoadable}; return typeof convert === "function" ? convert : null;`,
-        ) as () => ((markdown: string) => string) | null;
-        const g = factory();
-        if (typeof g !== "function") {
-            throw new Error("code did not expose a `convert` function");
+    const errors: string[] = [];
+    for (const cand of candidates) {
+        try {
+            // Member code is TypeScript (annotations, possibly module `export`).
+            // Transpile types to JS and strip `export` so `new Function` (a
+            // function body, not a module) can load it. Shared convention.
+            const transpiled = new Bun.Transpiler({ loader: "ts" }).transformSync(cand.code);
+            const codeLoadable = transpiled.replace(/\bexport\s+/g, "");
+            // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
+            const factory = new Function(
+                `${codeLoadable}; return typeof convert === "function" ? convert : null;`,
+            ) as () => ((markdown: string) => string) | null;
+            const g = factory();
+            if (typeof g !== "function") {
+                throw new Error("code did not expose a `convert` function");
+            }
+            // Smoke test the canonical probe: an assembly stub referencing
+            // parsers fenced elsewhere loads but throws on the first call.
+            const probe = g("# Hi");
+            if (typeof probe !== "string") {
+                throw new Error("convert() did not return a string on probe input");
+            }
+            console.log(`  convert() extracted from member: ${cand.member}`);
+            return g;
+        } catch (err) {
+            errors.push(`${cand.member}: ${(err as Error).message}`);
         }
-        fn = g;
-    } catch (err) {
-        fail(`convert() from "${found!.member}" failed to load: ${(err as Error).message}`);
     }
-    console.log(`  convert() extracted from member: ${found!.member}`);
-    return fn!;
+    fail(`no loadable convert() among ${candidates.length} candidate block(s): ${errors.join("; ")}`);
 }
 
 async function main(): Promise<void> {

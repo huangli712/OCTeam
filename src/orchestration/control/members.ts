@@ -12,8 +12,10 @@ import { logEvent, logSwallowed } from "../../core/log.js"
 import { safeMemberAgent } from "../../core/role.js"
 import type { MemberSpec, MemberState } from "../../core/types.js"
 import { waitUntil } from "../../core/utils.js"
+import fs from "node:fs/promises"
+import { join, resolve } from "node:path"
 import { safeReadFile } from "../../state/locks.js"
-import { statePath, worktreesDir } from "../../state/paths.js"
+import { statePath, worktreesDir, worktreePath } from "../../state/paths.js"
 import { indexMember, unindexSession } from "../../state/resolve.js"
 import {
     isValidTeamState,
@@ -180,6 +182,38 @@ function planMemberSpawn(team: Team): {
 }
 
 /**
+ * A leftover member worktree is adoptable on respawn only when it is exactly
+ * the canonical path OCTeam would create for this member AND it still looks
+ * like a live git worktree.
+ *
+ * Ownership: adopting only the exact canonical worktreePath(teamDirectory,
+ * memberName) means a tampered or relocated persisted path is never adopted;
+ * the create path reassigns the canonical path instead, self-healing drift.
+ *
+ * Liveness: lstat (not stat) so a symlink at the dest is rejected, and the
+ * .git entry must be present (a file for linked worktrees, a directory for
+ * defensive compatibility). Guards against adopting a half-deleted husk left
+ * by a partially failed destroyWorktree.
+ */
+async function isUsableWorktree(
+    teamDirectory: string,
+    memberName: string,
+    leftover: string,
+): Promise<boolean> {
+    if (resolve(leftover) !== resolve(worktreePath(teamDirectory, memberName))) {
+        return false
+    }
+    try {
+        const dirStat = await fs.lstat(leftover)
+        if (!dirStat.isDirectory()) return false
+        const gitStat = await fs.lstat(join(leftover, ".git"))
+        return gitStat.isFile() || gitStat.isDirectory()
+    } catch {
+        return false
+    }
+}
+
+/**
  * Spawn one member's session and deliver its role prompt.
  *
  * Worktree creation, session creation, and role-prompt delivery are sequenced
@@ -187,6 +221,15 @@ function planMemberSpawn(team: Team): {
  * roll back, but a session that survives delete retries stays as an indexed
  * orphan (warned) and a failed worktree cleanup is logged then rethrown —
  * side effects are not atomically undone.
+ *
+ * A worktree-enabled member whose prior spawn attempt or barrier-timeout
+ * teardown left a usable worktree behind (sessionId cleared but the worktree
+ * survived cleanup) re-adopts it instead of re-creating: createWorktree would
+ * fail fast with "branch already exists" (its contract puts worktreePath
+ * idempotency on the caller), and the leftover may hold the member's
+ * in-progress work from the prior run. Adopted worktrees are not destroyed by
+ * this spawn's rollback (worktreeCreated stays false) — teardown remains the
+ * responsibility of team deletion and barrier-timeout cleanup.
  */
 async function spawnMemberSafely(
     ctx: PluginContext,
@@ -198,13 +241,22 @@ async function spawnMemberSafely(
     const memberSpec = specByName.get(member.name)
     let worktreeCreated = false
     if (memberSpec?.worktree) {
-        member.worktreePath = await createWorktree(
-            ctx.directory,
-            team.directory,
-            team.teamName,
-            member.name,
-        )
-        worktreeCreated = true
+        const leftover = member.worktreePath
+        if (leftover && (await isUsableWorktree(team.directory, member.name, leftover))) {
+            logEvent(ctx, "info", "spawn: adopting leftover member worktree", {
+                team: team.teamName,
+                member: member.name,
+                worktreePath: leftover,
+            })
+        } else {
+            member.worktreePath = await createWorktree(
+                ctx.directory,
+                team.directory,
+                team.teamName,
+                member.name,
+            )
+            worktreeCreated = true
+        }
     }
     try {
         // Session creation and role-prompt delivery are sequenced with
