@@ -93,6 +93,10 @@ function normalize(choice: string): string {
         "shors": "shor",
         "trial": "trial-division",
         "quadratic": "quadratic-sieve",
+        // "Full Name (ABBREV)" variants: the parenthesized abbreviation
+        // duplicates the spelled-out method and must not block the match.
+        "number-field-sieve-nfs": "nfs",
+        "quadratic-sieve-qs": "quadratic-sieve",
     };
     return MAP[c] ?? c;
 }
