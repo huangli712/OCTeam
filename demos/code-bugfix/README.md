@@ -10,7 +10,7 @@ A single-team fix scenario: 1 team × 1 orchestration primitive (`team_tollgate`
 
 ---
 
-## §1 fix-team (`team_toolgate`) — Fix
+## §1 fix-team (`team_tollgate`) — Fix
 
 ### 1.1 Phase Description
 
@@ -57,7 +57,7 @@ Both gates PASS → leo final signoff (signoff_policy: decider)
     },
     {
       "name": "iris",
-      "role": "reviewer",
+      "role": "evaluator",
       "prompt": "You are the Stage 1 VERIFIER in a tollgate fix pipeline. Verify that Henry's failing test accurately reproduces the confirmed finding: it FAILS on the current code for the right reason, is focused, and would turn PASS once the bug is fixed. Emit PASS / FAIL (with reason) / INVALID (if the finding description is ambiguous and no accurate test can be written)."
     },
     {
@@ -67,7 +67,7 @@ Both gates PASS → leo final signoff (signoff_policy: decider)
     },
     {
       "name": "kate",
-      "role": "reviewer",
+      "role": "evaluator",
       "prompt": "You are the Stage 2 VERIFIER in a tollgate fix pipeline. Verify Jack's fix: 1) Henry's failing test now PASSES. 2) Full regression suite has no new failures (or no test suite exists). 3) The fix is minimal — no unrelated refactors, no scope creep. 4) Type-safe — no 'as any', no '@ts-ignore', no suppressed errors. Emit PASS / FAIL (with reason) / INVALID (if the fix approach is fundamentally flawed, not merely an implementation slip)."
     },
     {
@@ -79,7 +79,7 @@ Both gates PASS → leo final signoff (signoff_policy: decider)
 }
 ```
 
-**Role selection**: henry `tester` (write failing test), iris/kate/leo `reviewer` (verify + arbitrate), jack `coder` (fix). Each stage's verifier ≠ producer (iris≠henry, kate≠jack); leo does not participate in any stage, only arbitrates and signs off.
+**Role selection**: henry `tester` (write failing test), iris/kate `evaluator` (verify by actually running the tests — the evaluator role maps to a bash-capable agent, required by the "test FAILS/PASSES" criteria), leo `reviewer` (escalation rulings + final signoff — pure judgment, read-only), jack `coder` (fix). Each stage's verifier ≠ producer (iris≠henry, kate≠jack); leo does not participate in any stage, only arbitrates and signs off.
 
 ---
 
@@ -135,10 +135,10 @@ Batch count = ⌈M/5⌉
 for each batch b in 1..⌈M/5⌉:
     if b > 1:
         team_delete(cr-fix)        # Delete previous batch's old fix-team (already completed, already deactivated)
-    team_create(cr-fix)            # Create fresh fix-team per batch (use §2 JSON)
+    team_create(cr-fix)            # Create fresh fix-team per batch (use §1.2 JSON)
     team_activate(cr-fix)
     for each finding in batch b:   # Serial one-by-one, batch N items → N runs
-        team_tollgate(...)          # Use §3 JSON, replace <id> and <one-line defect description>
+        team_tollgate(...)          # Use §1.3 JSON, replace <id> and <one-line defect description>
         # Wait for signoff → team_results for this run's output
     team_deactivate(cr-fix)        # Make way for next batch
 ```
@@ -182,12 +182,12 @@ Run the bug fix scenario per demos/code-bugfix/README.md, target code = <TARGET>
 <paste the confirmed list here: one line per finding, "<id>: <one-line defect description>">
 1. Split the list into batches of 5 in list order (last batch may have fewer than 5). If the list is empty → stop and report truthfully.
 2. For each batch b:
-   - If b > 1, first team_delete(cr-fix) to remove the previous batch's old fix-team; then team_create(cr-fix) fresh instance (§2) → team_activate(cr-fix).
-   - For each finding in batch b, launch one serial team_tollgate run (§3, replace <id> and <one-line defect description>). Each run has two gates: henry writes failing test → iris verifies; jack fixes → kate verifies; leo arbitrates INVALID escalations and signs off. max_gate_retries=2, max_invalid_cycles=3, signoff_policy=decider, signoff_decider=leo.
+   - If b > 1, first team_delete(cr-fix) to remove the previous batch's old fix-team; then team_create(cr-fix) fresh instance (§1.2) → team_activate(cr-fix).
+   - For each finding in batch b, launch one serial team_tollgate run (§1.3, replace <id> and <one-line defect description>). Each run has two gates: henry writes failing test → iris verifies; jack fixes → kate verifies; leo arbitrates INVALID escalations and signs off. max_gate_retries=2, max_invalid_cycles=3, signoff_policy=decider, signoff_decider=leo.
    - After the batch is done, team_deactivate(cr-fix).
 3. After all batches, compile every <!-- FIXED: <id> --> marker + patch and present them to me for my judgment.
 Notes:
-- Member names must come from the 32-name preset pool (henry/iris/jack/kate/leo...), roles must use preset values like reviewer/coder/tester.
+- Member names must come from the 32-name preset pool (henry/iris/jack/kate/leo...), roles must use preset values like reviewer/coder/tester/evaluator.
 - Always team_deactivate the current team before switching, otherwise team_activate will be rejected.
 - fix-team rebuilt per batch: after each batch completes, delete the old fix-team, create a fresh instance. Within a batch, run tollgate serially one by one: one independent run per finding. Do not batch into a single run.
 - **Strict serial between batches, no parallelism**: one batch fully completes before entering the next batch.

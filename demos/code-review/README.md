@@ -148,14 +148,14 @@ team_deactivate(cr-audit)     # Release, make way for next team
 
 > triage-team runs **once per group** in the §1.5 grouping loop using `team_arbitrate`: each run only debates the current group's findings (≤5 items), no mixing across groups, no cumulative cross-group debating.
 
-6 debaters (2 reviewer + 2 architect + 1 coder + 1 explorer) debate **the current group's findings** across multiple rounds: **which are real issues, which are false positives**. **This phase does not discuss fix strategies** — fix approaches belong to the bug-fix scenario's coder ([`../code-bugfix/README.md`](../code-bugfix/README.md)). After the debate, 1 `almighty` arbiter (sam) weighs all positions and issues a **binding ruling** — **only confirms findings where debaters reached consensus** (those with remaining disagreement are discarded by default).
+6 debaters (2 reviewer + 2 architect + 1 coder + 1 explorer) debate **the current group's findings** across multiple rounds: **which are real issues, which are false positives**. **This phase does not discuss fix strategies** — fix approaches belong to the bug-fix scenario's coder ([`../code-bugfix/README.md`](../code-bugfix/README.md)). After the debate, 1 `arbiter` (sam) weighs all positions and issues a **binding ruling** — **only confirms findings where debaters reached consensus** (those with remaining disagreement are discarded by default).
 
 ### 2.2 Team Configuration
 
 ```json
 {
   "name": "cr-triage",
-  "description": "Code review triage team: 6 debaters (2 reviewers + 2 architects + 1 coder + 1 explorer) + 1 almighty arbiter triage audit findings via arbitrate — debate real-vs-false-positive, arbiter confirms only consensus findings; NOT fix strategies",
+  "description": "Code review triage team: 6 debaters (2 reviewers + 2 architects + 1 coder + 1 explorer) + 1 arbiter triage audit findings via arbitrate — debate real-vs-false-positive, arbiter confirms only consensus findings; NOT fix strategies",
   "members": [
     {
       "name": "erin",
@@ -189,14 +189,14 @@ team_deactivate(cr-audit)     # Release, make way for next team
     },
     {
       "name": "sam",
-      "role": "almighty",
-      "prompt": "You are the ARBITER (almighty). Six debaters (2 reviewers, 2 architects, 1 coder, 1 explorer) debated which audit findings are REAL, actionable issues. Weigh all positions impartially across the rounds. Apply this BINDING rule: confirm a finding ONLY IF the debaters reached consensus that it is real — i.e. no substantive dissent remained, or any initial skepticism was withdrawn when confronted with concrete evidence (a triggering call path, a missing guard, a demonstrated failure). Findings with unresolved disagreement are rejected as unconfirmed. Do NOT discuss fix strategies — that is delegated to the fix team. In your FINAL ruling, emit one line per confirmed finding exactly formatted: <!-- CONFIRMED: <finding-id> --> (rejected findings are simply omitted), then emit exactly one line formatted: <ruling>{\"decision\":\"<comma-separated confirmed ids, or none>\",\"rationale\":\"<which findings reached consensus and which did not, and why>\"}</ruling>."
+      "role": "arbiter",
+      "prompt": "You are the ARBITER. Six debaters (2 reviewers, 2 architects, 1 coder, 1 explorer) debated which audit findings are REAL, actionable issues. Weigh all positions impartially across the rounds. Apply this BINDING rule: confirm a finding ONLY IF the debaters reached consensus that it is real — i.e. no substantive dissent remained, or any initial skepticism was withdrawn when confronted with concrete evidence (a triggering call path, a missing guard, a demonstrated failure). Findings with unresolved disagreement are rejected as unconfirmed. Do NOT discuss fix strategies — that is delegated to the fix team. In your FINAL ruling, emit one line per confirmed finding exactly formatted: <!-- CONFIRMED: <finding-id> --> (rejected findings are simply omitted), then emit exactly one line formatted: <ruling>{\"decision\":\"<comma-separated confirmed ids, or none>\",\"rationale\":\"<which findings reached consensus and which did not, and why>\"}</ruling>."
     }
   ]
 }
 ```
 
-**Role selection**: erin/frank use `reviewer` (read-only deep review), grace/quinn use `architect` (architectural perspective on whether invariants/contracts are genuinely violated). mona uses `coder` (implementer perspective, default skepticism about triggerability), ruby uses `explorer` (codebase reachability perspective, default skepticism about path reachability), both inclined to play devil's advocate — tend to classify as false positives unless convinced by concrete evidence (triggering call chain, missing guard, demonstrable failure). sam uses `almighty` (arbiter, not a debater, not master) — after the debate, weighs 6 positions and issues a ruling under the binding rule of "only confirm consensus findings". The debate focus converges to "real or false positive", deferring strategy.
+**Role selection**: erin/frank use `reviewer` (read-only deep review), grace/quinn use `architect` (architectural perspective on whether invariants/contracts are genuinely violated). mona uses `coder` (implementer perspective, default skepticism about triggerability), ruby uses `explorer` (codebase reachability perspective, default skepticism about path reachability), both inclined to play devil's advocate — tend to classify as false positives unless convinced by concrete evidence (triggering call chain, missing guard, demonstrable failure). sam uses `arbiter` (not a debater, not master) — after the debate, weighs 6 positions and issues a ruling under the binding rule of "only confirm consensus findings". The debate focus converges to "real or false positive", deferring strategy.
 
 ### 2.3 Master Launch Call
 
@@ -216,7 +216,7 @@ team_deactivate(cr-audit)     # Release, make way for next team
 
 **Parameter selection**:
 - `task` = the **current group's** findings (master extracts ≤5 from §1.5 grouping and pastes them in by hand); arbitrate's `task` is the dispute topic.
-- `arbiter: "sam"` (role=`almighty`) — not a debater, not master; weighs 6 debater positions and issues a binding ruling.
+- `arbiter: "sam"` (role=`arbiter`) — not a debater, not master; weighs 6 debater positions and issues a binding ruling.
 - `debaters` — 6 debaters (erin/frank/grace/quinn/mona/ruby), ≥2 and unique, none may be the arbiter.
 - `max_rounds: 6` — gives sufficient debate space, with maneuver room for large numbers of findings.
 - No `signoff_policy` set — the arbiter's ruling is itself the endpoint (equivalent to `none` gate).
