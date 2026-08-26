@@ -49,7 +49,8 @@ export function mapStatus(raw: { type: string } | undefined | null): DisplayStat
 /**
  * Extract agent name from message data.
  * Message API returns { info: { agent: "explore", ... } }.
- * Falls back to title parsing (@agent subagent) if no messages.
+ * Falls back to title parsing (@agent subagent) when no message provides an
+ * agent name.
  */
 export function extractAgentName(messages: MessageRow[], title: string): string {
     for (const msg of messages) {

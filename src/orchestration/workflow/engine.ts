@@ -19,8 +19,11 @@
  *                 else fail the run (workflow_failed) or follow on_fail_goto.
  *       INVALID / parse-failure -> routed per on_invalid/on_malformed:
  *                 fail, retry_verifier, skip, escalate, or on_invalid_goto.
- *                 Producer-neutral: the target task is not retried for
- *                 verifier-side failures.
+ *                 Producer-neutral by default: none of these re-dispatch the
+ *                 target task for verifier-side failures. Exception: an
+ *                 explicit on_invalid_goto jumps to the referenced step and
+ *                 dispatches it (task or gate, forward or backward, subject
+ *                 to a pre-step approval pause) like any goto.
  *   - fanout/join markers: engine completes the fanout marker instantly and
  *     shepherds branches (fanout.ts) until the join can fire (dag.ts).
  *   - All steps complete -> maybeTriggerSignoff -> deliver (idle: workflow_complete)

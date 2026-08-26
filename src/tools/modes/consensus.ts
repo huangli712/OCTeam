@@ -28,7 +28,9 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
             "Run a multi-round structured debate across all members until they reach consensus. "
             + "Each round, members state positions and emit "
             + "<consensus>{\"agreed\": true|false}</consensus>; the run ends when all agree, "
-            + "or fails when max_rounds is hit without consensus.",
+            + "or when max_rounds is hit without consensus (fails outright, unless "
+            + "human_approval is enabled and the leader approves delivering the "
+            + "current state).",
         args: {
             team_id: tool.schema.string().min(1),
             topic: tool.schema

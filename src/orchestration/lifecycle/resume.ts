@@ -123,8 +123,12 @@ export async function resumeDispatch(
 /**
  * Shared concurrent re-dispatch pattern: for each non-master non-running
  * member passing the mode-specific `shouldDispatch` predicate, dispatch with
- * the mode-specific `text`, count real dispatches, and re-drive `barrier` when
- * zero members were dispatched (prevents a no-op resume from stalling the run).
+ * the mode-specific `text`, count dispatch attempts, and re-drive `barrier`
+ * when zero attempts were made (prevents a no-op resume from stalling the
+ * run). NOTE: dispatchToMember is a silent no-op for errored/no-session
+ * members yet still counts here — most callers (parallel/consensus/route/
+ * arbitrate) do not exclude those members in their predicates; arena and
+ * quorum do. The count is attempts, not confirmed dispatches.
  *
  * Used by parallel, consensus, route Phase B, arbitrate Phase A, arena
  * implement phase, and quorum. Modes with fundamentally different shapes
@@ -295,8 +299,11 @@ async function resumeConsensusMode(
 }
 
 /**
- * Pipeline/loop resume: re-dispatch the current stage (advanceToStage reads
- * responses[] internally); an all-complete index means the crash happened
+ * Pipeline/loop resume: replay the current stage — when the stage member
+ * already has a captured response, drive the mode's idle handler directly
+ * (it reads responses[] and advances); when it is still running (host turn
+ * in flight), wait; otherwise re-dispatch via advanceToStage.
+ * An all-complete index means the crash happened
  * before delivery, so finish the run.
  */
 async function resumeSequentialMode(
@@ -788,8 +795,9 @@ async function resumeQuorumMode(
 }
 
 /**
- * Reset interrupted task claims: reap stale locks + reset any claimed/in_progress
- * tasks back to pending so idle members can re-claim them. Shared by the
+ * Reset interrupted task claims: reap stale locks + reset claimed/in_progress
+ * tasks back to pending so idle members can re-claim them. A task whose owner
+ * is still running is preserved (in-flight work). Shared by the
  * delegate and recurse resume paths.
  */
 async function resetInterruptedClaims(team: Team): Promise<void> {

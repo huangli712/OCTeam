@@ -74,7 +74,8 @@ export const signoffSchemaFields = {
         .optional()
         .describe(
             "post-completion review gate. 'none' (default): direct delivery. " +
-            "'decider': named member reviews. 'peer-quorum': all members vote.",
+            "'decider': named member reviews. 'peer-quorum': all active non-master " +
+            "members vote (members with a live session, excluding errored).",
         ),
     signoff_decider: tool.schema
         .string()

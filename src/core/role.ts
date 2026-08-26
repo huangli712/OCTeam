@@ -33,7 +33,7 @@
  * webfetch (reference lookup is its job); oct-metis/oct-momus deny
  * edit/bash/webfetch but allow task (planning/review agents need
  * subagent delegation).
- * The underlying sessions have been verified to support the persistent,
+ * The underlying sessions support the persistent,
  * multi-dispatch member lifecycle (OCTeam dispatches via session.create +
  * promptAsync, which does not consult agent mode -- see dispatch.ts).
  * Permissions are therefore floored by the oct-* definitions in this repo:

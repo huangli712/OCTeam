@@ -23,7 +23,12 @@ import { nonMasterMembers } from "../../tools/support.js"
 
 /**
  * Check the active task's termination conditions and, if met, deliver a summary
- * to the leader and tear down the active task. No-op if no active task.
+ * to the leader and tear down the active task. Workflow step timeouts have
+ * their own handling: branch steps bypass on_timeout and go through fanout
+ * branch tolerance (within tolerance advances, over tolerance fails);
+ * non-branch steps follow on_timeout — skip advances the run, retry
+ * re-dispatches (bounded; exhaustion fails), fail terminates. No-op if no
+ * active task.
  */
 export async function checkTermination(
     ctx: PluginContext,
@@ -79,9 +84,14 @@ export async function checkTermination(
     // (handleParallelIdle) / handleDelegateIdle owns succeed-with-survivors.
     // checkTermination owns ONLY the fail decisions: all-errored, or
     // over-tolerance. Sequential modes (pipeline/loop/consensus — and every
-    // other type such as route/tollgate/arbitrate/workflow via the
-    // per-mode handlers) get tolerance 0: the first relevant member error
-    // fails the run.
+    // other type such as route/tollgate/arbitrate via the per-mode handlers)
+    // get tolerance 0: the first relevant member error fails the run.
+    // Workflow is the exception among the rest: fanout branch errors go
+    // through markWorkflowFanoutBranchErrored (per-branch tolerance), a
+    // top-level ensemble verifier error is tolerated immediately (recorded
+    // as an unavailable result; once every verifier has a result the step's
+    // dispatchedAt is cleared so the sweep aggregates), and only other
+    // linear-step actor errors fail the run.
     const erroredMembers = team.members.filter(m => !m.isMaster && m.status === "errored")
     if (erroredMembers.length > 0) {
         // If signoff is in progress, the signoff handler owns errored-

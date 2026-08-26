@@ -120,8 +120,10 @@ export async function handleConsensusIdle(
                 })
             }
         }
-        // Persist the dispatched roster after the dispatch loop so
-        // crash recovery knows which members were successfully prompted.
+        // Persist the dispatched roster after the dispatch loop (audit
+        // trail; arbitrate's phase transition also reads this field on its
+        // own runs — consensus resume itself re-prompts by missing
+        // responses, not by this roster).
         await saveTeamState(team)
     })
 }

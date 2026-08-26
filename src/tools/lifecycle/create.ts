@@ -272,8 +272,10 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 // ancestor chain on every write).
                 await writeTeamSpec(ctx.storageRoot, spec, leadSessionId, ctx.storageRoot)
 
-                // Write a read-only master.sentinel pinning the creator's
-                // sessionID. For user-scope teams (flat layout, no directory
+                // Write master.sentinel pinning the creator's sessionID, then
+                // best-effort chmod it to read-only (a swallowed chmod failure
+                // leaves it owner-writable; the sentinel value itself is still
+                // authoritative). For user-scope teams (flat layout, no directory
                 // segment), this is the trusted master source at restart instead
                 // of the mutable state.json.leadSessionId. chmod 0444 raises the
                 // bar against tampering (attacker needs explicit chmod first).

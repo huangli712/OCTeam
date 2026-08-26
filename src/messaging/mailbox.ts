@@ -12,12 +12,14 @@
  * normal operation.
  *
  * TRUST BOUNDARY — message authenticity. The mailbox lives under
- * `<project>/.octeam/mailbox/`, i.e. inside the project directory that member
+ * `<teamDirectory>/mailbox/` (per team, under the scope-dependent teams
+ * root — inside the project for project scope, under ~/.octeam for user
+ * scope). For project-scope teams this is a directory that member
  * agents (any role mapped to the `oct-junior` agent: coder/debugger/optimizer/...)
  * can read and write via their edit/write/bash tools. Plain messages carry NO
  * cryptographic integrity tag (no HMAC/signature): `from` and `kind` are stored
  * verbatim and only XML-escaped on output. A member with filesystem write
- * access to `.octeam/` CAN append a forged line. Directive priority is the
+ * access to the teams storage root CAN append a forged line. Directive priority is the
  * exception: rendering checks every `kind: "directive"` line against the
  * in-process authentication registry (auth.ts) and downgrades unauthenticated
  * ones to regular messages, so a forged line cannot render as a high-priority

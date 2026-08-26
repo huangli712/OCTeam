@@ -193,7 +193,9 @@ export function extractSessionStatusEntry(
  * Preserves BOTH the head and the tail: when truncation is required and the
  * budget exceeds the 48-byte marker overhead, the first and last ~maxBytes/2
  * bytes are kept with an elision marker between them (at or below that
- * overhead only the head fits, with a plain ellipsis). This
+ * overhead only the head fits — and only with an ellipsis when the budget
+ * is at least the 3-byte ellipsis; below 3 bytes the head alone is kept).
+ * This
  * is essential because the project's prompt convention places deliverable
  * markers (e.g. `<!-- SORT_OK: true -->`) at the END of member output ("Your
  * output MUST end with..."). A head-only cut silently drops those end-markers
@@ -360,10 +362,12 @@ export function buildRolePrompt(
 }
 
 /**
- * Type-safe cast of unknown SDK data to SdkMessage[] with a runtime Array
- * guard. Use this instead of `data as SdkMessage[]` at every session.messages
- * call site so an unexpected SDK response shape degrades to empty rather than
- * propagating as a wrongly-typed reference.
+ * Narrow unknown SDK data to SdkMessage[] with a runtime Array guard: elements
+ * that are not non-null objects are dropped. Use this instead of
+ * `data as SdkMessage[]` at every session.messages call site — the guard
+ * cannot verify the full SdkMessage shape, but an unexpected SDK response
+ * shape degrades to an empty/filtered array rather than propagating as a
+ * wrongly-typed reference.
  */
 export function asSdkMessages(data: unknown): import("../../core/types.js").SdkMessage[] {
     if (!Array.isArray(data)) return []

@@ -484,7 +484,7 @@ At least one of `new_name` / `new_role` / `new_prompt` / `new_agent` must be pro
 | task | string, 1-8192 | yes | — | the voting question; sent verbatim to all participants |
 | vote_key | string, 1-64, `^[A-Za-z0-9_]+$` | yes | — | ballot field name; members emit `<vote>{"<vote_key>": "<value>"}</vote>` |
 | vote_options | string[] (1-256 each), max 20 | no | any non-empty string | whitelist of legal values; values outside count as abstain (invalid ballot) |
-| members | string[] (1-256 each), max 50 | yes (schema has no `.optional()`; describe says "default = all non-master members" and validate falls back to that) | all non-master members | subset of members who ballot; length >= 2 |
+| members | string[] (1-256 each), max 50 | no (`.optional()`; omitted → all non-master members) | all non-master members | subset of members who ballot; length >= 2 |
 | max_errored_members | int >= 0 | no | N - 1 (participants minus 1) | tolerate N runtime-errored members and still tally; must be < participant count; invalid ballots always abstain |
 | timeout_ms / token_budget / max_retries | see conventions | no | 600000 / — / 0 | run bounds |
 

@@ -272,10 +272,10 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
                 // redirect member operations to an external directory.
                 //
                 // When the path exists, use realpathSync to resolve symlinks and
-                // re-check containment. If the path does not yet exist (worktree
-                // not created at save time) or realpath fails for other reasons,
-                // fall back to the lexical check; the spawn-time check is the
-                // final guard for that case.
+                // re-check containment. Only a not-yet-existing path (ENOENT —
+                // worktree not created at save time) falls back to the lexical
+                // check (the spawn-time check is the final guard for that case);
+                // any other realpath error fails closed.
                 const wtRoot = worktreesDir(teamDirectory)
                 const resolved = path.resolve(teamDirectory, wt)
                 if (resolved !== wtRoot && !resolved.startsWith(wtRoot + path.sep)) {

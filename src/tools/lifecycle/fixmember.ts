@@ -382,8 +382,9 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                         migrateActiveTaskMemberRefs(team.lastInterruptedTask, oldName, newName)
                     }
                     changes.push(`name: ${oldName} → ${newName}`)
-                    // Task migration is transactional: if any
-                    // update fails, roll back all previously migrated tasks.
+                    // Task migration: on failure, attempt a compensating
+                    // rollback of previously migrated tasks (rollback failures
+                    // are logged, not guaranteed).
                     const migrated: Array<{ id: string; oldOwner: string }> = []
                     try {
                         const tasks = await listAllTasks(team.directory)
@@ -607,8 +608,8 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                         changes.push(`worktree: WARNING old worktree destroy failed; stale worktree left in place`)
                     }
                 }
-                // Persist teardown with bounded retries because the in-memory
-                // worktree and session fields are already cleared. Surface a final
+                // Persist the final member state with bounded retries (including
+                // any cleared worktree/session fields). Surface a final
                 // failure so the caller knows disk may still reference the destroyed
                 // worktree.
                 try {

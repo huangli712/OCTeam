@@ -64,6 +64,7 @@ export function teamQuorumTool(ctx: PluginContext): ToolDefinition {
             members: tool.schema
                 .array(tool.schema.string().min(1).max(256))
                 .max(50)
+                .optional()
                 .describe(
                     "subset of members who ballot; default = all non-master "
                     + "members. Must have length >= 2.",

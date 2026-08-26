@@ -8,8 +8,8 @@
 import type { Message } from "../core/types.js"
 import { isAuthenticatedDirective } from "./auth.js"
 
-// Escape XML text content (message body). `&` MUST be replaced first so the
-// ampersands introduced for the other entities are not double-escaped.
+/** Escape XML text content (message body). `&` MUST be replaced first so the
+ *  ampersands introduced for the other entities are not double-escaped. */
 function escapeXmlText(value: string): string {
     return value
         .replace(/&/g, "&amp;")
@@ -17,8 +17,9 @@ function escapeXmlText(value: string): string {
         .replace(/>/g, "&gt;")
 }
 
-// Escape an XML attribute value (from, correlationId). Builds on text escaping
-// and additionally neutralizes the quotes that could close the attribute.
+/** Escape an XML attribute value (from, correlationId). Builds on text
+ *  escaping and additionally neutralizes the quotes that could close the
+ *  attribute. */
 function escapeXmlAttr(value: string): string {
     return escapeXmlText(value)
         .replace(/"/g, "&quot;")

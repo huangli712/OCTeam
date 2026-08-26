@@ -463,7 +463,8 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
 /**
  * Transform hook (Layer 3 of the three-layer communication model). On each chat turn for a team member,
  * atomically poll-and-reserve its mailbox and inject unread messages as a
- * synthetic text part on the last user message. Uses the same reservation
+ * synthetic text part on the last user message (or, when no user message
+ * exists, on the last message of any role). Uses the same reservation
  * protocol as the master drain path.
  *
  * Known limitation: ACK commits before the downstream LLM turn runs. If

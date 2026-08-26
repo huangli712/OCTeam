@@ -12,7 +12,8 @@
  *   - All gates pass → check signoff → deliver (idle: tollgate_complete)
  *   - Gate FAIL retries exhausted → deliver (failed: tollgate_failed:<producer>)
  *   - INVALID cycles exhausted → deliver (failed: tollgate_invalid:exhausted:<member>)
- *   - INVALID without escalateTo → pause for a leader tollgate_gate approval
+ *   - INVALID without a live escalateTo handler (unset, or set but no live
+ *     session) → pause for a leader tollgate_gate approval
  *     (approve retries verification, reject fails); if the approval cannot be
  *     created → deliver (failed: tollgate_invalid:<producer>:<reason>)
  */

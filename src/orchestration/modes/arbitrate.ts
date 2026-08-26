@@ -8,7 +8,11 @@
  *
  * STATE MACHINE:
  *   Phase A: debate_round → barrier → next_round | transition_to_ruling
+ *     (optional pre-ruling HITL pause before the arbiter dispatch when
+ *     hitl_phase is pre/both)
  *   Phase B: arbiter_dispatch → parse_ruling → [signoff →] deliver
+ *     (optional post-ruling HITL pause before delivery when hitl_phase is
+ *     post/both)
  *   - Arbiter rules → check signoff → deliver (idle: arbitrate_complete:ruled)
  *   - Arbiter unavailable → deliver (failed: arbitrate_complete:arbiter_unavailable)
  *   - Ruling parse failure → bounded arbiter re-dispatch (decisionParseFailures

@@ -298,9 +298,11 @@ export function isIndexedMember(sessionID: string): boolean {
  * redirect sensitive run output to an attacker-controlled session.
  */
 export function trustedLeadSessionId(directory: string): string | undefined {
-    // Return only a sessionID map key validated against master.sentinel at
-    // startup. An empty sessionID marks failed sentinel validation, so fail
-    // closed instead of returning the disk-derived leadSessionId.
+    // Return only a sessionID map key. Keys are sentinel-validated when a
+    // master.sentinel exists; user-scope teams without one fall back to a
+    // state.json-derived key (logged as less secure at startup). The empty
+    // key marks failed sentinel validation, so skip it and fail closed
+    // instead of returning the disk-derived leadSessionId.
     for (const [sessionID, entry] of masterIndex) {
         if (sessionID === "") continue  // skip unverified entries
         const team = entry.teams.get(directory)

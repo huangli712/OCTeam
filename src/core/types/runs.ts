@@ -114,7 +114,7 @@ export type RunRecord = {
     type: OrchestrationType
     mode?: ParallelMode
     reason: string                     // verbatim reason passed to deliverSummaryToLeader
-    status: RunStatus                  // derived via runStatusFromReason
+    status: RunStatus                  // caller-provided; derived from reason only when omitted
     startedAt: number                  // task.startedAt
     finishedAt: number                 // epoch ms at persist
     tokensUsed: number
@@ -126,7 +126,8 @@ export type RunRecord = {
     consensusReached?: boolean         // consensus
     signoffPolicy?: SignoffPolicy
     signoffApprovals?: Record<string, boolean>
-    // per-member full outputs, path-referenced (NOT inlined). file is relative to
+    // per-member accumulated outputs (byte-capped, truncated with a marker
+    // past 256 KiB), path-referenced (NOT inlined). file is relative to
     // runs/<runId>/ (e.g. "alice.md").
     memberOutputs: Record<string, { bytes: number; file: string }>
     // run-level artifact files (reduce.md, signoff.md) that memberOutputs skips

@@ -154,9 +154,11 @@ function hasNestedQuantifier(pattern: string): boolean {
  * Test a retry_on regex pattern against an output string, with ReDoS guards:
  *   1. Reject patterns longer than REDOS_PATTERN_MAX_LEN.
  *   2. Reject patterns with nested quantifiers (the canonical ReDoS signature).
- *   3. Cap input at REDOS_INPUT_CAP (10,000 UTF-16 code units) to bound
+ *   3. Reject patterns with 3+ consecutive wildcard quantifiers (e.g. ^.*.*.*X$
+ *      — polynomial-time in V8).
+ *   4. Cap input at REDOS_INPUT_CAP (10,000 UTF-16 code units) to bound
  *      worst-case wall time for polynomial-time patterns that slip through
- *      the heuristic.
+ *      the heuristics.
  * Returns false (no-retry) on rejection, logging the reason so operators notice.
  */
 function testRegexSafely(pattern: string, output: string): boolean {

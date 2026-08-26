@@ -1,7 +1,7 @@
 /**
  * team_progress tool.
  *
- * Master real-time observability: merges a LIVE snapshot of member states with
+ * Any-member real-time observability: merges a LIVE snapshot of member states with
  * the run's event TIMELINE (runs/<runId>/events.jsonl). team_details gives a
  * snapshot only; team_result_get gives the post-hoc full record. team_progress
  * answers "where are we, and how did we get here" — mid-run or just after.
@@ -40,8 +40,9 @@ import type { Team } from "../../state/store.js"
 /** Byte cap for a single events.jsonl line; longer lines are skipped whole. */
 const MAX_RUN_EVENT_LINE_BYTES = 1024 * 1024
 
-/** Cap total formatted output so limit=200 lines × large detail fields
- *  cannot produce multi-hundred-MB responses. 256 KiB matches the
+/** Cap the accumulated timeline-line payload so limit=200 lines × large
+ *  detail fields cannot produce multi-hundred-MB responses (headers and the
+ *  snapshot section are added outside the cap). 256 KiB matches the
  *  accumulated output capture cap. */
 const MAX_FORMATTED_OUTPUT_BYTES = 256 * 1024
 
@@ -224,7 +225,8 @@ function liveStatusByIndex(task: WorkflowTask): Map<number, MermaidStepStatus> {
     return statuses
 }
 
-/** One-line-per-member live snapshot (current state, not history). */
+/** One-line-per-member live snapshot (current state; includes last-run
+ *  token usage from lastMode when no run is active). */
 function formatSnapshot(team: Team): string[] {
     const lines: string[] = [`Team: ${team.teamName}  status: ${team.status}`]
     if (team.activeTask) {

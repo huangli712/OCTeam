@@ -12,8 +12,8 @@
  *   - All read-only stages report <no_issues/> → deliver (idle: loop_complete:no_issues)
  *   - Max rounds reached without a done decision → pause for a loop_done
  *     approval when HITL is enabled (approve → idle: loop_complete:human_approved;
- *     reject at the cap → failed: loop_complete:human_rejected_max_rounds, reject
- *     below the cap → another round); without HITL → deliver (failed:
+ *     reject → failed: loop_complete:human_rejected_max_rounds — the cap is
+ *     already reached here); without HITL → deliver (failed:
  *     loop_complete:max_rounds)
  *   - Decision parse failure (default cap 3 — fails on the 3rd consecutive
  *     malformed decision after 2 re-dispatches) → deliver (failed:

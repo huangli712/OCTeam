@@ -118,11 +118,11 @@ const server = async (input: PluginInput, options?: Record<string, unknown>): Pr
     }
 
     // Background sweep timer: reaps stale resources, enforces termination, and
-    // reconciles missed idle events. Runs for the lifetime of the plugin.
-    // The controller is a local value with no teardown wiring today (no
-    // plugin-reload path exists); .unref() prevents loop keepalive.
+    // reconciles missed idle events. Runs for the lifetime of the plugin; no
+    // teardown is wired (no plugin-reload path exists). The controller value
+    // is unused by design; .unref() prevents loop keepalive.
     const sweepTimer = startSweepTimer(ctx)
-    void sweepTimer // retained for future teardown; .unref() prevents loop keepalive
+    void sweepTimer // unused by design; .unref() prevents loop keepalive
 
     return {
         tool: createTools(ctx),

@@ -151,8 +151,9 @@ function buildNarrowDecomposePrompt(subject: string, maxSubtasks: number, maxNew
  * Aggregation-phase dispatch prompt for the decomposer. Stronger than the
  * generic buildRecursePrompt(): states the completed sub-task count, forbids
  * waiting on teammate messages or re-decomposing, and prescribes the exact
- * claim-root -> read -> synthesize -> idle sequence. The output FORMAT stays
- * scene-defined — this prompt reinforces BEHAVIOR only.
+ * claim-root -> read -> synthesize -> idle sequence (the output still passes
+ * <decompose> parsing — a malformed block is retried, then fails the run at
+ * the cap; tag-free output is stored verbatim as the task result).
  */
 function buildAggregationPrompt(rootSubject: string, childCount: number): string {
     return (

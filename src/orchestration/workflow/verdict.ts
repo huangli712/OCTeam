@@ -171,9 +171,11 @@ function collectEnsembleVerdicts(
 
 /**
  * Handle an unevaluable gate verdict (INVALID or parse failure) according to
- * the gate's on_invalid / on_malformed policy. Producer-neutral in all cases:
- * the target task is never retried on INVALID or parse_failure (only the
- * verifier may be re-dispatched).
+ * the gate's on_invalid / on_malformed policy. Producer-neutral by default:
+ * the policies do not re-dispatch the target task on INVALID or parse_failure
+ * (only the verifier may be re-dispatched). Exception: an on_invalid_goto
+ * jumps to the referenced step and dispatches it (task or gate, forward or
+ * backward, subject to a pre-step approval pause) like any goto.
  *
  *   parse_failure -> routes through on_malformed (with fallback to on_invalid):
  *     fail          -> terminate as workflow_invalid:<reason>:<verifier>, or

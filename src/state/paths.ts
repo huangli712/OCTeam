@@ -213,8 +213,8 @@ export function isSafePathSegment(s: string): boolean {
 /**
  * Assert a string is a single safe path segment. Centralizes traversal
  * validation at the path-construction chokepoint so BOTH live tool arguments
- * AND values re-loaded from disk (state.json/config.json — parsed without
- * schema re-validation) are guarded uniformly. Throws on an unsafe segment
+ * AND values re-loaded from disk (state.json/config.json) are guarded
+ * uniformly. Throws on an unsafe segment
  * rather than silently producing an escaped path.
  */
 export function assertSafeSegment(s: string, fn: string, label: string): void {

@@ -30,7 +30,8 @@ export function teamArenaTool(ctx: PluginContext): ToolDefinition {
         description:
             "Competitive arena: N candidate members implement competing solutions, each in an isolated git worktree "
             + "(implement phase); a dedicated evaluator then runs the same objective evaluation "
-            + "over every candidate and emits a structured scoreboard; a deterministic winner is "
+            + "over every surviving candidate (candidates that errored during implement are "
+            + "excluded) and emits a structured scoreboard; a deterministic winner is "
             + "selected on the winner metric and delivered directly. Every candidate MUST be created "
             + "with worktree:true.",
         args: {

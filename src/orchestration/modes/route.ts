@@ -109,7 +109,8 @@ export async function handleRouteIdle(
         const selected = branches.filter(b => decision.targets.includes(b.name))
 
         if (decision.parseFailed) {
-            // Bounded retry: one re-dispatch before failing the run. LLM
+            // Bounded retry: re-dispatch until the failure threshold
+            // (default 2 → one re-dispatch) before failing the run. LLM
             // format drift is a common operational failure, not an edge case.
             // Uses the shared decisionParseFailures counter (ActiveTask base
             // field, same as loop's parse-failure handling).

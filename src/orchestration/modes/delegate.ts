@@ -1,16 +1,19 @@
 /**
  * Delegate handler. Drives a shared task pool: members claim tasks, work them,
  * and idle. runDelegateStyleTail owns the termination engine -- all-complete
- * delivers; ALL members idle with NO claimable tasks fails as deadlock;
- * otherwise idle members are RATE-LIMITED re-prompted toward remaining
- * claimable tasks (the whole idle pool is a candidate, the just-idled member
- * first).
+ * delivers; ALL members idle with NO claimable AND NO in-flight
+ * claimed/in-progress tasks fails as deadlock (when in-flight tasks exist,
+ * their owners are re-prompted where possible — an owner without a live
+ * non-running session is skipped and the tail returns); otherwise idle
+ * members are RATE-LIMITED re-prompted
+ * toward remaining claimable tasks (the whole idle pool is a candidate, the
+ * just-idled member first).
  * Recurse (recurse.ts) reuses this tail.
  *
  * STATE MACHINE:
  *   member_dispatch → task_claim → work → idle → [claim_more | rate_limited | deadlock | all_complete]
  *   - All tasks completed → deliver (idle: delegate_complete)
- *   - All idle, no claimable tasks (deadlock) → deliver (failed: delegate_deadlock)
+ *   - All idle, no claimable or in-flight tasks (deadlock) → deliver (failed: delegate_deadlock)
  *   - Member idle with claimable tasks → rate-limited re-prompt toward next task
  */
 
@@ -33,9 +36,13 @@ export const NOTIFY_COOLDOWN_MS = 10_000
 
 /**
  * Shared delegate-style termination tail: scan the task list, deliver on
- * all-complete, fail on deadlock, else rate-limit re-prompt the idling member
- * toward claimable tasks. Used by both delegate (label "delegate") and recurse
- * (label "recurse"); the reason prefix and re-prompt text differ by caller.
+ * all-complete; if in-flight claimed/in-progress tasks exist, re-dispatch
+ * their owners (those with a live non-running session); else fail on
+ * deadlock — no claimable tasks and all members idle (a missing status
+ * entry counts as idle); else rate-limit re-prompt the eligible
+ * idle-member pool toward claimable tasks (the triggering member first).
+ * Used by both delegate (label "delegate") and recurse (label "recurse");
+ * the reason prefix and re-prompt text differ by caller.
  */
 export async function runDelegateStyleTail(
     ctx: PluginContext,
@@ -155,8 +162,8 @@ export async function runDelegateStyleTail(
 
     // Claimable tasks: pending AND all blockers completed or deleted.
     // claimTask treats deleted blockers as resolved (tasks.ts blockersAreResolved);
-    // the tail must match, or a pending task whose only blocker was deleted
-    // is forever unclaimable → false deadlock.
+    // the tail must match, or a pending task whose only blocker is deleted
+    // would remain forever unclaimable → false deadlock.
     const claimable = incompleteForClaimable.filter(
         t =>
             t.status === "pending"

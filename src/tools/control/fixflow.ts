@@ -273,7 +273,8 @@ async function applyAdvance(ctx: PluginContext, team: Team, task: WorkflowTask):
     return "team_fix_workflow advanced workflow."
 }
 
-/** Fail a workflow step with a sanitized reason, finishing the run with a failure status. */
+/** Fail the workflow (whole run) with a sanitized reason, finishing it with
+ *  a failure status. */
 async function applyFail(ctx: PluginContext, team: Team, reason: string | undefined): Promise<string> {
     const safeReason = sanitizeReason(reason)
     await finishRun(ctx, team, workflowOperatorFailReason(safeReason), "failed")
