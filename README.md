@@ -2,7 +2,7 @@
 
 OCTeam is a multi-agent team orchestration system for OpenCode. It is an OpenCode plugin that lets you create long-lived teams of up to 12 agent sessions — each with its own role, prompt, and optional agent — and orchestrate them with twelve workflow primitives.
 
-**Version:** 0.14.5
+**Version:** 0.14.6
 
 ## Why OCTeam?
 
