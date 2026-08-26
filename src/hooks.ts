@@ -55,27 +55,31 @@ import {
 } from "./messaging/mailbox.js"
 import { formatMailboxInjection } from "./messaging/format.js"
 
-// Period between sweep-timer ticks (missed-idle reconciliation, termination enforcement).
+/** Period between sweep-timer ticks (missed-idle reconciliation,
+ *  termination enforcement). */
 const SWEEP_INTERVAL_MS = 15_000
 
-// Max retry attempts for persistTeamState on transient disk failures.
+/** Max retry attempts for persistTeamState on transient disk failures. */
 const SAVE_MAX_ATTEMPTS = 3
 
-// Backoff between persistTeamState retry attempts.
+/** Backoff between persistTeamState retry attempts. */
 const SAVE_BACKOFF_MS = 100
 
-// TTL for compacting flags; bounds a stuck flag if compaction aborts before transform.
+/** TTL for compacting flags; bounds a stuck flag if compaction aborts
+ *  before transform. */
 const COMPACTING_FLAG_TTL_MS = 15_000
 
 /** Max tracked compacting flags; insert-time eviction enforces it (see below). */
 const COMPACTING_MAP_CAP = 256
 
-// ACK happens before the downstream LLM turn. Retain enough in-process state
-// to count explicit session.error turns that can no longer redeliver their
-// injected mailbox messages.
+/** Per-session count of mailbox injections ACKed by the transform hook
+ *  (the ACK happens before the downstream LLM turn). Retain enough
+ *  in-process state to count explicit session.error turns that can no
+ *  longer redeliver their injected mailbox messages. */
 const earlyAckedMessageCountBySession = new Map<string, number>()
 
-// Cumulative count of mailbox turns dropped after transform ACK, since plugin startup.
+/** Cumulative count of mailbox turns dropped after transform ACK, since
+ *  plugin startup. */
 let droppedMailboxTurnsSinceStartup = 0
 
 /**

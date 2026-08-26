@@ -35,9 +35,9 @@ import {
 } from "./paths.js"
 import { indexMasterTeam } from "./resolve.js"
 
-// O_NOFOLLOW closes the TOCTOU window. Use fs.constants if available,
-// falling back to the Linux numeric value for platforms where constants
-// doesn't expose it.
+/** O_NOFOLLOW closes the TOCTOU window. Use fs.constants if available,
+ *  falling back to the Linux numeric value for platforms where constants
+ *  doesn't expose it. */
 const O_NOFOLLOW = (fsSyncConstants as Record<string, number>).O_NOFOLLOW ?? 0x20000
 
 /** Bounded-retry attempts for saveTeamStateBounded. */
@@ -77,16 +77,18 @@ export type Team = TeamState & {
     _stateUnreadable?: boolean
 }
 
-// Process-level registry: resolved teamDir (absolute path) -> Team (with its
-// singleton mutex). Keying by the RESOLVED directory — not teamName — is what
-// keeps team "aaa" under session ses_x distinct from "aaa" under ses_y, and
-// project-scope "aaa" distinct from user-scope "aaa". Rebuilt lazily on plugin
-// restart; first access creates the entry, later accesses keep the mutex.
+/** Process-level registry: resolved teamDir (absolute path) -> Team (with
+ *  its singleton mutex). Keying by the RESOLVED directory — not teamName —
+ *  is what keeps team "aaa" under session ses_x distinct from "aaa" under
+ *  ses_y, and project-scope "aaa" distinct from user-scope "aaa". Rebuilt
+ *  lazily on plugin restart; first access creates the entry, later accesses
+ *  keep the mutex. */
 const teamRegistry = new Map<string, Team>()
 
-// In-flight first-load promises keyed by directory, preventing two concurrent
-// first-accesses from creating separate Team objects (and separate mutexes)
-// for the same directory — which would break per-team serialization.
+/** In-flight first-load promises keyed by directory, preventing two
+ *  concurrent first-accesses from creating separate Team objects (and
+ *  separate mutexes) for the same directory — which would break per-team
+ *  serialization. */
 const inflightLoads = new Map<string, Promise<Team>>()
 
 /**
