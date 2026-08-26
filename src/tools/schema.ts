@@ -13,9 +13,9 @@
 import { tool } from "@opencode-ai/plugin"
 
 /**
- * Optional parse-failure threshold fields for modes with bounded
- * decision/verdict parse recovery. Each mode tool selects only its matching
- * field (loop, arbitrate, route, recurse).
+ * Optional bounded-recovery threshold fields per mode — parse-failure caps
+ * (loop/arbitrate/route) and the recursion aggregation-stall cap (recurse).
+ * Each mode tool selects only its matching field.
  */
 export const parseThresholdFields = {
     max_decision_parse_failures: tool.schema
@@ -91,7 +91,8 @@ export const signoffSchemaFields = {
         ),
 }
 
-/** Schema fields for human approval: a boolean flag to pause at mid-run boundaries. */
+/** Schema fields for human approval: a boolean flag to pause at mid-run
+ *  boundaries, plus an optional approval wall-clock timeout (ms). */
 export const humanApprovalSchemaFields = {
     human_approval: tool.schema
         .boolean()

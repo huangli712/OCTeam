@@ -53,7 +53,8 @@ export function gateTargetIndex(steps: readonly WorkflowStep[], gateIndex: numbe
     return targets[0] ?? -1
 }
 
-/** Return all target task indices a gate verifies (explicit or inferred). */
+/** Return all target task-or-join step indices a gate verifies (explicit or
+ *  inferred). */
 export function gateTargetIndices(steps: readonly WorkflowStep[], gateIndex: number): number[] {
     const gate = steps[gateIndex]
     if (gate?.kind !== "gate") return []

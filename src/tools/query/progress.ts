@@ -67,7 +67,8 @@ function activeFanoutJoinPolicy(task: WorkflowTask): string {
     return ""
 }
 
-// Stream and validate run events while retaining only the latest matching window.
+/** Stream and validate run events while retaining only the latest matching
+ *  window (see RunEventWindow for the exact retention semantics). */
 async function readRunEventWindow(
     teamDirectory: string,
     runId: string,

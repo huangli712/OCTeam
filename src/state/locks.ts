@@ -326,8 +326,9 @@ async function releaseLock(lockPath: string): Promise<void> {
 }
 
 /**
- * Assert that `target` resolves strictly inside `trustedRoot` AND that no
- * component of the path between them (or at target itself) is a symbolic link.
+ * Assert that `target` resolves inside or equal to `trustedRoot` AND that no
+ * component of the path between them (or at target itself) is a symbolic
+ * link.
  * Catches the ancestor-symlink attack that `refuseSymlink` (target + parent
  * only) misses: when an intermediate directory such as `<team>/mailbox` is
  * replaced with a symlink, checking only the immediate parent follows the

@@ -833,8 +833,10 @@ export async function sweepTeamOnce(
 }
 
 /** Start the periodic sweep timer that babysits busy teams for missed-idle reconciliation.
- * A recursive setTimeout schedules each tick after the prior sweep completes,
- * preventing overlap when a sweep exceeds SWEEP_INTERVAL_MS. */
+ * A recursive setTimeout schedules each tick after the prior sweep iteration
+ * completes, preventing timer-callback overlap. Caveat: the per-team
+ * timeout races (Promise.race) do not cancel the underlying sweepTeamOnce
+ * promise, so a hung team sweep can still overlap the next tick's work. */
 export function startSweepTimer(ctx: PluginContext): { stop: () => void } {
     let stopped = false
     let currentHandle: NodeJS.Timeout | undefined

@@ -123,7 +123,8 @@ export function resolveGateTargetIndex(
     return resolveGateTargetRef(steps, gateIndex, target)
 }
 
-/** Resolve a gate's targets array to a sorted list of lowered step indices. */
+/** Resolve a gate's explicit targets array, target_step, or implicit
+ *  preceding target to a sorted list of lowered step indices. */
 export function resolveGateTargetIndices(
     steps: readonly LoweredWorkflowStep[],
     gateIndex: number,

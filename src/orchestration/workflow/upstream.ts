@@ -22,7 +22,9 @@ export const MAX_UPSTREAM_OUTPUT_BYTES = 65_536;
  * skipped -- their verdicts are control-flow, not work product), each
  * labelled and individually truncated, then capped at
  * MAX_UPSTREAM_OUTPUT_BYTES total bytes. When the step declares explicit
- * `inputs`, only those steps are injected; otherwise every prior step.
+ * `inputs`, only those steps are injected; otherwise every prior completed
+ * step visible in this context — steps with expose_output=false and steps
+ * on a different branch are excluded.
  * Returns "" when there is no completed upstream output.
  */
 export function buildWorkflowUpstream(

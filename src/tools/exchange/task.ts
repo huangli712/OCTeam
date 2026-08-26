@@ -233,7 +233,7 @@ export function teamTaskListTool(ctx: PluginContext): ToolDefinition {
     })
 }
 
-/** Update a task's status or metadata on the shared task list. */
+/** Update a task's status on the shared task list. */
 export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:

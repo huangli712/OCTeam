@@ -194,9 +194,9 @@ export async function approveRecurseDecompose(
     if (!parent) return
     const childDepth = (parent.depth ?? 0) + 1
     const ids: string[] = []
-    // Treat child creation and parent linkage as one transaction. If either
-    // step fails, delete every created child so no unlinked claimable work
-    // remains.
+    // Sequence child creation and parent linkage; on failure, compensate
+    // best-effort by attempting to delete every created child (cleanup
+    // failures are logged, so an unlinked claimable child can survive).
     try {
         for (const subtask of request.subtasks) {
             const child = await createTask(team.directory, {
@@ -266,10 +266,11 @@ export async function rejectRecurseDecompose(
  *   • branch -- splits it into subtasks (depth+1) and re-queues the task as a
  *     pending aggregator blocked by those subtasks (re-claim aggregation); or
  *   • leaf -- finalizes the task as completed with the member's output as result.
- * Aggregators (blockedBy non-empty), depth/width-capped tasks, and no-tag
+ * Aggregators (blockedBy non-empty), depth-capped tasks, and no-tag
  * responses never branch — they are finalized as leaves directly, or (when
  * they still emit a <decompose> block) forced into a direct solve —
- * preventing infinite recursion/oscillation.
+ * preventing infinite recursion/oscillation. Width-capped decompositions
+ * first get bounded re-decompose-narrower retries, then forced-direct.
  * The tail reuses delegate's task-pool termination engine.
  */
 export async function handleRecurseIdle(
@@ -338,8 +339,9 @@ export async function handleRecurseIdle(
                 return
             }
             // Branch: create subtasks (depth+1), re-queue T as their aggregator.
-            // Roll back already-created children if creation or parent linkage
-            // fails so no claimable child is left without a parent.
+            // Best-effort rollback: on creation or linkage failure, attempt to
+            // delete already-created children (failures logged — a claimable
+            // child without a parent can survive).
             const ids: string[] = []
             try {
                 for (const s of dec.subtasks) {
@@ -505,9 +507,10 @@ export async function handleRecurseIdle(
             // The root must not be finalized without a sub-tree —
             // a root completed with zero children means the decomposer
             // direct-solved it and recursion never happened. Refuse and
-            // re-dispatch with a decompose instruction; after
-            // MAX_ROOT_DECOMPOSE_REFUSALS attempts, fall back to
-            // forced-direct so the run cannot loop unbounded.
+            // re-dispatch with a decompose instruction; once refusals
+            // EXCEED MAX_ROOT_DECOMPOSE_REFUSALS (the refusal after the
+            // cap), fall back to forced-direct so the run cannot loop
+            // unbounded.
             if (
                 T.id === task.rootTaskId
                 && T.blockedBy.length === 0

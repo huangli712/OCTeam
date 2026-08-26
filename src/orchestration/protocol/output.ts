@@ -190,8 +190,10 @@ export function extractSessionStatusEntry(
  * backs each cut up to a complete-character boundary so a multibyte sequence is
  * never split (CJK / emoji safe).
  *
- * Preserves BOTH the head and the tail: when truncation is required, the first
- * and last ~maxBytes/2 bytes are kept with an elision marker between them. This
+ * Preserves BOTH the head and the tail: when truncation is required and the
+ * budget exceeds the 48-byte marker overhead, the first and last ~maxBytes/2
+ * bytes are kept with an elision marker between them (at or below that
+ * overhead only the head fits, with a plain ellipsis). This
  * is essential because the project's prompt convention places deliverable
  * markers (e.g. `<!-- SORT_OK: true -->`) at the END of member output ("Your
  * output MUST end with..."). A head-only cut silently drops those end-markers

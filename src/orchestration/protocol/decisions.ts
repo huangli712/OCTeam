@@ -94,7 +94,7 @@ function hasDuplicateKeys(jsonStr: string): boolean {
     return false
 }
 
-// Return a typed nextActions array, or null when any entry is invalid.
+/** Return a typed nextActions array, or null when any entry is invalid. */
 function validateNextActions(raw: unknown): string[] | null {
     if (raw === undefined) return []
     if (!Array.isArray(raw)) return null

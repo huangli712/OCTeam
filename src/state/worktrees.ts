@@ -100,12 +100,14 @@ export async function hasUncommittedChanges(worktreePath: string): Promise<boole
  * for a member that was created with worktree: true. Must run BEFORE the team
  * directory is deleted, while the worktree files still exist on disk.
  *
- * Defense-in-depth bounds check: `worktreePath` MUST resolve strictly inside
- * `worktreesRoot` (the team's own worktrees/ directory). A tampered or
- * hand-edited member.worktreePath — e.g. set on the in-memory Team object,
- * bypassing the load-time validator — could otherwise point at an unrelated
- * registered worktree of the project repo and `git worktree remove --force`
- * would destroy it. An out-of-bounds path is refused (warning + false);
+ * Defense-in-depth bounds check: `worktreePath` must resolve inside OR
+ * EQUAL TO `worktreesRoot` (the team's own worktrees/ directory; the root
+ * itself passes the check — callers always pass a member subpath). A
+ * tampered or hand-edited member.worktreePath — e.g. set on the in-memory
+ * Team object, bypassing the load-time validator — could otherwise point
+ * at an unrelated registered worktree of the project repo and
+ * `git worktree remove --force` would destroy it. An out-of-bounds path is
+ * refused (warning + false);
  * a git failure rejects (destroyWorktree catches it and returns false so the
  * caller can keep the member's worktree fields).
  */

@@ -594,7 +594,9 @@ function settleForwardGotoGate(task: WorkflowTask, gate: WorkflowGateStep): void
  * including the triggering gate; only the jump/loop bounds
  * (jumpCount/loopIterations) are preserved, so retry + jump bounds compose safely.
  *
- * Returns true when the jump dispatched (caller must not also advance).
+ * Returns true when the jump is consumed — the target step either
+ * dispatched or the jump paused at a pre-step approval boundary
+ * (maybePauseBeforeWorkflowStep) — so the caller must not also advance.
  * Returns false when: the task/gate/target is invalid (run NOT terminated);
  * the jump cap was exceeded (run terminated as failed); or the target
  * dispatch failed (run may already have been terminated by that path).

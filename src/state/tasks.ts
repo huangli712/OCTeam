@@ -475,8 +475,10 @@ export async function updateTask(
         ) {
             await fs.unlink(claimLockPath(teamDirectory, taskId)).catch((err: unknown) => {
                 // ENOENT is benign (no lock to clean). Non-ENOENT errors
-                // leave an orphaned claim lock that the stale-claim reaper will
-                // eventually clean up, but log so the orphan is observable.
+                // leave an orphaned claim lock. The stale-claim reaper only
+                // covers tasks still in "claimed" status, so this orphan is
+                // instead cleared by the claim path's inline stale-lock reap
+                // once it exceeds CLAIM_TTL.
                 if (!isEnoent(err)) {
                     logger.warn("updateTask: claim lock unlink failed (orphan; reaper will clean)", {
                         taskId, error: err instanceof Error ? err.message : String(err),

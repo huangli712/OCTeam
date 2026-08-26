@@ -1,6 +1,7 @@
 /**
- * Session status event handler: monitors retry/error/idle/busy transitions
- * and escalates sustained retries to "errored" (otherwise barriers wait forever).
+ * Session status event handler: monitors retry/idle/busy transitions and
+ * escalates sustained retries to "errored" (otherwise barriers wait forever).
+ * session.error events are handled separately by the hooks event handler.
  *
  * This independent event-driven entry point is called from hooks.ts and is
  * unrelated to the idle state machine.

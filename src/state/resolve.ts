@@ -258,10 +258,14 @@ export function isMasterSession(sessionID: string): boolean {
  * Verify that `sessionID` is the master of the team identified by `directory`,
  * using the in-memory index as an independent trust source. Returns true ONLY
  * when the session is registered in masterIndex as owning a team at exactly
- * this directory. Disk-tampered state.json cannot grant master privileges
- * because the index is rebuilt at startup from trusted state and then only
- * mutated by trusted runtime operations (create / rename / delete); it is
- * never re-read from disk on each call.
+ * this directory. The index is rebuilt at startup from the strongest
+ * available source (master.sentinel, else the directory layout for
+ * project scope, else state.json's leadSessionId for user scope) and
+ * after startup is only mutated by trusted runtime operations (create /
+ * rename / delete), never re-read from disk per call. Consequently a
+ * tampered state.json cannot grant master privileges EXCEPT for user-
+ * scope teams that lack a master.sentinel at startup — their index entry
+ * falls back to state.json's leadSessionId (logged as less secure).
  *
  * Returns false when the session is not a master at all or owns a different
  * directory. Tools that already compare team.leadSessionId against

@@ -1,8 +1,9 @@
 /**
  * Per-mode summary builders for OCTeam orchestration results.
  *
- * These pure renderers format an ActiveTask's captured outputs into the text
- * delivered to the leader.
+ * Most renderers are pure formatting of an ActiveTask's captured outputs
+ * into the text delivered to the leader; the delegate and recurse
+ * renderers additionally read the team task list from disk.
  * buildSummary (summary.ts) dispatches to exactly one of these per run.
  */
 
@@ -157,6 +158,8 @@ export async function summarizeRecurse(
     const taskById = new Map(allTasks.map(t => [t.id, t]))
     const childrenOf = new Map<string, Task[]>()
     const visited = new Set<string>()
+    /** Collect the children (parent.blockedBy) of `parentId` and its
+     *  descendants into childrenOf, deduplicated via `visited`. */
     const collectChildren = (parentId: string) => {
         if (visited.has(parentId)) return
         visited.add(parentId)

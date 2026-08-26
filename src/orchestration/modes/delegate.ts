@@ -89,7 +89,8 @@ export async function runDelegateStyleTail(
                     return
                 }
             } catch {
-                // Status API unavailable — fall through to cached-state check.
+                // Status API unavailable — liveness could not be verified;
+                // fall through to the capture attempt below.
             }
             // Log capture failures so operators can distinguish missing member
             // output from session-message or persistent I/O failures.

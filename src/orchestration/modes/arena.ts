@@ -30,14 +30,17 @@ import type { CaptureMemberOutputResult } from "../records/capture.js"
  * candidate that errored during implement is "unknown" here and can never win
  * even if the evaluator still scored it.
  *
- * A candidate is eligible IFF it appears in `candidates`, has exactly one
- * scoreboard entry (duplicate entries are ambiguous → ineligible), `passed`
- * is strictly true, and its selected metric is a finite number — where the
- * value is `entry.score` when `winnerMetric === "score"`, else
- * `entry.metrics?.[winnerMetric]`. Among eligible candidates the max (or min)
- * value wins; ties are broken by the earliest index in `candidates`. When no
- * candidate qualifies the result is `{ winner: undefined, reason:
- * "no_eligible_candidate" }`.
+ * Scoreboard completeness is a hard gate: every candidate must have EXACTLY
+ * one entry — a missing or duplicate entry invalidates the whole selection
+ * (reason "incomplete_scoreboard:..." without a winner), because the
+ * evaluator's omission or ambiguity is a contract violation.
+ *
+ * Past the gate, a candidate is eligible IFF `passed` is strictly true and
+ * its selected metric is a finite number — the value is `entry.score` when
+ * `winnerMetric === "score"`, else `entry.metrics?.[winnerMetric]`. Among
+ * eligible candidates the max (or min) value wins; ties are broken by the
+ * earliest index in `candidates`. When no candidate qualifies the result is
+ * `{ winner: undefined, reason: "no_eligible_candidate" }`.
  */
 export function selectArenaWinner(
     candidates: string[],

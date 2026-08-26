@@ -33,6 +33,7 @@ import {
     startSweepTimer,
 } from "./hooks.js"
 
+/** Plugin identifier reported to OpenCode's module loader (default export). */
 const id = "octeam"
 
 /**

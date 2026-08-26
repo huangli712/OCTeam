@@ -1,8 +1,9 @@
 /**
  * team_arena tool -- competitive multi-candidate arena. N candidate members
  * implement competing solutions in isolated worktrees (implement phase); a
- * dedicated evaluator then scores every candidate and a deterministic winner is
- * selected and delivered directly without a signoff gate.
+ * dedicated evaluator then scores every surviving candidate and a
+ * deterministic winner is selected and delivered directly without a signoff
+ * gate.
  */
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"

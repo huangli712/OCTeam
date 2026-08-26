@@ -302,6 +302,10 @@ export function aggregateEnsembleVerdict(step: WorkflowGateStep): {
 } {
     const resultEntries = Object.entries(step.ensembleResults ?? {});
     const results = resultEntries.map(([, result]) => result);
+    /** Aggregate the results whose verdict equals `finalVerdict`
+     *  (supporters): max score/confidence, and merged issues, each included
+     *  only when every supporter supplied the field; dissenting verdicts
+     *  are excluded. */
     const resultFromVerdict = (finalVerdict: Verdict, summary: string) => {
         const supporters = resultEntries.filter(([, result]) => result.verdict === finalVerdict)
         // Include scores and confidence only when every supporting verifier

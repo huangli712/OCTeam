@@ -7,8 +7,9 @@
  * inbox at send time (no global read-flag — eliminates multi-reader bugs).
  * Delivery uses the locked read-and-reserve protocol (crash-recoverable,
  * at-least-once: a crash between reservation and ACK requeues the reserved
- * lines) so the two master drainers (event-handler proactive drain +
- * Transform hook) never double-deliver in normal operation.
+ * lines) so the two delivery paths (the event handler's proactive master
+ * drain + the Transform hook's member drain) never double-deliver in
+ * normal operation.
  *
  * TRUST BOUNDARY — message authenticity. The mailbox lives under
  * `<project>/.octeam/mailbox/`, i.e. inside the project directory that member

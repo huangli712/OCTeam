@@ -93,7 +93,7 @@ export function mergePermissionsMonotonic(
                     if (isPermissionAction(v)) nested[k] = v
                 }
             } else if (presetScalar !== undefined) {
-                // Preset was scalar — seed baseline wildcard.
+                // Preset is scalar — seed the baseline wildcard.
                 nested["*"] = presetScalar
             }
             const nestedEntries = Object.entries(action)
@@ -152,7 +152,8 @@ export function createConfigHook(): NonNullable<Hooks["config"]> {
         for (const [name, def] of Object.entries(OCTEAM_AGENTS)) {
             const existing = cfg.agent[name]
             if (!existing) {
-                // User did not define this agent — apply OCTeam preset verbatim.
+                // No user-defined agent exists for this name — apply the
+                // OCTeam preset verbatim.
                 // Clone the preset so a later mutation by another config
                 // hook (or by reference to cfg.agent[...]) does not leak back
                 // into OCTEAM_AGENTS (shared reference bug).
@@ -164,7 +165,7 @@ export function createConfigHook(): NonNullable<Hooks["config"]> {
                 cfg.agent[name] = { ...def, permission: perm }
                 continue
             }
-            // User pre-defined an oct-* entry. Preserve ONLY the non-security
+            // A user-defined oct-* entry exists. Preserve ONLY the non-security
             // fields users may legitimately tune (e.g. model, temperature,
             // color). The explicit allowlist excludes unknown user-defined
             // fields that could weaken the hardened preset.
