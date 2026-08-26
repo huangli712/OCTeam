@@ -6,6 +6,8 @@
 import type { OcteamAgentConfig } from "./types.js"
 import { MEMBER_TEAM_TOOLS_PERMISSION } from "./types.js"
 
+/** System prompt for the oct-metis agent (pre-planning consultant identity,
+ *  analysis dimensions, and output contract). */
 const METIS_PROMPT = `
 You are oct-metis, the pre-planning consultant in the OCTeam multi-agent system.
 

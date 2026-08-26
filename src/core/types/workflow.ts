@@ -170,12 +170,12 @@ export type WorkflowStepRuntime = {
     completed: boolean
     skipped?: boolean
     output?: string
-    startedAt?: number
-    completedAt?: number
-    durationMs?: number
+    startedAt?: number                // epoch ms
+    completedAt?: number              // epoch ms
+    durationMs?: number               // completedAt - startedAt
     inputs?: number[]
     exposeOutput?: boolean
-    dispatchedAt?: number
+    dispatchedAt?: number             // epoch ms
     dispatchedActor?: string
     correlationId?: string
     approvalBefore?: boolean
@@ -387,6 +387,9 @@ export type WorkflowLinearToolStep = WorkflowTaskToolStep | WorkflowGateToolStep
 export type WorkflowToolArgs = {
     team_id: string
     steps?: readonly WorkflowToolStep[]
+    // Steps are authored in PUBLIC numbering: numeric refs (inputs /
+    // target_step / goto) are 1-based indices into the authored array,
+    // lowered to flat indices after fanout expansion.
     workflow_file?: string
     vars?: Record<string, string>
     dry_run?: boolean

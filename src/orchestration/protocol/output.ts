@@ -236,7 +236,7 @@ export function truncateOutput(text: string, maxBytes: number = 65536): string {
     // pair, move headEnd backward to before the opening tag so the
     // truncated output doesn't contain a half-open tag that corrupts
     // downstream JSON parsing. Tag-name detection below is ASCII-only —
-    // a cut inside a Chinese-alias opening like <决策> is not detected.
+    // a cut inside a non-ASCII localized-alias opening tag is not detected.
     const headText = buf.toString("utf8", 0, headEnd)
     // 1. Check for unclosed tag name: `<sco` (no `>` yet).
     const lastOpenInHead = headText.lastIndexOf("<")

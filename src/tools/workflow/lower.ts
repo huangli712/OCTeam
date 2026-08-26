@@ -233,7 +233,8 @@ export function resolvesToMarkerStep(
 
 // --- ref conversion (public → flat) ---
 
-/** Convert a public 1-based step ref to a flat lowered index. */
+/** Convert a public 1-based step ref to the equivalent 1-based ref in the
+ *  flat lowered step array; unmapped numeric refs pass through unchanged. */
 export function convertTopLevelRef(
     ref: WorkflowStepRef,
     publicToFlat: readonly number[],
@@ -243,7 +244,9 @@ export function convertTopLevelRef(
     return flatIndex === undefined ? ref : flatIndex + 1
 }
 
-/** Convert a branch-local step ref to a flat lowered index. */
+/** Convert a branch-local 1-based step ref to the equivalent 1-based ref in
+ *  the flat lowered step array; out-of-range numeric refs pass through
+ *  unchanged. */
 export function convertBranchRef(
     ref: WorkflowStepRef,
     branchStartIndex: number,

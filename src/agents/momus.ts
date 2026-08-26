@@ -6,6 +6,8 @@
 import type { OcteamAgentConfig } from "./types.js"
 import { MEMBER_TEAM_TOOLS_PERMISSION } from "./types.js"
 
+/** System prompt for the oct-momus agent (plan-critic identity, review
+ *  standards, and output contract). */
 const MOMUS_PROMPT = `
 You are oct-momus, the plan reviewer and critic in the OCTeam multi-agent system.
 

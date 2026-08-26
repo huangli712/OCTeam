@@ -4,7 +4,9 @@
  *
  * STATE MACHINE:
  *   decider_dispatch → parse_decision → [done | no_issues | max_rounds | parse_fail | next_round]
- *   - Decider says "done" → deliver (idle: loop_complete:decider_done)
+ *   - Decider says "done" → pause for a loop_done approval when HITL is
+ *     enabled (approve → deliver idle: loop_complete:decider_done) → deliver
+ *     (idle: loop_complete:decider_done)
  *   - All read-only stages report <no_issues/> → deliver (idle: loop_complete:no_issues)
  *   - Max rounds reached without a done decision → pause for a loop_done
  *     approval when HITL is enabled (approve → idle: loop_complete:human_approved;

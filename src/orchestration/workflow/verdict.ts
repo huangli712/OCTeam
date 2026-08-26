@@ -726,7 +726,8 @@ export async function handleGateRetry(
  *   PASS            -> mark complete; on_pass_goto jump or advance
  *   FAIL on_fail=fail -> on_fail_goto (loop-bounded) or terminate
  *   FAIL on_fail=skip -> mark skipped and advance
- *   FAIL on_fail=retry -> bounded re-dispatch of the preceding task
+ *   FAIL on_fail=retry -> bounded re-dispatch of the gate's target task
+ *                      (explicit or nearest preceding; see gateTargetIndex)
  *   INVALID / parse_failure -> delegated to handleInvalidVerdict
  *
  * The gate's activeStepIndex is passed in as gateIndex since FAIL retry

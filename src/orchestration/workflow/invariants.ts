@@ -156,7 +156,7 @@ function checkGateStep(
     for (const targetIndex of targetIndices) {
         const target = context.steps[targetIndex]
         // gate→join is legal: a join carries joinedOutput and can be verified
-        // (see gate-targets.ts isGateTargetKind and the gate-target checks in
+        // (see gate-targets.ts canGateReferenceTask and the gate-target checks in
         // validate.ts). Only task and join are valid gate targets; fanout is
         // a pure structural marker.
         if (targetIndex >= index || (target?.kind !== "task" && target?.kind !== "join")) {

@@ -530,7 +530,7 @@ Note:
 ## Related Documents
 
 - [`demos/README.md`](../README.md) — scenario directory overview (single-primitive 9 modes + this comprehensive scenario)
-- [`demos/code-review/README.md`](../code-review/README.md) — sister comprehensive scenario: multi-team code review (also 4 primitives, for comparison)
+ - [`demos/code-review/README.md`](../code-review/README.md) — sister comprehensive scenario: multi-team code review (2 primitives: parallel + arbitrate; companion bug-fix scenario: [`code-bugfix/`](../code-bugfix/README.md))
 - parallel / consensus / pipeline / loop source: [`src/tools/parallel.ts`](../../src/tools/parallel.ts) / [`consensus.ts`](../../src/tools/consensus.ts) / [`pipeline.ts`](../../src/tools/pipeline.ts) / [`loop.ts`](../../src/tools/loop.ts)
 - delegate / route / arbitrate / tollgate / recurse source: [`src/tools/delegate.ts`](../../src/tools/delegate.ts) / [`router.ts`](../../src/tools/router.ts) / [`arbitrate.ts`](../../src/tools/arbitrate.ts) / [`tollgate.ts`](../../src/tools/tollgate.ts) / [`recurse.ts`](../../src/tools/recurse.ts)
 - [`docs/arch.md`](../../docs/arch.md) — OCTeam architecture and module boundaries (plan/audit teams should reference)

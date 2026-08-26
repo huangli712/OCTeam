@@ -578,7 +578,9 @@ export async function appendJsonl(
 
 /**
  * Check whether a lock/claim file is fresh (exists and within TTL). Used by the
- * stale-claim reaper to reconcile claim-lock TTL with Task.status.
+ * stale-claim reaper to reconcile claim-lock TTL with Task.status. A missing
+ * file (ENOENT) is stale; any other stat error counts as fresh so the reaper
+ * leaves the claim alone until the next sweep.
  */
 export async function lockFresh(
     lockPath: string,

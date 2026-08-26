@@ -16,6 +16,13 @@ import { sendWakeHint } from "./wake-hint.js"
 /**
  * Deliver `base` (a message template without `to`) to each named recipient.
  * For each recipient: append to mailbox, then wake-hint if idle.
+ *
+ * Failure semantics: per-recipient write failures are isolated (remaining
+ * recipients still receive the message; a BackpressureError for the first
+ * backpressured recipient is thrown only after the loop). Prior successful
+ * deliveries are NOT rolled back — a caller-side retry re-writes them.
+ * onDelivered fires per recipient, only after a successful mailbox write
+ * (before the best-effort wake hint).
  */
 export async function deliverToRecipients(
     ctx: PluginContext,

@@ -1,6 +1,8 @@
 /**
  * team_fix_member tool -- modify a member's name, role, prompt, and/or agent.
- * Changing the agent re-resolves the bound model from the agent registry.
+ * Changing the agent re-resolves the bound model from the agent registry
+ * when the registry maps the new agent to a model; otherwise the existing
+ * model is kept.
  */
 
 import fs from "node:fs/promises"
@@ -188,7 +190,8 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
         description:
             "Modify a team member's name, role, system prompt, and/or agent. new_role must be a preset role "
             + `(unknown → "reviewer", read-only) and re-derives the member's agent unless new_agent is also given. `
-            + "new_name must be a preset pool name. Changing the agent re-resolves the model from the agent registry. "
+            + "new_name must be a preset pool name. Changing the agent re-resolves the model from the agent registry "
+            + "when the registry maps it to one. "
             + "Only allowed when the team is not busy and the target member is not running.",
         args: {
             team_id: tool.schema.string().min(1),

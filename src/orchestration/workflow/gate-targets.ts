@@ -40,7 +40,6 @@ function canGateReferenceTask(
  * Find the nearest preceding gate-referenceable step (task or join) for a
  * gate. Returns -1 when none.
  */
-/** Scan backward from gateIndex for the nearest preceding task-or-join step. */
 export function precedingTaskIndex(steps: readonly WorkflowStep[], gateIndex: number): number {
     for (let i = gateIndex - 1; i >= 0; i--) {
         if (canGateReferenceTask(steps, gateIndex, i)) return i

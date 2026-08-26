@@ -11,7 +11,9 @@
  *   Phase B: arbiter_dispatch → parse_ruling → [signoff →] deliver
  *   - Arbiter rules → check signoff → deliver (idle: arbitrate_complete:ruled)
  *   - Arbiter unavailable → deliver (failed: arbitrate_complete:arbiter_unavailable)
- *   - Ruling parse failure → deliver (failed: arbitrate_complete:decision_parse_failure)
+ *   - Ruling parse failure → bounded arbiter re-dispatch (decisionParseFailures
+ *     vs maxRulingParseFailures, default 2) → deliver on exhaustion
+ *     (failed: arbitrate_complete:decision_parse_failure)
  */
 
 import type { PluginContext } from "../../core/context.js"
@@ -167,8 +169,9 @@ export async function handleArbitrateIdle(
             }
             // Clear prior-round disputant responses before re-dispatch so stale
             // positions cannot satisfy the barrier or become final stances when
-            // a disputant produces no fresh output. Preserve the arbiter's
-            // response because phase B reads it directly.
+            // a disputant produces no fresh output. The arbiter's response is
+            // not touched here (the arbiter does not debate); phase B clears it
+            // separately before the first ruling dispatch.
             for (const name of disputants) {
                 delete task.responses[name]
             }

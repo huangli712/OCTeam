@@ -590,7 +590,10 @@ function isWorkflowStepRef(value: unknown): boolean {
     return isIntegerAtLeast(value, 1) || isNonEmptyString(value)
 }
 
-/** Validate that value is a valid where clause object. */
+/** Shallow-check that value is a plausible where clause: a record whose
+ *  known condition fields (score_gte/score_lt/confidence_gte/
+ *  has_issue_severity), when present, have the expected types. Unknown
+ *  fields are ignored (no full schema check). */
 function isValidWhere(value: unknown): boolean {
     if (!isRecord(value)) return false
     if (value.score_gte !== undefined && typeof value.score_gte !== "number") return false

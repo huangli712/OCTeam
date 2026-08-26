@@ -242,10 +242,10 @@ async function pollForAssistantOutput(
         const output = extractAssistantText(res.data ?? [])
         if (output.trim().length > 0) {
             // Accept the team_planner closing tag as a completion signal
-            // (the completion probe also tolerates the Chinese alias 团队规划师,
-            // but the final extraction regex only accepts <team_planner>, so
-            // only the English tag yields a valid plan); inner tags may
-            // appear before the full response is generated.
+            // (the completion probe also tolerates the localized Chinese
+            // alias, but the final extraction regex only accepts
+            // <team_planner>, so only the English tag yields a valid plan);
+            // inner tags may appear before the full response is generated.
             const hasClosingTag = /<\/(?:team_planner|团队规划师)>/.test(output)
             if (hasClosingTag) return output
             if (output === lastOutput) {

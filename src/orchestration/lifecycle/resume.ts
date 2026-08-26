@@ -549,10 +549,12 @@ async function resumeTollgateMode(
 }
 
 /**
- * Re-drive the workflow after a crash. If the current step's actor already
- * produced output pre-crash, re-run the handler to process it (parse verdict /
- * mark complete + advance); otherwise dispatch the first incomplete step, or
- * deliver if all steps are already complete (all-complete crash edge).
+ * Re-drive the workflow after a crash. Replays the whole active frontier:
+ * steps whose actor already produced output pre-crash re-run the handler to
+ * process it (parse verdict / mark complete + advance); dispatched-but-
+ * unanswered steps are re-dispatched. Without activeStepIndices (linear
+ * form), dispatch the first incomplete step, or deliver if all steps are
+ * already complete (all-complete crash edge).
  */
 async function resumeWorkflowMode(
     ctx: PluginContext,

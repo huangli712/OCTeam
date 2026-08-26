@@ -288,7 +288,7 @@ export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
                         // any solver can race the decomposer to the root and
                         // "solve" it directly, bypassing recursive
                         // decomposition entirely (the run then completes with
-                        // no sub-tree — the E1 defect).
+                        // no sub-tree).
                         if (
                             at?.type === "recurse"
                             && at.rootTaskId === args.task_id
@@ -396,7 +396,8 @@ export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
 /** Get a single task's details by its ID. */
 export function teamTaskGetTool(ctx: PluginContext): ToolDefinition {
     return tool({
-        description: "Get full details of a single task.",
+        description: "Get one task's details by ID (subject, status, owner, description,"
+            + " dependencies, result — timestamps and runId are omitted).",
         args: {
             team_id: tool.schema.string().min(1),
             task_id: tool.schema.string().regex(TASK_ID_PATTERN, "must be a task UUID"),

@@ -432,11 +432,12 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
         }
     }
 
-    // Index run-level artifacts (reduce.md, signoff.md) that the memberOutputs
+    // Index run-level artifacts (reduce.md, signoff-*.md) that the memberOutputs
     // scan skips because their basenames are not member names. Without this a
     // RunRecord consumer has no path reference to the reduced result or the
-    // signoff verdict file. signoff maps each reviewer whose verdict was
-    // captured (and thus written to the shared signoff.md) to that file.
+    // signoff verdict files. signoff maps each reviewer whose verdict was
+    // captured to its per-reviewer signoff-<reviewer>.md (or to a shared
+    // signoff.md under the "_shared" key).
     const artifacts: NonNullable<RunRecord["artifacts"]> = {}
     if (entries.includes("reduce.md")) artifacts.reduce = "reduce.md"
     // Signoff artifacts: per-reviewer files or shared signoff.md.
@@ -473,8 +474,8 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
         await atomicWrite(runRecordPath(team.directory, runId), serialized, team.directory)
     }
     await pruneRuns(team.directory, DEFAULT_MAX_RUNS)
-    // Flush pending event writes so terminal events are durable
-    // before the caller reports completion.
+    // Flush pending event writes (best-effort) before the caller reports
+    // completion.
     try { await flushRunEvents(team.directory, runId) } catch { /* best-effort */ }
 }
 
@@ -746,6 +747,8 @@ export async function readRunEvents(teamDirectory: string, runId: string): Promi
     let lineParts: Buffer[] = []
     let lineBytes = 0
     let oversizedLine = false
+    /** Accumulate a segment into the pending line, or switch to
+     *  oversized-skip mode when it would exceed the per-line byte cap. */
     const appendSegment = (segment: Buffer): void => {
         if (oversizedLine || segment.length === 0) return
         if (lineBytes + segment.length > MAX_RUN_EVENT_LINE_BYTES) {
@@ -757,6 +760,8 @@ export async function readRunEvents(teamDirectory: string, runId: string): Promi
         lineParts.push(segment)
         lineBytes += segment.length
     }
+    /** Close the pending line: parse and retain it, or count it as invalid
+     *  (unparseable or oversized), then reset the per-line state. */
     const finishLine = (): void => {
         if (oversizedLine) {
             invalidLineCount += 1

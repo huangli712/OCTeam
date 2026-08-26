@@ -21,9 +21,9 @@ export type Task = {
     status: TaskStatus
     owner?: string                 // member name who claimed
     blockedBy: string[]            // task IDs that must complete first
-    createdAt: number
-    updatedAt: number
-    claimedAt?: number
+    createdAt: number              // epoch ms
+    updatedAt: number              // epoch ms
+    claimedAt?: number             // epoch ms
     depth?: number                 // recursion level (root = 0; child = parent + 1)
     result?: string                // completed-task output (read by aggregating parents)
 }

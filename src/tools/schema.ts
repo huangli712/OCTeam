@@ -2,8 +2,8 @@
  * Shared tool-schema field builders used by the workflow tools.
  *
  * These builders keep the orchestration runtime independent of the
- * @opencode-ai/plugin tool-framework value API. Its ToolContext type import
- * is erased at runtime and creates no behavioral coupling.
+ * @opencode-ai/plugin tool-framework value API — the only import here is
+ * the `tool` factory, so no runtime coupling is introduced.
  *
  * The matching ActiveTask field builders (signoffTaskFields /
  * humanApprovalTaskFields) live in orchestration/lifecycle/startup.ts

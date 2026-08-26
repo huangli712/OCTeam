@@ -40,9 +40,7 @@ import {
     findMember
 } from "../support.js"
 
-/** Truncate the root subject to approximately fit the 500-char delegate
- *  schema limit (codepoint-based slicing; astral-plane characters can still
- *  push the JS string length past 500). */
+/** Cap for the root subject, sized under the 500-char delegate schema limit. */
 const SUBJECT_MAX_LEN = 480
 
 /** Slice length for truncated subjects; the 3 reserved chars hold the "..." suffix. */
@@ -136,6 +134,9 @@ export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
                                 + `Complete or delete tasks before creating more.`,
                         }
                     }
+                    // Truncate by codepoints so the subject plus "..." stays
+                    // within SUBJECT_MAX_LEN; astral-plane characters can still
+                    // push the JS string length past the schema limit.
                     const subject = args.task.length <= SUBJECT_MAX_LEN
                         ? args.task
                         : Array.from(args.task).slice(0, SUBJECT_SLICE_LEN).join("") + "..."

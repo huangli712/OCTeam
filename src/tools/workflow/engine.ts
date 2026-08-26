@@ -286,9 +286,10 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
     })
     return tool({
         description:
-            "Run a deterministic, declaratively-composed workflow. Each step is either a `task` (one"
-            + " member produces output) or a `gate` (a verifier renders a PASS/FAIL/INVALID verdict over"
-            + " one or more prior task outputs). The engine drives transitions, retry, INVALID handling,"
+            "Run a deterministic, declaratively-composed workflow. Steps are `task` (one"
+            + " member produces output), `gate` (a verifier renders a PASS/FAIL/INVALID verdict over"
+            + " one or more prior task outputs), `fanout` (parallel branches), or `join` (converge"
+            + " branches). The engine drives transitions, retry, INVALID handling,"
             + " and verdict-gated jumps while keeping intermediate results out of the leader's context.",
         args: {
             team_id: tool.schema.string().min(1),

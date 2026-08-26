@@ -20,7 +20,7 @@ type AuthDirectiveRecord = {
     correlationId: string | undefined
     teamName?: string
     runId?: string
-    ts: number
+    ts: number                    // epoch ms at authentication time
 }
 
 /** Max tracked authentications; overflow evicts oldest-first (aged first). */

@@ -79,6 +79,9 @@ async function readRunEventWindow(
     const events: RunEvent[] = []
     let total = 0
     let malformed = 0
+    /** Consume one decoded line: count it toward total when schema-valid,
+     *  count malformed JSON/schema failures, and retain only the newest
+     *  `limit` events after `since` (if given). */
     const consumeLine = (line: string): void => {
         if (!line.trim()) return
         let value: unknown

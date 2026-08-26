@@ -254,11 +254,13 @@ export async function reconcileActivation(ctx: PluginContext): Promise<void> {
 /**
  * Session-scoping cleanup on session.deleted. Removes any project-scope teams
  * owned by the deleted session (the whole <projectStorageRoot>/<sid>/ dir) and
- * drops its index entry (both member and master maps). Refuses (throws) when a
- * team's worktrees are unverifiable or dirty — in that case nothing is removed
- * on disk, but the index unindex below still applies to this process. For a
- * deleted MEMBER session (no owned dir), only the unindex applies. User-scope
- * is flat — nothing to remove there.
+ * drops its index entry (both member and master maps). Refuses (internally
+ * throws, caught and logged by the outer best-effort handler — the session
+ * event handler never sees the error) when a team's worktrees are
+ * unverifiable or dirty — in that case nothing is removed on disk, but the
+ * index unindex below still applies. For a deleted MEMBER session (no owned
+ * dir), only the unindex applies. User-scope is flat — nothing to remove
+ * there.
  */
 export async function handleSessionDeleted(ctx: PluginContext, sessionID: string): Promise<void> {
     try {

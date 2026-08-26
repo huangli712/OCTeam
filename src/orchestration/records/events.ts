@@ -86,7 +86,10 @@ export function recordEvent(team: Team, event: RunEvent): Promise<void> {
     return append
 }
 
-/** Await all pending event appends for a run so terminal events are durable. */
+/** Await all pending event appends for a run before returning (used before
+ *  terminal record writes so events land first). Best-effort: append errors
+ *  are already logged inside the chain, and a failed append is swallowed here
+ *  — durability is NOT guaranteed if the underlying write fails. */
 export async function flushRunEvents(teamDirectory: string, runId: string): Promise<void> {
     const eventsFile = runEventsPath(teamDirectory, runId)
     const pending = appendChains.get(eventsFile)

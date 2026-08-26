@@ -6,18 +6,19 @@
 
 import type { Team } from "./store.js"
 
+/** Outcome of team_activate's decision: no-op, proceed, or failure with a
+ * user-facing message. */
+export type ActivateDecision =
+    | { kind: "noop" }
+    | { kind: "ok" }
+    | { kind: "error"; message: string }
+
 /**
  * Pure decision for team_activate (exported for unit tests). Auto-switching
  * is disabled: the decision refuses when another team is already active (the
  * user must team_deactivate it first). Activating an already-active team is a
  * no-op.
  */
-export type ActivateDecision =
-    | { kind: "noop" }
-    | { kind: "ok" }
-    | { kind: "error"; message: string }
-
-/** Determine whether team_activate should proceed, be a no-op, or fail. */
 export function decideActivate(opts: {
     targetIsAlreadyActive: boolean
     outgoingExists: boolean

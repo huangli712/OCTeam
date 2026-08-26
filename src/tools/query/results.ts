@@ -304,13 +304,13 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
             "Get one orchestration run's full record. Omit run_id for the LATEST run " +
-                "(covers 'I lost the summary'). Pass member= to get that member's full " +
-                "untruncated output; otherwise returns metadata + a bounded preview of each " +
-                "member's output.",
+                "(covers 'I lost the summary'). Pass member= to get that member's output " +
+                "verbatim (capped at 256 KiB, matching the capture cap); otherwise returns " +
+                "metadata + a bounded preview of each member's output.",
         args: {
             team_id: tool.schema.string().min(1),
             run_id: tool.schema.string().optional().describe("run id; omit for the most recent run"),
-            member: tool.schema.string().optional().describe("return this member's full output verbatim"),
+            member: tool.schema.string().optional().describe("return this member's output verbatim (256 KiB cap)"),
             format: tool.schema.enum(["text", "mermaid"]).optional().describe("output format; default text"),
         },
         async execute(args, context) {

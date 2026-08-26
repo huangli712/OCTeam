@@ -1,8 +1,10 @@
 /**
  * Git worktree lifecycle helpers. Co-located with the state layer so git
- * operations are reusable. Best-effort semantics vary by operation: teardown
- * helpers swallow git failures so they never block team lifecycle, while
- * createWorktree throws (a member cannot spawn without its worktree).
+ * operations are reusable. Best-effort semantics vary by operation:
+ * destroyWorktree swallows git failures so they never block team lifecycle,
+ * cleanWorktree itself rejects on a git failure (callers decide how to
+ * compensate), and createWorktree always throws (a member cannot spawn
+ * without its worktree).
  */
 
 import { execFile } from "node:child_process"

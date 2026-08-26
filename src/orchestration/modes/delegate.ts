@@ -1,9 +1,10 @@
 /**
  * Delegate handler. Drives a shared task pool: members claim tasks, work them,
  * and idle. runDelegateStyleTail owns the termination engine -- all-complete
- * delivers, all-idle-with-NO-claimable-tasks fails as deadlock, otherwise the
- * just-idled member is RATE-LIMITED re-prompted toward remaining claimable
- * tasks.
+ * delivers; ALL members idle with NO claimable tasks fails as deadlock;
+ * otherwise idle members are RATE-LIMITED re-prompted toward remaining
+ * claimable tasks (the whole idle pool is a candidate, the just-idled member
+ * first).
  * Recurse (recurse.ts) reuses this tail.
  *
  * STATE MACHINE:

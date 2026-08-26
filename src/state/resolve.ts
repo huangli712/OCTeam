@@ -256,11 +256,12 @@ export function isMasterSession(sessionID: string): boolean {
 
 /**
  * Verify that `sessionID` is the master of the team identified by `directory`,
- * using the in-memory index built at startup as an independent trust source.
- * Returns true ONLY when the session is registered in masterIndex as
- * owning a team at exactly this directory. Disk-tampered state.json cannot
- * grant master privileges because the index is built once from trusted
- * startup state and is not re-read from disk on each call.
+ * using the in-memory index as an independent trust source. Returns true ONLY
+ * when the session is registered in masterIndex as owning a team at exactly
+ * this directory. Disk-tampered state.json cannot grant master privileges
+ * because the index is rebuilt at startup from trusted state and then only
+ * mutated by trusted runtime operations (create / rename / delete); it is
+ * never re-read from disk on each call.
  *
  * Returns false when the session is not a master at all or owns a different
  * directory. Tools that already compare team.leadSessionId against

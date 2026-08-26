@@ -6,6 +6,8 @@
 import type { OcteamAgentConfig } from "./types.js"
 import { MEMBER_TEAM_TOOLS_PERMISSION } from "./types.js"
 
+/** System prompt for the oct-junior agent (identity, task discipline,
+ *  tool boundaries, and team context). */
 const JUNIOR_PROMPT = `
 You are oct-junior, a focused task executor in the OCTeam multi-agent system.
 

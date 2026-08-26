@@ -52,7 +52,7 @@ const MAX_AGGREGATION_DISPATCHES = 3
 /** Retry cap for a task that keeps re-emitting <decompose> after being forced to solve directly. */
 const MAX_FORCED_DIRECT_DECOMPOSE_RETRIES = 3
 
-/** E3 guard: times the decomposer may try to direct-solve the ROOT with no
+/** Times the decomposer may try to direct-solve the ROOT with no
  * sub-tree before the engine falls back to forced-direct (bounded so the run
  * cannot loop forever; the run timeout bounds it regardless). */
 const MAX_ROOT_DECOMPOSE_REFUSALS = 3
@@ -90,7 +90,7 @@ export function buildRecursePrompt(): string {
  * task list (id + subject). Solver prompts watch for task subjects by keyword;
  * when the decomposer names tasks freely, keyword-watching members find
  * "no task for me" and idle-loop until timeout. Surfacing the live list
- * removes that title-contract fragility (P2 fallback assignment).
+ * removes that title-contract fragility for fallback assignment.
  */
 function buildRecurseReprompt(claimable: Task[]): string {
     if (claimable.length === 0) return buildRecursePrompt()
@@ -116,7 +116,7 @@ function buildDirectSolvePrompt(subject: string): string {
     )
 }
 
-/** E3 guard: the root task must aggregate a sub-tree, not be direct-solved.
+/** The root task must aggregate a sub-tree, not be direct-solved.
  * Re-dispatch prompt guiding the decomposer to emit a <decompose> block. */
 function buildRootDecomposeRequiredPrompt(rootSubject: string, maxSubtasks: number): string {
     return (
@@ -132,7 +132,7 @@ function buildRootDecomposeRequiredPrompt(rootSubject: string, maxSubtasks: numb
 }
 
 /** Width-capped decomposition retry: guide a narrower split instead of
- * permanently banning further decomposition (the old forced-direct text). */
+ * permanently banning further decomposition. */
 function buildNarrowDecomposePrompt(subject: string, maxSubtasks: number, maxNew: number): string {
     const cap = Math.max(1, Math.min(maxSubtasks, maxNew))
     return (
@@ -500,7 +500,7 @@ export async function handleRecurseIdle(
                 }
                 return
             }
-            // E3 guard: the root must not be finalized without a sub-tree —
+            // The root must not be finalized without a sub-tree —
             // a root completed with zero children means the decomposer
             // direct-solved it and recursion never happened. Refuse and
             // re-dispatch with a decompose instruction; after

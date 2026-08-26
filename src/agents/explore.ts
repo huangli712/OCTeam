@@ -6,6 +6,8 @@
 import type { OcteamAgentConfig } from "./types.js"
 import { MEMBER_TEAM_TOOLS_PERMISSION } from "./types.js"
 
+/** System prompt for the oct-explore agent (identity, search discipline,
+ *  output contract, and team context). */
 const EXPLORE_PROMPT = `
 You are oct-explore, the codebase search and navigation specialist in the OCTeam multi-agent system.
 

@@ -75,10 +75,10 @@ export type Stage = {
 
 /** Evaluator-attested score for a single arena candidate. */
 export type ArenaCandidateScore = {
-    member: string
-    score?: number
-    metrics?: Record<string, number>
-    passed?: boolean
+    member: string                     // candidate member name
+    score?: number                     // default "score" metric (finite)
+    metrics?: Record<string, number>   // named metrics (winner_metric targets one)
+    passed?: boolean                   // eligibility flag; defaults false when absent
     rationale?: string
 }
 
@@ -154,8 +154,8 @@ export type ApprovalDecisionRecord = {
     id: string
     kind: ApprovalKind
     approved: boolean
-    requestedAt: number
-    resolvedAt: number
+    requestedAt: number               // epoch ms
+    resolvedAt: number                // epoch ms
     feedback?: string
 }
 
@@ -195,7 +195,7 @@ export type ActiveTask =
  */
 export interface ActiveTaskBase {
     type: OrchestrationType                  // discriminant (narrowed to a literal per variant)
-    startedAt: number
+    startedAt: number                        // epoch ms
     wallClockTimeoutMs: number               // hard timeout in ms; set by the tool layer to
                                              // DEFAULT_TIMEOUT_MS (600_000 / 10 min) or
                                              // DEFAULT_LOOP_TIMEOUT_MS (900_000 / 15 min for loop)
@@ -353,10 +353,10 @@ export interface RecurseTask extends ActiveTaskBase {
     maxDecomposeParseFailures?: number       // override default (3)
     forcedDirectTaskIds?: string[]
     forcedDirectDecomposeAttempts?: Record<string, number>
-    // E3 guard: times the decomposer tried to direct-solve the root with no
+    // Times the decomposer tried to direct-solve the root with no
     // sub-tree. Beyond the cap the root is forced-direct (bounded fallback).
     rootDecomposeRefusals?: number
-    // E3 sub-fix: per-task counter for width-cap decomposition retries
+    // Per-task counter for width-cap decomposition retries
     // (guide a narrower split instead of permanently banning decompose).
     narrowDecomposeAttempts?: Record<string, number>
 }

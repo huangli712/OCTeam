@@ -8,6 +8,8 @@
 import type { OcteamAgentConfig } from "./types.js"
 import { MEMBER_TEAM_TOOLS_PERMISSION } from "./types.js"
 
+/** System prompt for the oct-deep agent (identity, style, principles,
+ *  tool boundaries, and team context). */
 const DEEP_PROMPT = `
 You are oct-deep, the heavy-duty task executor in the OCTeam multi-agent system — an upgraded oct-junior for the hardest implementation work.
 

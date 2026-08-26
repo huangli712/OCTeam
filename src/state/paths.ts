@@ -266,12 +266,12 @@ export function runReduceOutputPath(teamDirectory: string, runId: string): strin
 }
 
 /**
- * runs/{runId}/signoff.md — the run-level signoff verdict(s) produced by
- * reviewer member(s) during the signoff stage. Kept separate from each
- * reviewer's own {member}.md (which holds that member's primary deliverable)
- * so neither overwrites the other. Indexed into the run record via the
- * explicit signoff-artifact scan in persistRun (the member-output readdir
- * scan excludes these files).
+ * runs/{runId}/signoff-{reviewer}.md (per-reviewer) or signoff.md (shared)
+ * — the run-level signoff verdict(s) produced by reviewer member(s) during
+ * the signoff stage. Kept separate from each reviewer's own {member}.md
+ * (which holds that member's primary deliverable) so neither overwrites the
+ * other. Indexed into the run record via the explicit signoff-artifact scan
+ * in persistRun (the member-output readdir scan excludes these files).
  */
 export function runSignoffOutputPath(
     teamDirectory: string,

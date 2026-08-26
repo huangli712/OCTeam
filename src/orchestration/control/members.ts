@@ -2,7 +2,8 @@
  * Member readiness: create worktrees and sessions, deliver role prompts, and
  * wait for initialization, compensating partial spawn failures best-effort
  * (a session that cannot be deleted after retries stays indexed as an orphan
- * with a warning; worktree cleanup failure is logged and rethrown).
+ * with a warning; a worktree cleanup failure is logged and swallowed so it
+ * does not mask the original spawn error, which is rethrown).
  *
  * Must run outside team.mutex because idle initialization acquires that mutex.
  */
@@ -219,8 +220,9 @@ async function isUsableWorktree(
  * Worktree creation, session creation, and role-prompt delivery are sequenced
  * with best-effort compensation on failure: session indexes and member state
  * roll back, but a session that survives delete retries stays as an indexed
- * orphan (warned) and a failed worktree cleanup is logged then rethrown —
- * side effects are not atomically undone.
+ * orphan (warned) and a failed worktree cleanup is logged then swallowed so
+ * it does not mask the original spawn error (which is rethrown) — side
+ * effects are not atomically undone.
  *
  * A worktree-enabled member whose prior spawn attempt or barrier-timeout
  * teardown left a usable worktree behind (sessionId cleared but the worktree
@@ -391,13 +393,14 @@ async function spawnMemberSafely(
  * failures compensate best-effort: session indexes and member state roll
  * back, worktrees and temporary branches are cleaned when their teardown
  * succeeds (a failed session deletion leaves an indexed orphan with a
- * warning; a failed worktree cleanup is logged and rethrown).
+ * warning; a failed worktree cleanup is logged and swallowed, and the
+ * original spawn error is rethrown).
  */
 export async function ensureMembersReady(
     ctx: PluginContext,
     team: Team,
 ): Promise<void> {
-    // Phase 1: snapshot both spawn work and the full readiness barrier set.
+    // Snapshot both spawn work and the full readiness barrier set.
     const { toSpawn, waitNames } = planMemberSpawn(team)
     if (waitNames.size === 0) return
 
@@ -419,6 +422,6 @@ export async function ensureMembersReady(
         await spawnMemberSafely(ctx, team, member, specByName, peerNames)
     }
 
-    // Phase 3: wait outside the mutex for role-setup idle acknowledgements.
+    // Wait outside the mutex for role-setup idle acknowledgements.
     await waitForRoleSetupBarrier(ctx, team, waitNames)
 }

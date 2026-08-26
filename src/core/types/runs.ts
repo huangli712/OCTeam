@@ -35,8 +35,8 @@ export type WorkflowBranchStatus = "pending" | "completed" | "skipped" | "errore
  * Independently defined (NOT derived from WorkflowStep union) so persisted
  * JSON tolerates missing fields per-kind and backward compat with legacy records. */
 export type WorkflowRunStep = {
-    index: number
-    step: number
+    index: number                     // flat lowered 0-based index
+    step: number                      // public 1-based step number (index + 1)
     kind: WorkflowStepKind
     id?: string
     // task

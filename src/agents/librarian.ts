@@ -6,6 +6,8 @@
 import { MEMBER_TEAM_TOOLS_PERMISSION } from "./types.js"
 import type { OcteamAgentConfig } from "./types.js"
 
+/** System prompt for the oct-librarian agent (reference-research identity,
+ *  source-verification discipline, and team context). */
 const LIBRARIAN_PROMPT = `
 You are oct-librarian, the external reference researcher in the OCTeam multi-agent system.
 

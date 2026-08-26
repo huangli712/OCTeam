@@ -42,8 +42,9 @@ export function defaultBounds(override?: Partial<Bounds>): Bounds {
 }
 
 /**
- * Assert that `name` is a member of `team`. Returns a ready-to-return Error
- * string when the name does not match any member, or null when it is valid.
+ * Assert that `name` is a non-master member of `team` (the master
+ * pseudo-member is rejected). Returns a ready-to-return Error string when
+ * the name does not match any member, or null when it is valid.
  * `label` identifies the offending field in the message (e.g.
  * "signoff_decider", "decomposer"). The stable message format supports existing
  * error-string assertions.

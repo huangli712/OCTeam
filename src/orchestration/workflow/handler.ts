@@ -45,9 +45,10 @@ import {
 import { handleGateVerdict, resetStepAfterCompletion } from "./verdict.js";
 import { workflowInvalidReason } from "./reasons.js";
 
-/** Max input size passed to a retry_on regex. The 10KB cap limits the worst-case
- * wall time of a backtracking pattern that slips through the heuristic below
- * while leaving ample room for legitimate output-content checks. */
+/** Max input size passed to a retry_on regex, in UTF-16 code units. The
+ *  10,000-code-unit cap limits the worst-case wall time of a backtracking
+ *  pattern that slips through the heuristic below while leaving ample room
+ *  for legitimate output-content checks. */
 const REDOS_INPUT_CAP = 10_000
 
 /** Max regex pattern length. A pattern longer than this is almost certainly
@@ -74,11 +75,14 @@ export function shouldRetryTask(step: WorkflowTaskStep, output: string): boolean
 }
 
 /**
- * Detect nested quantifiers — the canonical ReDoS signature. Patterns like
- * `(a+)+`, `(.+)*`, `([a-z]+){2,}` have exponential or polynomial backtracking
- * on adversarial input. The heuristic checks for a quantifier (`*`, `+`,
- * `?`, `{n,m}`) immediately following a group that itself ends with a
- * quantifier. False positives are possible but rare for legitimate patterns.
+ * Detect ReDoS-shaped patterns heuristically: (a) a quantifier (`*`, `+`,
+ * `?`, `{n,m}`) immediately following a group that itself contains a
+ * quantifier — the canonical nested-quantifier signature, e.g. `(a+)+`,
+ * `(.+)*`, `([a-z]+){2,}`; (b) consecutive identical quantified items at top
+ * level (`^a*a*a*b$`); (c) repeated quantified character classes
+ * (`[a]*[a]*[a]*`); (d) prefix-overlapping alternation branches under a
+ * quantifier (`(a|aa)+`). False positives are possible but rare for
+ * legitimate patterns; the input cap bounds what slips through.
  */
 function hasNestedQuantifier(pattern: string): boolean {
     // Strip escaped metacharacters so they do not confuse the heuristic.
@@ -150,8 +154,9 @@ function hasNestedQuantifier(pattern: string): boolean {
  * Test a retry_on regex pattern against an output string, with ReDoS guards:
  *   1. Reject patterns longer than REDOS_PATTERN_MAX_LEN.
  *   2. Reject patterns with nested quantifiers (the canonical ReDoS signature).
- *   3. Cap input at REDOS_INPUT_CAP (10KB) to bound worst-case wall time for
- *      polynomial-time patterns that slip through the heuristic.
+ *   3. Cap input at REDOS_INPUT_CAP (10,000 UTF-16 code units) to bound
+ *      worst-case wall time for polynomial-time patterns that slip through
+ *      the heuristic.
  * Returns false (no-retry) on rejection, logging the reason so operators notice.
  */
 function testRegexSafely(pattern: string, output: string): boolean {

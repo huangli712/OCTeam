@@ -246,7 +246,10 @@ export async function createTask(
     return task
 }
 
-/** Read a single task by id, returning null when not found. */
+/** Read a single task by id. Returns null when not found AND when the file
+ *  fails safety checks (symlink, non-file, over 64 KiB, schema-invalid, or
+ *  id mismatch — corrupt files take the not-found path). Non-ENOENT read
+ *  errors and malformed JSON are rethrown. */
 export async function getTask(teamDirectory: string, taskId: string): Promise<Task | null> {
     assertValidTaskId(taskId)
     return readTaskFile(teamDirectory, taskId)
@@ -594,9 +597,9 @@ async function tryCreateClaimLock(lockPath: string, owner: string): Promise<bool
  * opts.protectOwners: claims held by members in this set are NOT reaped. The
  * sweep passes the set of members whose sessions are actively running — a
  * multi-minute aggregation turn legitimately exceeds CLAIM_TTL while its
- * owner is still mid-turn, and reaping it orphans the turn's output (the E4
- * defect: the idle handler then finds no claimed task and the aggregation
- * loops until stall/timeout).
+ * owner is still mid-turn; reaping it orphans the turn's output — the idle
+ * handler then finds no claimed task and the aggregation loops until
+ * stall/timeout.
  */
 export async function reapStaleClaims(
     teamDirectory: string,

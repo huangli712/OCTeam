@@ -594,8 +594,10 @@ function settleForwardGotoGate(task: WorkflowTask, gate: WorkflowGateStep): void
  * including the triggering gate; only the jump/loop bounds
  * (jumpCount/loopIterations) are preserved, so retry + jump bounds compose safely.
  *
- * Returns true when the jump dispatched (caller must not also advance), false
- * when the jump cap was exceeded and the run terminated.
+ * Returns true when the jump dispatched (caller must not also advance).
+ * Returns false when: the task/gate/target is invalid (run NOT terminated);
+ * the jump cap was exceeded (run terminated as failed); or the target
+ * dispatch failed (run may already have been terminated by that path).
  */
 export async function gotoWorkflowStep(
     ctx: PluginContext,
@@ -733,11 +735,12 @@ export async function gotoWorkflowStep(
 
 /**
  * Advance the workflow: compute the sorted ready frontier (or, for a task
- * with no activeStepIndices, find the next incomplete step), dispatch it
- * (task or
- * gate), or -- if all steps are complete -- trigger signoff then deliver
- * (workflow_complete). Shared by the task-step completion path and the
- * gate-PASS path, and by resumeWorkflowMode / approval resume.
+ * with no activeStepIndices, find the next incomplete step) and process it —
+ * dispatch task/gate steps, mark expanded fanout markers complete, or fire
+ * join steps (which may dispatch a reducer). When all steps are complete,
+ * trigger signoff then deliver (workflow_complete). Shared by the task-step
+ * completion path, the gate-PASS path, and resumeWorkflowMode / approval
+ * resume.
  */
 export async function advanceWorkflowStep(
     ctx: PluginContext,

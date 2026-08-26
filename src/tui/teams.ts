@@ -103,8 +103,10 @@ export async function countMailbox(
 /**
  * Enumerate a session's teams directory, reading each team's state/config
  * through symlink-safe bounded reads and mapping them to sidebar rows.
- * Skips entries that vanished mid-read (ENOENT); other read failures mark
- * the result as a partial error with the teams that did load.
+ * Skips entries that vanished mid-read (ENOENT) and entries whose state.json
+ * cannot be read. A state.json that loads but fails validation marks the
+ * result as a partial error; a missing or unreadable config.json is
+ * tolerated (the team loads without role labels).
  */
 async function readTeamsFrom(
     storageRoot: string,

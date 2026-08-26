@@ -36,7 +36,8 @@ import { clearWakeHint } from "../../messaging/wake-hint.js"
 //
 import { abortAndResetMembers } from "../support.js"
 
-/** Delete a team, with optional force mode to skip safety checks. */
+/** Delete a team. Force skips the busy/uncommitted safety checks but never
+ *  bypasses the spawning-in-progress refusal. */
 export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
@@ -91,6 +92,9 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
             let staleBusy = false
             let staleSpawning = false
             let quarantineDirectory: string | undefined
+            /** Post-deletion cache/index cleanup: unindex every member's
+             *  session, unindex the master team, clear wake hints, and
+             *  invalidate the in-memory team cache entry. */
             const unindexDeletedTeam = () => {
                 for (const member of team.members) {
                     if (member.sessionId) {

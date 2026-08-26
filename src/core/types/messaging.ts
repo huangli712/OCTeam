@@ -31,7 +31,7 @@ export type Message = {
     kind: "message" | "announcement" | "directive"
     body: string                       // max 32KB
     summary?: string                   // one-line summary for status display
-    timestamp: number
+    timestamp: number                  // epoch ms
     correlationId?: string             // UUID for request-response pairing
     runId?: string                     // per-orchestration run id for directive messages
     deliveryStatus: "pending" | "delivered" | "processed"

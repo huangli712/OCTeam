@@ -11,7 +11,8 @@
  *   Phase A: router_dispatch → parse_route → fan_out_to_targets
  *   Phase B: target_barrier → [signoff →] deliver
  *   - All targets complete → check signoff → deliver (idle: route_complete)
- *   - Route parse failure (after maxRouteParseFailures re-dispatches, default 2)
+ *   - Route parse failure (after maxRouteParseFailures-1 bounded re-dispatches,
+ *     default threshold 2 → one re-dispatch)
  *       → deliver (failed: route_complete:decision_parse_failure)
  *   - Valid decision but zero matching branches → deliver (failed: route_complete:no_matching_branch)
  */

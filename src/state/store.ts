@@ -205,8 +205,10 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
     if (s.runnerPid !== undefined
         && (typeof s.runnerPid !== "number" || !Number.isFinite(s.runnerPid) || s.runnerPid <= 0)) return false
     // Validate timestamp fields as finite numbers when present.
-    // Note: createdAt/activatedAt use 0 as a sentinel for "not yet set"
-    // (e.g. inactive teams). Only reject negative or non-finite values.
+    // Note: unset is represented by absence (undefined) — activatedAt is
+    // cleared to undefined on deactivation, and createdAt is always set at
+    // team creation. A 0 value is accepted here (only negative or
+    // non-finite values are rejected).
     if (s.createdAt !== undefined
         && (typeof s.createdAt !== "number" || !Number.isFinite(s.createdAt) || s.createdAt < 0)) return false
     if (s.activatedAt !== undefined

@@ -6,9 +6,9 @@
 /**
  * Member-reachable team collaboration tools. EVERY member-reachable preset
  * MUST spread this into its permission map alongside "*": "deny" — a missing
- * key cuts members off from that tool (A-1: team_done was absent from all 9
- * presets and made require_done_ack runs effectively unusable). Locked by
- * tests/agents.test.ts (table-driven: preset × member team tool).
+ * key cuts members off from that tool (e.g. team_done, which require_done_ack
+ * runs depend on). Locked by tests/agents.test.ts (table-driven: preset ×
+ * member team tool).
  */
 export const MEMBER_TEAM_TOOLS_PERMISSION: OcteamAgentPermission = {
     team_send_message: "allow",

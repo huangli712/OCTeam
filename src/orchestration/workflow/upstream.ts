@@ -5,8 +5,8 @@
  *
  * Gate-step verdicts are skipped because they are control-flow, not work
  * product. Each output block is individually truncated, then budgeted at
- * MAX_UPSTREAM_OUTPUT_BYTES total bytes (soft cap — the truncation marker and
- * separators are appended outside the budget).
+ * MAX_UPSTREAM_OUTPUT_BYTES total bytes (soft cap — separators count against
+ * the budget; only the truncation marker falls outside).
  */
 
 import type { WorkflowStep } from "../../core/types.js";
@@ -17,11 +17,13 @@ import { assertNeverWorkflowStepKind, isSameWorkflowBranch } from "./dag.js";
 export const MAX_UPSTREAM_OUTPUT_BYTES = 65_536;
 
 /**
- * Build the upstream-context prefix for a workflow task step: ALL completed
- * prior TASK-step outputs (gate steps are skipped -- their verdicts are
- * control-flow, not work product), each labelled by member and individually
- * truncated, then capped at MAX_UPSTREAM_OUTPUT_BYTES total bytes. Returns "" when
- * there is no completed task-step upstream.
+ * Build the upstream-context prefix for a workflow task step: completed
+ * prior TASK-step outputs and completed joins' joinedOutput (gate steps are
+ * skipped -- their verdicts are control-flow, not work product), each
+ * labelled and individually truncated, then capped at
+ * MAX_UPSTREAM_OUTPUT_BYTES total bytes. When the step declares explicit
+ * `inputs`, only those steps are injected; otherwise every prior step.
+ * Returns "" when there is no completed upstream output.
  */
 export function buildWorkflowUpstream(
     steps: WorkflowStep[],

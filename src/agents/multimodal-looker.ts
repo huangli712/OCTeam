@@ -6,6 +6,8 @@
 import type { OcteamAgentConfig } from "./types.js"
 import { MEMBER_TEAM_TOOLS_PERMISSION } from "./types.js"
 
+/** System prompt for the oct-multimodal-looker agent (media-analysis
+ *  identity, extraction discipline, and output contract). */
 const MULTIMODAL_LOOKER_PROMPT = `
 You are oct-multimodal-looker, the media analysis specialist in the OCTeam multi-agent system.
 

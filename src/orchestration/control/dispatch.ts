@@ -15,10 +15,10 @@ import { logSwallowed } from "../../core/log.js"
 
 /**
  * Prefix a member's persistent standing instruction until promptDelivered is
- * set. dispatchToMember sets and persists the flag BEFORE sending the prompt,
- * so a crash in that window marks the instruction delivered without an actual
- * delivery — the accepted trade-off against double-injection. Resume and
- * retry paths may call this repeatedly.
+ * set. dispatchToMember (when called WITH a Team) sets and persists the flag
+ * BEFORE sending the prompt, so a crash in that window marks the instruction
+ * delivered without an actual delivery — the accepted trade-off against
+ * double-injection. Resume and retry paths may call this repeatedly.
  */
 export function prependStandingInstruction(
     member: MemberState,
@@ -36,12 +36,13 @@ export function prependStandingInstruction(
  * until an explicit recovery path resets them. When a Team is supplied, the
  * dispatch is also appended to the run event stream.
  *
- * Atomicity: the dispatch intent (status, turnCount, promptDelivered) is
- * persisted via saveTeamStateBounded BEFORE promptAsync is sent, so a crash
- * cannot leave the member prompted on the host but unrecorded on disk. If
- * promptAsync throws, the state is rolled back and re-persisted on a
- * best-effort basis (a rollback-persist failure is logged and swallowed, so
- * the pre-dispatch intent can remain on disk).
+ * Atomicity (only when a Team is supplied; without one nothing is persisted):
+ * the dispatch intent (status, turnCount, promptDelivered) is persisted via
+ * saveTeamStateBounded BEFORE promptAsync is sent, so a crash cannot leave the
+ * member prompted on the host but unrecorded on disk. If promptAsync throws,
+ * the state is rolled back and re-persisted on a best-effort basis (a
+ * rollback-persist failure is logged and swallowed, so the pre-dispatch
+ * intent can remain on disk).
  */
 export async function dispatchToMember(
     ctx: PluginContext,

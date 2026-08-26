@@ -6,6 +6,8 @@
 import type { OcteamAgentConfig } from "./types.js"
 import { MEMBER_TEAM_TOOLS_PERMISSION } from "./types.js"
 
+/** System prompt for the oct-oracle agent (read-only consultant identity,
+ *  reasoning discipline, and output contract). */
 const ORACLE_PROMPT = `
 You are oct-oracle, a senior strategic advisor in the OCTeam multi-agent system.
 

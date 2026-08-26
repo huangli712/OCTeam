@@ -296,6 +296,8 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
                     // Serialize the full error info instead of relying on
                     // SDK properties.error being a string (it may be an object).
                     const errProps = narrowed?.properties
+                    /** Truncate a string to 4_096 chars, appending a marker when
+                     *  cut. */
                     const truncateError = (value: string): string => {
                         const marker = "...[truncated]"
                         return value.length <= 4_096
@@ -304,6 +306,9 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
                     }
                     // JSON.stringify can throw on circular refs or BigInt.
                     // Use a safe serializer that never throws.
+                    /** Serialize an unknown error value to a string, redacting
+                     *  sensitive header/credential-like keys and truncating;
+                     *  never throws (circular refs/BigInt → placeholder). */
                     const safeStringify = (value: unknown): string => {
                         const sensitiveFields = new Set([
                             "authorization", "proxyauthorization", "authenticationinfo",
@@ -706,7 +711,7 @@ export async function sweepTeamOnce(
                 // mid-turn (busy/running/retry). A long aggregation turn
                 // routinely exceeds CLAIM_TTL while its owner is still
                 // synthesizing; reaping it mid-turn orphans the output and
-                // loops the aggregation dispatch (E4).
+                // loops the aggregation dispatch.
                 const protectOwners = new Set<string>()
                 if (statusMap) {
                     for (const m of team.members) {

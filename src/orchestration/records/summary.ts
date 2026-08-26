@@ -76,7 +76,8 @@ export async function buildSummary(
     return body
 }
 
-/** One-line-per-member digest of the current round's outputs (consensus). */
+/** One-line-per-member digest of the current round's outputs (consensus and
+ *  arbitrate debate rounds). */
 export function buildRoundSummary(responses: Record<string, string>): string {
     return Object.entries(responses)
         .map(([name, out]) => `by ${name}:\n${truncateOutput(out, 500)}`)

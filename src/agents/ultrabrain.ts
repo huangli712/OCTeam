@@ -8,6 +8,8 @@
 import type { OcteamAgentConfig } from "./types.js"
 import { MEMBER_TEAM_TOOLS_PERMISSION } from "./types.js"
 
+/** System prompt for the oct-ultrabrain agent (frontier-reasoning identity,
+ *  ideation discipline, and output contract). */
 const ULTRABRAIN_PROMPT = `
 You are oct-ultrabrain, the most powerful intelligence in the OCTeam multi-agent system.
 

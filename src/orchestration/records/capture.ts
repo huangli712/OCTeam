@@ -162,6 +162,9 @@ export async function captureMemberOutput(
         : runMemberOutputPath(team.directory, runId, member.name)
     const captureKey = `${messages.length}:${member.turnCount}:${outputHash}`
     const captureMarker = `\n\n<!-- octeam-capture ${captureKey} -->`
+    /** Commit a successful capture: route the output to its target field
+     *  (signoff raw outputs vs task responses) and advance the member's
+     *  capture markers. */
     const applyCaptureState = (): void => {
         if (isSignoffTurn) {
             if (!task.signoffRawOutputs) task.signoffRawOutputs = {}

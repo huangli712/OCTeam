@@ -171,9 +171,9 @@ export async function summarizeRecurse(
         for (const c of children) collectChildren(c.id)
     }
     if (task.rootTaskId) collectChildren(task.rootTaskId)
-    // Render tree via DFS from root
     const treeLines: string[] = []
     const rendered = new Set<string>()
+    // Render tree via DFS from root.
     const renderNode = (taskId: string, depth: number) => {
         if (rendered.has(taskId)) return
         rendered.add(taskId)

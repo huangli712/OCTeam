@@ -51,7 +51,8 @@ Beyond the 11 single-primitive scenarios above, there is another category: **com
 
 | Scenario | Workflow | Orchestration Primitives | Directory |
 |------|--------|---------|------|
-| Multi-team code review | Audit → Confirm → Plan → Fix → Review | parallel / consensus / delegate / loop | [`code-review/`](./code-review/) |
+| Multi-team code review | Audit → Confirm | parallel / arbitrate | [`code-review/`](./code-review/) |
+| Code bug fix | Fix (one-by-one gated TDD) | tollgate | [`code-bugfix/`](./code-bugfix/) |
 | OCTeam feature enhancement | Research → Discuss → Plan → Implement → Audit | parallel / consensus / loop / pipeline | [`feature-dev/`](./feature-dev/) |
 | Matrix eigenvalue solver development | Research → Compare → Plan+Review → Implement → Optimize+Refactor → Code review | parallel / consensus / tollgate / pipeline / loop | [`eigen-solver/`](./eigen-solver/) |
 
