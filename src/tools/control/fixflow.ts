@@ -252,7 +252,8 @@ async function applySkip(
     return `team_fix_workflow skipped step ${index + 1}.`
 }
 
-/** Advance the workflow to the next step unconditionally. */
+/** Force-complete the current active step (clearing its dispatch state) and
+ *  advance, bypassing normal completion conditions. */
 async function applyAdvance(ctx: PluginContext, team: Team, task: WorkflowTask): Promise<string> {
     const index = stepIndexFromArg(undefined, task)
     if (index === null) return "Error: workflow has no active step to advance"

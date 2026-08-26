@@ -51,7 +51,9 @@ import {
 /** Field names recognized by the authoring schema across step kinds (used
  *  to partition known vs unknown fields; per-kind validation still rejects
  *  specific entries here — gates reject inputs/expose_output/max_output_bytes,
- *  and branch steps reject the timeout controls). */
+ *  and branch steps reject the retry/skip timeout policies
+ *  (on_timeout='retry'|'skip' and max_timeout_retries; timeout_ms itself
+ *  is allowed). */
 const COMMON_STEP_FIELDS = [
     "kind", "id", "inputs", "expose_output", "approval_before", "approval_after",
     "max_output_bytes", "timeout_ms", "on_timeout", "max_timeout_retries",

@@ -9,23 +9,25 @@
 import type { PluginContext } from "../core/context.js"
 import { logger } from "../core/log.js"
 
-// Minimum gap between wake hints sent to the same session. Prevents wake loops
-// where a long unread backlog keeps re-triggering promptAsync on every sweep.
+/** Minimum gap between wake hints sent to the same session. Prevents wake
+ *  loops where a long unread backlog keeps re-triggering promptAsync on
+ *  every sweep. */
 const WAKE_HINT_THROTTLE_MS = 30_000
 
-// Bound the promptAsync AWAIT so a hanging host API does not block this
-// caller indefinitely. The underlying promise itself is not cancellable —
-// only the await is raced against this timeout; the host call may still
-// settle later. Fire-and-forget wake hints should never block the caller.
+/** Bound the promptAsync AWAIT so a hanging host API does not block this
+ *  caller indefinitely. The underlying promise itself is not cancellable —
+ *  only the await is raced against this timeout; the host call may still
+ *  settle later. Fire-and-forget wake hints should never block the caller. */
 const WAKE_HINT_TIMEOUT_MS = 10_000
 
-// Cap on tracked sessions. When exceeded, the oldest entries are evicted to
-// bound memory growth for long-lived hosts where sessions end without a
-// team_delete (the only path that calls clearWakeHint).
+/** Cap on tracked sessions. When exceeded, the oldest entries are evicted to
+ *  bound memory growth for long-lived hosts where sessions end without a
+ *  team_delete (the only path that calls clearWakeHint). */
 const WAKE_HINT_MAP_CAP = 64
 
-// sessionID -> last wake-hint timestamp. Used to enforce WAKE_HINT_THROTTLE_MS.
-// Size bounded by WAKE_HINT_MAP_CAP via evictStaleWakeHints().
+/** sessionID -> last wake-hint timestamp. Used to enforce
+ *  WAKE_HINT_THROTTLE_MS. Size bounded by WAKE_HINT_MAP_CAP via
+ *  evictStaleWakeHints(). */
 const wakeHintLastSent = new Map<string, number>()
 
 /** Evict the oldest throttle entries once the map exceeds the cap. */

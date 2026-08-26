@@ -169,7 +169,9 @@ function buildAggregationPrompt(rootSubject: string, childCount: number): string
     )
 }
 
-/** Resolve the member by name and re-enter the delegate-style tail (used after HITL approval/rejection). */
+/** Resolve the member by name and re-enter the delegate-style tail (used
+ * after a HITL decomposition approval; rejection dispatches a direct-solve
+ * prompt instead). */
 async function runRecurseTailFromApproval(
     ctx: PluginContext,
     team: Team,

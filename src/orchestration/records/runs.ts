@@ -592,9 +592,11 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
             })
         }
     }
-    // Quarantine corrupted run directories — record.json exists but is unreadable
-    // or invalid. Do NOT delete: member output .md files and event logs may still
-    // be valid and recoverable. Log a warning so operators can investigate.
+    // Flag corrupted run directories — record.json exists but is unreadable
+    // or invalid. They stay in place (unlike missing-record dirs, which are
+    // moved to .quarantine above): member output .md files and event logs may
+    // still be valid and recoverable. Log a warning so operators can
+    // investigate.
     for (const runId of corrupted) {
         const message = "pruneRuns: run directory has unreadable/invalid record.json; "
             + "quarantining (not deleting) to preserve member outputs"

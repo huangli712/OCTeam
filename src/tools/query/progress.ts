@@ -40,13 +40,14 @@ import type { Team } from "../../state/store.js"
 /** Byte cap for a single events.jsonl line; longer lines are skipped whole. */
 const MAX_RUN_EVENT_LINE_BYTES = 1024 * 1024
 
-// Cap total formatted output so limit=200 lines × large detail fields
-// cannot produce multi-hundred-MB responses. 256 KiB matches the
-// accumulated output capture cap.
+/** Cap total formatted output so limit=200 lines × large detail fields
+ *  cannot produce multi-hundred-MB responses. 256 KiB matches the
+ *  accumulated output capture cap. */
 const MAX_FORMATTED_OUTPUT_BYTES = 256 * 1024
 
-/** A run-event stream result: retained event window, total matched count,
- *  and count of malformed lines skipped whole. */
+/** A run-event stream result: retained event window, count of schema-valid
+ *  events (before the `since` filter), and count of malformed lines skipped
+ *  whole. */
 type RunEventWindow = {
     events: RunEvent[]
     total: number

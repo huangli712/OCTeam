@@ -17,23 +17,24 @@ import { assertNoSymlinkTraversal } from "../../state/locks.js"
 /** Maximum number of workflow steps across linear and nested fanout definitions. */
 export const WORKFLOW_MAX_TOTAL_STEPS = 256 // across linear + nested fanouts
 
-// Supported workflow_file schema versions. When the schema gains a v2, add it
-// here and branch on `version` in loadWorkflowFile. A file with an unlisted
-// version is rejected explicitly so a schema drift fails loudly instead of
-// silently mis-parsing fields (e.g. a renamed key, a removed shape).
+/** Supported workflow_file schema versions. When the schema gains a v2, add
+ *  it here and branch on `version` in loadWorkflowFile. A file with an
+ *  unlisted version is rejected explicitly so a schema drift fails loudly
+ *  instead of silently mis-parsing fields (e.g. a renamed key, a removed
+ *  shape). */
 const SUPPORTED_WORKFLOW_FILE_VERSIONS = new Set([1])
 
-// Resource caps protect caller-supplied JSON read from the
-// project workspace, which member agents can write to. Without caps a
-// hostile or buggy file can exhaust memory (giant file, giant branch array)
-// or stack (deeply nested fanout). These limits are generous enough for any
-// realistic workflow and tight enough to fail fast on abuse.
+/** Resource caps protect caller-supplied JSON read from the
+ *  project workspace, which member agents can write to. Without caps a
+ *  hostile or buggy file can exhaust memory (giant file, giant branch array)
+ *  or stack (deeply nested fanout). These limits are generous enough for any
+ *  realistic workflow and tight enough to fail fast on abuse. */
 const WORKFLOW_FILE_MAX_BYTES = 1024 * 1024 // 1 MiB raw file
 
-// Nested fanout levels
+/** Nested fanout levels. */
 const WORKFLOW_MAX_FANOUT_DEPTH = 8
 
-// Raw branch array (matrix/foreach expansion is capped separately in lower.ts)
+/** Raw branch array (matrix/foreach expansion is capped separately in lower.ts). */
 const WORKFLOW_MAX_BRANCHES_PER_FANOUT = 64
 
 /** Max template recursion depth (stack-overflow guard for deeply nested values). */

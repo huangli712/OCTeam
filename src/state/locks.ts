@@ -32,9 +32,9 @@ const LOCK_MAX_WAIT_MS = 30_000
  */
 const LOCK_HEARTBEAT_MS = LOCK_TTL_MS / 3
 
-// Track locks that releaseLock failed to delete. The local
-// process knows it has exited the critical section, so re-acquiring
-// is safe even though the PID is still alive.
+/** Track locks that releaseLock failed to delete. The local
+ *  process knows it has exited the critical section, so re-acquiring
+ *  is safe even though the PID is still alive. */
 const locallyReleasedLocks = new Set<string>()
 
 /**

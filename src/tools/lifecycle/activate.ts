@@ -33,10 +33,10 @@ import {
     withOrderedLocks
 } from "../../state/activation.js"
 
-// A process-level activation mutex keyed by sessionID prevents two
-// concurrent team_activate calls from the same session from both scanning
-// "no active sibling" outside the lock and then activating different targets
-// simultaneously (which would leave two teams active).
+/** A process-level activation mutex keyed by sessionID prevents two
+ *  concurrent team_activate calls from the same session from both scanning
+ *  "no active sibling" outside the lock and then activating different targets
+ *  simultaneously (which would leave two teams active). */
 const activationMutex = new Map<string, Promise<void>>()
 
 /** Serialize a callback per sessionID key. */
