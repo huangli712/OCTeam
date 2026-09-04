@@ -57,9 +57,9 @@ describe("authenticatedDirectives Map eviction", () => {
         for (let i = 0; i < AUTH_CAP + 10; i++) {
             authenticateDirective(makeDirective(`dir_evict_${i}_${Date.now()}_${i}`))
         }
-        // MEDIUM #11: the auth map now enforces a hard cap regardless of age.
-        // Pre-fix code allowed fresh entries to grow the map unbounded; the
-        // audit (item #11) requires a hard 512-item ceiling to prevent OOM.
+        // The auth map now enforces a hard cap regardless of age. Pre-fix
+        // code allowed fresh entries to grow the map unbounded; a hard
+        // 512-item ceiling prevents OOM.
         expect(mailboxTest.authDirectiveMapSize()).toBeLessThanOrEqual(AUTH_CAP)
         // Age them past the minimum and insert one more to trigger further eviction.
         mailboxTest.backdateAuthEntries(mailboxTest.AUTH_MIN_AGE_MS + 1000)

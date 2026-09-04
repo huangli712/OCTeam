@@ -1,7 +1,6 @@
 /**
- * Regression test for the MEDIUM-severity finding from the 2026-06-30 audit:
- * `deliverQueuedResultsToMaster` must filter forged master-self-impersonation
- * entries from the master mailbox drain path.
+ * Regression test: `deliverQueuedResultsToMaster` must filter forged
+ * master-self-impersonation entries from the master mailbox drain path.
  *
  * Threat model (see src/messaging/mailbox.ts TRUST BOUNDARY header): a member
  * agent with .octeam/ FS write access can append arbitrary lines to

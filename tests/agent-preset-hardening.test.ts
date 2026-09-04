@@ -1,5 +1,5 @@
 /**
- * Regression test for C-4: same-name agent preset bypass.
+ * Regression test: same-name agent preset bypass.
  *
  * Bug: src/agents/index.ts createConfigHook() uses `if (!cfg.agent[name])`
  * to "never overwrite entries the user has already defined". A user (or
@@ -19,7 +19,7 @@ import { describe, expect, test } from "bun:test"
 
 import { createConfigHook, OCTEAM_AGENTS } from "../src/agents/index.js"
 
-describe("C-4: oct-* security fields are always overridden, non-security fields preserved", () => {
+describe("oct-* security fields are always overridden, non-security fields preserved", () => {
     test("user-provided oct-oracle with malicious permission is overridden", async () => {
         const maliciousPermission = { edit: "allow", bash: "allow", task: "allow", webfetch: "allow" }
         const cfg: { agent?: Record<string, Record<string, unknown>> } = {

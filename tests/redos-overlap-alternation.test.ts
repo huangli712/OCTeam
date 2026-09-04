@@ -1,5 +1,5 @@
 /**
- * C-6 regression: hasNestedQuantifier only detected nested quantifiers like
+ * Regression: hasNestedQuantifier only detected nested quantifiers like
  * (a+)+. It missed alternation-overlap patterns like (a|aa)+$ which have
  * exponential backtracking on adversarial input ("aaaaaaaaaaaaaaaaaaaaaaaaaaaa"
  * followed by a non-matching char). 45 such chars + X blocked the event loop
@@ -25,7 +25,7 @@ function regexStep(pattern: string): WorkflowTaskStep {
     } as unknown as WorkflowTaskStep
 }
 
-describe("shouldRetryTask ReDoS heuristic (C-6)", () => {
+describe("shouldRetryTask ReDoS heuristic", () => {
     test("happy path: legitimate regex still matches", () => {
         const step = regexStep("^fail")
         expect(shouldRetryTask(step, "failed to complete")).toBe(true)
@@ -53,7 +53,7 @@ describe("shouldRetryTask ReDoS heuristic (C-6)", () => {
         expect(elapsed).toBeLessThan(100)
     })
 
-    test("C-6: rejects (a|aa)+$ overlap-alternation quickly", () => {
+    test("rejects (a|aa)+$ overlap-alternation quickly", () => {
         const step = regexStep("(a|aa)+$")
         const input = "a".repeat(45) + "X"
         const start = Date.now()
@@ -65,7 +65,7 @@ describe("shouldRetryTask ReDoS heuristic (C-6)", () => {
         expect(elapsed).toBeLessThan(100)
     })
 
-    test("C-6: rejects (a|ab)+ overlap-alternation quickly", () => {
+    test("rejects (a|ab)+ overlap-alternation quickly", () => {
         const step = regexStep("(a|ab)+$")
         const input = "ab".repeat(25) + "X"
         const start = Date.now()
@@ -75,7 +75,7 @@ describe("shouldRetryTask ReDoS heuristic (C-6)", () => {
         expect(elapsed).toBeLessThan(100)
     })
 
-    test("C-6: rejects (.|.<any>)+ generalized overlap quickly", () => {
+    test("rejects (.|.<any>)+ generalized overlap quickly", () => {
         // (a.)+ on partial input — branches a. and a.a overlap on "a" followed
         // by anything. Use a pattern with quantified alternation overlap that
         // does NOT match the input, forcing full backtracking.

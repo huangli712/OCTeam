@@ -4,7 +4,11 @@
  */
 
 import type { OcteamAgentConfig } from "./types.js"
-import { MEMBER_TEAM_TOOLS_PERMISSION } from "./types.js"
+import {
+    AFT_READ_TOOLS_PERMISSION,
+    AFT_WRITE_TOOLS_DENY,
+    MEMBER_TEAM_TOOLS_PERMISSION
+} from "./types.js"
 
 /** System prompt for the oct-metis agent (pre-planning consultant identity,
  *  analysis dimensions, and output contract). */
@@ -35,6 +39,9 @@ You are oct-metis, the pre-planning consultant in the OCTeam multi-agent system.
 
 ## Tools & boundaries
 - Can delegate ONLY to oct-librarian and oct-explore via the task() tool
+- Use for direct reading: read, grep, glob; when your session has them,
+  aft_search, aft_outline, aft_zoom — prefer delegating heavy codebase
+  search to explore
 - MUST NOT delegate to oct-junior, oct-deep, oct-oracle, or any non-oct agent
 - Cannot: edit files, run commands, fetch web
 
@@ -57,6 +64,11 @@ export const metisAgent: OcteamAgentConfig = {
         // Team collaboration tools (shared single source of truth — includes
         // team_done, required by require_done_ack runs).
         ...MEMBER_TEAM_TOOLS_PERMISSION,
+        // Indexed read tier — forward-compatible allows (see types.ts).
+        // Deliberately no callgraph/diagnostics: the analysis tier stays
+        // light and delegates heavy investigation to explore/oracle.
+        ...AFT_READ_TOOLS_PERMISSION,
+        ...AFT_WRITE_TOOLS_DENY,
         edit: "deny",
         task: { "*": "deny", "oct-librarian": "allow", "oct-explore": "allow" },
         bash: "deny",

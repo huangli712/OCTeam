@@ -5,10 +5,10 @@
  * (.catch(()=>{})), including non-ENOENT errors. That was fixed to only
  * swallow ENOENT and rethrow everything else.
  *
- * Subsequent audit (C1, 2026-07-26) found that rethrowing release errors
- * AFTER fn() already succeeded causes a worse bug: callers misinterpret the
- * release error as a work failure and roll back in-memory state that
- * correctly matches disk, causing memory/disk divergence.
+ * A later fix found that rethrowing release errors AFTER fn() already
+ * succeeded causes a worse bug: callers misinterpret the release error as a
+ * work failure and roll back in-memory state that correctly matches disk,
+ * causing memory/disk divergence.
  *
  * Current correct contract:
  *   - fn() succeeds + release fails → withLock RESOLVES with fn's value.
@@ -71,7 +71,7 @@ afterEach(() => {
 })
 afterAll(cleanupTmpRoots)
 
-describe("releaseLock error contract (finding: release-lock-error-swallowed + C1 audit)", () => {
+describe("releaseLock error contract", () => {
     test("fn() result preserved when release fails: release error logged, not propagated", async () => {
         const root = tmpRoot("lock-release-swallowed")
         const lockPath = `${root}/state.json.lock`
@@ -85,7 +85,7 @@ describe("releaseLock error contract (finding: release-lock-error-swallowed + C1
         // by releaseLock in withLock's finally.
         failLockRelease = true
 
-        // C1 audit fix: fn() already succeeded, so the release error must NOT
+        // fn() already succeeded, so the release error must NOT
         // propagate — the caller would misinterpret it as a work failure and
         // roll back in-memory state that correctly matches disk. The error is
         // logged via logger.warn instead.

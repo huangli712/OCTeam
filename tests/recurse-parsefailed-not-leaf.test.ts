@@ -1,5 +1,5 @@
 /**
- * H46 (2026-07-28 audit): recurse marks rejected decomposition as a
+ * Recurse marks rejected decomposition as a
  * successful leaf.
  *
  * Bug: handleRecurseIdle (recurse.ts:204-253) sets canDecompose based on
@@ -51,7 +51,7 @@ function makeRecurseTask(opts: Partial<RecurseTask> = {}): RecurseTask {
     } as RecurseTask
 }
 
-describe("H46: recurse parseFailed decomposition NOT marked as completed leaf", () => {
+describe("recurse parseFailed decomposition NOT marked as completed leaf", () => {
     test("malformed <decompose> → task NOT completed, member re-dispatched with feedback", async () => {
         const calls: DispatchCall[] = []
         const ctx = makeCtx({ calls })

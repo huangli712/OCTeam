@@ -1,5 +1,5 @@
 /**
- * Regression tests for bug H1: the event handler in src/hooks.ts had two paths
+ * Regression tests: the event handler in src/hooks.ts had two paths
  * (session.status at :62, member-idle at :102-118) with NO top-level try/catch.
  * A throw from handleStatusEvent, loadTeamState (deleted team), or processIdle
  * would reject the event-handler promise and poison subsequent event handling
@@ -48,7 +48,7 @@ function ctxFor(root: string, logCalls: LogCall[]): PluginContext {
     } as unknown as PluginContext
 }
 
-describe("H1 T1: member-idle for a deleted team -> loadTeamState throws -> swallowed", () => {
+describe("member-idle for a deleted team -> loadTeamState throws -> swallowed", () => {
     test("handler resolves; logSwallowed called with 'member-idle handler failed'", async () => {
         const root = tmpRoot("hooks-err-1")
         const lead = "ses_h1_lead"
@@ -62,8 +62,8 @@ describe("H1 T1: member-idle for a deleted team -> loadTeamState throws -> swall
         indexMember(memberSession, "alpha", "alice", lead, root)
 
         // Destroy state.json + invalidate registry so loadTeamState throws
-        // "no state.json" — the post-C1 deleted-team scenario. Pre-H1 this
-        // reject poisoned the host; post-H1 it is swallowed + logged.
+        // "no state.json" — the deleted-team scenario. Before the fix this
+        // reject poisoned the host; now it is swallowed + logged.
         rmSync(statePath(team.directory), { force: true })
         invalidateTeam(team.directory)
 
@@ -84,7 +84,7 @@ describe("H1 T1: member-idle for a deleted team -> loadTeamState throws -> swall
     })
 })
 
-describe("H1 T2: non-member idle -> NO logSwallowed (common case stays silent)", () => {
+describe("non-member idle -> NO logSwallowed (common case stays silent)", () => {
     test("unknown session -> resolveTeamMember returns null -> handler returns without logging", async () => {
         const root = tmpRoot("hooks-err-2")
         const stranger = "ses_h1_stranger"
@@ -105,7 +105,7 @@ describe("H1 T2: non-member idle -> NO logSwallowed (common case stays silent)",
     })
 })
 
-describe("H1 T3: session.status event -> handler resolves (try/catch in place)", () => {
+describe("session.status event -> handler resolves (try/catch in place)", () => {
     test("session.status for an unknown session -> handler does not reject", async () => {
         const root = tmpRoot("hooks-err-3")
         const logCalls: LogCall[] = []
@@ -125,7 +125,7 @@ describe("H1 T3: session.status event -> handler resolves (try/catch in place)",
     })
 })
 
-describe("H1 T4: member-idle with a live team does not regress (happy path)", () => {
+describe("member-idle with a live team does not regress (happy path)", () => {
     test("live team + member idle -> handler resolves normally, no error log", async () => {
         const root = tmpRoot("hooks-err-4")
         const lead = "ses_h1_lead4"
@@ -156,11 +156,11 @@ describe("H1 T4: member-idle with a live team does not regress (happy path)", ()
 })
 
 /**
- * P0 fix: saveTeamState failures in hooks.ts were silently swallowed at
+ * saveTeamState failures in hooks.ts were silently swallowed at
  * "warn" level with no retry. Now persistTeamState retries 3× with 100ms
  * backoff before logging at "error" level with attempts count.
  */
-describe("P0: persistTeamState retries on saveTeamState failure", () => {
+describe("persistTeamState retries on saveTeamState failure", () => {
     test("retries 3 times, then logs at 'error' level", async () => {
         const root = tmpRoot("hooks-p0-retry")
         const lead = "ses_p0_lead"

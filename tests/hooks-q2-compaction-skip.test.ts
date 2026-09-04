@@ -1,6 +1,5 @@
 /**
- * Coverage-gap regression tests for hooks.ts Q2 (compaction-skip) TTL behavior
- * (audit 2026-06-30 finding #7).
+ * Coverage-gap regression tests for hooks.ts Q2 (compaction-skip) TTL behavior.
  *
  * Q2 protects against double-delivery during session compaction: the transform
  * hook fires both on live turns AND on compaction clones. Injecting into a
@@ -14,7 +13,7 @@
  *   - flag set, Date.now() < deadline → transform skips (consume-once)
  *   - flag set, Date.now() >= deadline → transform proceeds (TTL expired)
  *
- * TUI render branches (audit #7 second half) are host-only reachable and
+ * TUI render branches are host-only reachable and
  * excluded from this file's scope.
  */
 import { afterAll, afterEach, describe, expect, test } from "bun:test"

@@ -1,5 +1,5 @@
 /**
- * C-4 regression: team_result_get and team_results read member output files
+ * Regression: team_result_get and team_results read member output files
  * via fs.readFile, which follows symlinks. A member with FS write access
  * could replace runs/<runId>/<member>.md with a symlink to an arbitrary file
  * and have its contents returned through the tool. The fix wraps each read
@@ -56,7 +56,7 @@ async function writeRunRecord(teamDirectory: string, runId: string, memberOutput
     await fs.writeFile(runRecordPath(teamDirectory, runId), JSON.stringify(record, null, 2), "utf8")
 }
 
-describe("team_result_get symlink traversal (C-4)", () => {
+describe("team_result_get symlink traversal", () => {
     test("rejects when member output is a symlink to outside team dir", async () => {
         const root = tmpRoot("c4-get")
         const sid = "ses_c4_get"
@@ -103,7 +103,7 @@ describe("team_result_get symlink traversal (C-4)", () => {
     })
 })
 
-describe("team_results symlink traversal (C-4)", () => {
+describe("team_results symlink traversal", () => {
     test("rejects symlinked member outputs in batch preview", async () => {
         const root = tmpRoot("c4-batch")
         const sid = "ses_c4_batch"

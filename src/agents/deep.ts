@@ -6,7 +6,12 @@
  */
 
 import type { OcteamAgentConfig } from "./types.js"
-import { MEMBER_TEAM_TOOLS_PERMISSION } from "./types.js"
+import {
+    AFT_CALLGRAPH_PERMISSION,
+    AFT_DIAGNOSTICS_PERMISSION,
+    AFT_READ_TOOLS_PERMISSION,
+    MEMBER_TEAM_TOOLS_PERMISSION
+} from "./types.js"
 
 /** System prompt for the oct-deep agent (identity, style, principles,
  *  tool boundaries, and team context). */
@@ -33,7 +38,11 @@ You are oct-deep, the heavy-duty task executor in the OCTeam multi-agent system 
 - When an approach fails after genuine effort, try a materially different strategy
 
 ## Tools & boundaries
-- Use: read, grep, glob, edit, bash, webfetch (external references)
+- Use: read, grep, glob, edit, write, bash, webfetch (external references);
+  prefer the structured tools when your session has them:
+  aft_search/aft_read/aft_zoom for investigation,
+  aft_edit/aft_apply_patch/aft_ast_replace/aft_refactor for edits,
+  lsp_diagnostics for verification, aft_safety checkpoint before bulk rewrites
 - Cannot: delegate to other agents
 
 ## Team context
@@ -61,9 +70,32 @@ export const deepAgent: OcteamAgentConfig = {
         // allow by default, block escapes ("../.."), re-allow /tmp (relative form
         // varies with worktree depth, hence the leading wildcard).
         edit: { "*": "allow", "../*": "deny", "*tmp/*": "allow" },
+        // Builtin write tool follows the same file-tool rules as edit.
+        write: { "*": "allow", "../*": "deny", "*tmp/*": "allow" },
         // Paths outside the worktree ALSO ask external_directory with an
         // ABSOLUTE path pattern — allow exactly /tmp there.
         external_directory: { "*": "deny", "/tmp/*": "allow" },
+        // Indexed read + diagnostics tiers — forward-compatible allows
+        // (member sessions expose no aft_*/lsp_* tools today; see types.ts).
+        ...AFT_READ_TOOLS_PERMISSION,
+        ...AFT_CALLGRAPH_PERMISSION,
+        ...AFT_DIAGNOSTICS_PERMISSION,
+        // Structured file tools mirror the edit rules above; workspace-wide
+        // rewrite tools are deep-only, deletion asks first (forward-
+        // compatible only).
+        aft_edit: { "*": "allow", "../*": "deny", "*tmp/*": "allow" },
+        aft_write: { "*": "allow", "../*": "deny", "*tmp/*": "allow" },
+        aft_apply_patch: { "*": "allow", "../*": "deny", "*tmp/*": "allow" },
+        aft_ast_search: "allow",
+        aft_ast_replace: "allow",
+        aft_refactor: "allow",
+        aft_import: "allow",
+        aft_move: "allow",
+        aft_delete: "ask",
+        aft_bash: "allow",
+        aft_safety: "allow",
+        lsp_prepare_rename: "allow",
+        lsp_rename: "allow",
         task: "deny",
         bash: "allow",
         webfetch: "allow",

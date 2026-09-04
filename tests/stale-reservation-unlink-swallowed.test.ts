@@ -6,7 +6,7 @@
  * log entry. An operator had no way to learn that the reaper was repeatedly
  * failing to clean up reservation files.
  *
- * C-5 reconciliation: the reaper now does append-first-then-unlink (see
+ * Reconciliation: the reaper now does append-first-then-unlink (see
  * mailbox-requeue-no-loss.test.ts) so that an append failure does not lose
  * the message. This means a failed unlink AFTER a successful append leaves
  * the reservation file on disk, and the NEXT sweep will re-append the same
@@ -108,7 +108,7 @@ describe("releaseStaleReservations unlink observability (finding: stale-reservat
         await realFs.utimes(rpath, oldTime, oldTime)
 
         // Spy on logger.debug to verify the failed-unlink path is observable.
-        // Pre-C-5 fix: silent .catch(() => {}) → no log entry. Post-C-5 fix:
+        // Before the fix: silent .catch(() => {}) → no log entry. After it:
         // logger.debug with the recipient, entry id, and error message.
         const debugCalls: Array<Record<string, unknown>> = []
         const { logger } = await import("../src/core/log.js")
@@ -127,7 +127,7 @@ describe("releaseStaleReservations unlink observability (finding: stale-reservat
         }
 
         // The unlink failure MUST be logged (this is the core observability
-        // property — pre-C-5 it was silently swallowed).
+        // property — before the fix it was silently swallowed).
         const unlinkFailureLogged = debugCalls.some(c =>
             typeof c.msg === "string" && /unlink.*failed|failed.*unlink/i.test(c.msg),
         )

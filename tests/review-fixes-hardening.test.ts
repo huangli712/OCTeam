@@ -1,8 +1,8 @@
 /**
- * Regression tests for the 2026-06 deep-audit hardening fixes:
- *   - P2-1: acquireLock never reaps an existing lock from a waiter.
- *   - P2-3: listAllTasks skips malformed (non-UUID) task filenames.
- *   - P0-1: handleStatusEvent re-drives delegate/recurse/signoff/reduce on a
+ * Regression tests for the hardening fixes:
+ *   - acquireLock never reaps an existing lock from a waiter.
+ *   - listAllTasks skips malformed (non-UUID) task filenames.
+ *   - handleStatusEvent re-drives delegate/recurse/signoff/reduce on a
  *     within-tolerance member error so the run resolves instead of stalling
  *     to the wall-clock timeout.
  */
@@ -27,7 +27,7 @@ afterAll(cleanupTmpRoots)
 // P2-1: waiters never reap existing locks (locks.ts)
 // ---------------------------------------------------------------------------
 
-describe("P2-1 acquireLock: stale locks with dead PID are reaped", () => {
+describe("acquireLock: stale locks with dead PID are reaped", () => {
     test("stale lock held by a dead pid is reaped and acquired", async () => {
         const dir = tmpRoot("lock-dead")
         const lockPath = join(dir, "state.json.lock")
@@ -70,7 +70,7 @@ describe("P2-1 acquireLock: stale locks with dead PID are reaped", () => {
 // P2-3: listAllTasks skips malformed task filenames (tasks.ts)
 // ---------------------------------------------------------------------------
 
-describe("P2-3 listAllTasks: tolerates malformed filenames", () => {
+describe("listAllTasks: tolerates malformed filenames", () => {
     test("a non-UUID .json file is skipped, not thrown", async () => {
         const teamDir = tmpRoot("tasks-malformed")
         // Seed one valid task so the directory + structure exist.
@@ -154,7 +154,7 @@ function makeTeamOnDisk(opts: {
     return { team, storageRoot, leadSessionId }
 }
 
-describe("P0-1 handleStatusEvent: re-drives delegate within-tolerance error (no stall)", () => {
+describe("handleStatusEvent: re-drives delegate within-tolerance error (no stall)", () => {
     test("last-to-terminal errored member triggers delegate_complete, not a stall", async () => {
         const calls: Array<{ sessionId: string; text: string }> = []
         const { team, storageRoot, leadSessionId } = makeTeamOnDisk({
@@ -208,10 +208,10 @@ describe("P0-1 handleStatusEvent: re-drives delegate within-tolerance error (no 
 })
 
 // ---------------------------------------------------------------------------
-// H2: resumeDispatch rejects unknown task.type (no silent fall-through)
+// resumeDispatch rejects unknown task.type (no silent fall-through)
 // ---------------------------------------------------------------------------
 
-describe("H2 resumeDispatch: unknown task.type throws (no silent fall-through)", () => {
+describe("resumeDispatch: unknown task.type throws (no silent fall-through)", () => {
     test("a bogus task.type is rejected with an error, not silently ignored", async () => {
         // With no matching case, the default exhaustiveness guard must throw
         // instead of letting resumeDispatch return and the run stall.

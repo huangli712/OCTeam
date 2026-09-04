@@ -1,7 +1,7 @@
 /**
  * Coverage-gap regression tests for teamProgressTool.execute
- * (src/tools/query/progress.ts). Audit 2026-06-30 finding #6: 29.07% line coverage
- * on the execute body. formatSnapshot / formatTimeline have implicit coverage
+ * (src/tools/query/progress.ts). The execute body had 29.07% line coverage.
+ * formatSnapshot / formatTimeline have implicit coverage
  * via team_details and result-get, but the tool's execute() — auth, path-
  * traversal check, runId resolution, since/limit pagination — had none.
  */

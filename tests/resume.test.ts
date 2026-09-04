@@ -164,7 +164,7 @@ describe("team_resume", () => {
         expect(calls).toEqual(["ses_alice"])
     })
 
-    test("(b) pipeline: advanceToStage uses responses[] context (no .md read) [O3]", async () => {
+    test("(b) pipeline: advanceToStage uses responses[] context (no .md read)", async () => {
         const root = tmpRoot("resume-b")
         const sid = "ses_resume_b"
         tracked.push(sid)
@@ -187,7 +187,7 @@ describe("team_resume", () => {
         expect(bobPrompt).toContain("ALICE_UPSTREAM_OUTPUT")
     })
 
-    test("(d) Phase 1 does NOT commit activeTask [O1 BLOCKER]", async () => {
+    test("(d) Phase 1 does NOT commit activeTask", async () => {
         const root = tmpRoot("resume-d")
         const sid = "ses_resume_d"
         tracked.push(sid)
@@ -198,11 +198,11 @@ describe("team_resume", () => {
         ])
         const captured: unknown[] = []
         const ctx = makeCtx({ storageRoot: root, promptAsync: async () => {
-            // Disk state during Phase 3 dispatch. After C5 (dispatch
-            // atomicity), the FIRST dispatch saves state immediately, so
-            // subsequent dispatches see activeTask on disk. The FIRST
-            // dispatch's promptAsync must still see Phase 1 state (no
-            // activeTask) because C5's save runs AFTER promptAsync resolves.
+            // Disk state during Phase 3 dispatch. With dispatch atomicity,
+            // the FIRST dispatch saves state immediately, so subsequent
+            // dispatches see activeTask on disk. The FIRST dispatch's
+            // promptAsync must still see Phase 1 state (no activeTask)
+            // because that save runs AFTER promptAsync resolves.
             const raw = await fs.readFile(`${team.directory}/state.json`, "utf8")
             captured.push(JSON.parse(raw).activeTask)
         } })
@@ -214,7 +214,7 @@ describe("team_resume", () => {
         expect(captured[0]).toBeDefined()
     })
 
-    test("(e) processIdle with no activeTask → no summary (O1 absorption)", async () => {
+    test("(e) processIdle with no activeTask → no summary", async () => {
         const root = tmpRoot("resume-e")
         const sid = "ses_resume_e"
         tracked.push(sid)
@@ -239,7 +239,7 @@ describe("team_resume", () => {
         expect(team.activeTask?.tokenBudget).toBe(5000)
     })
 
-    test("(g) delegate: claimed + in_progress → pending [O8]", async () => {
+    test("(g) delegate: claimed + in_progress → pending", async () => {
         const root = tmpRoot("resume-g")
         const sid = "ses_resume_g"
         tracked.push(sid)

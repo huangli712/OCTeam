@@ -128,7 +128,7 @@ describe("team state member schema incomplete (finding: team-state-member-schema
     })
 })
 
-describe("C3: isMaster privilege escalation hardening", () => {
+describe("isMaster privilege escalation hardening", () => {
     test("truthy non-boolean isMaster (string) is rejected", async () => {
         const root = tmpRoot("c3-isMaster-string")
         const sid = "ses_c3_str"

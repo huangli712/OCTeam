@@ -1,5 +1,5 @@
 /**
- * Regression test for R1: mergePermissionsMonotonic incorrectly drops
+ * Regression test: mergePermissionsMonotonic incorrectly drops
  * preset nested subtool permissions when user provides a nested map.
  *
  * Bug: When preset is `task: { "*": "deny", "oct-librarian": "allow" }`
@@ -17,7 +17,7 @@ import { describe, expect, test } from "bun:test"
 import { mergePermissionsMonotonic } from "../src/agents/index.js"
 import type { OcteamAgentPermission } from "../src/agents/types.js"
 
-describe("R1: mergePermissionsMonotonic preserves preset nested subtool permissions", () => {
+describe("mergePermissionsMonotonic preserves preset nested subtool permissions", () => {
     const preset: OcteamAgentPermission = {
         "*": "deny",
         edit: "deny",

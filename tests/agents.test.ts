@@ -103,7 +103,7 @@ describe("executor agents (junior / deep) — deny task, NOT deny edit", () => {
 })
 
 describe("member team tools — every preset allows all member-reachable team tools", () => {
-    // A-1: team_done was absent from all 9 presets, making require_done_ack
+    // team_done was absent from all 9 presets, making require_done_ack
     // runs effectively unusable (members could not call the tool). This table
     // locks the class: any member team tool missing from any preset fails red.
     const MEMBER_TEAM_TOOLS = [
@@ -128,6 +128,108 @@ describe("member team tools — every preset allows all member-reachable team to
         expect(Object.keys(MEMBER_TEAM_TOOLS_PERMISSION).sort()).toEqual([...MEMBER_TEAM_TOOLS].sort())
         for (const tool of MEMBER_TEAM_TOOLS) {
             expect(MEMBER_TEAM_TOOLS_PERMISSION[tool]).toBe("allow")
+        }
+    })
+})
+
+describe("AFT tool tiers — forward-compatible permission entries", () => {
+    // Member sessions (plain and worktree alike) expose NO aft_*/lsp_* tools
+    // today. These entries forward-proof the presets for host-side injection
+    // — same rationale as the member team-tools table above.
+    const READ_TIER = ["aft_search", "aft_grep", "aft_glob", "aft_read", "aft_outline", "aft_zoom"] as const
+    const DIAGNOSTICS_TIER = ["aft_inspect", "lsp_diagnostics", "lsp_symbols", "lsp_goto_definition", "lsp_find_references", "lsp_status"] as const
+    const WRITE_DENY_FAMILY = ["aft_edit", "aft_write", "aft_apply_patch", "aft_ast_replace", "aft_refactor", "aft_import", "aft_move", "aft_delete", "aft_bash", "lsp_rename"] as const
+
+    const READ_TIER_AGENTS = ["oct-oracle", "oct-explore", "oct-metis", "oct-momus", "oct-junior", "oct-deep"] as const
+    const CALLGRAPH_AGENTS = ["oct-oracle", "oct-explore", "oct-junior", "oct-deep"] as const
+    const DIAGNOSTICS_AGENTS = ["oct-oracle", "oct-momus", "oct-junior", "oct-deep"] as const
+    const WRITE_DENY_AGENTS = ["oct-oracle", "oct-explore", "oct-metis", "oct-momus"] as const
+
+    for (const key of READ_TIER_AGENTS) {
+        for (const tool of READ_TIER) {
+            test(`${key}: permission.${tool} is "allow"`, () => {
+                expect(getAgent(key).permission?.[tool]).toBe("allow")
+            })
+        }
+    }
+
+    for (const key of CALLGRAPH_AGENTS) {
+        test(`${key}: permission.aft_callgraph is "allow"`, () => {
+            expect(getAgent(key).permission?.aft_callgraph).toBe("allow")
+        })
+    }
+
+    test("oct-metis and oct-momus do NOT get aft_callgraph (analysis tier stays light)", () => {
+        expect(getAgent("oct-metis").permission?.aft_callgraph).toBeUndefined()
+        expect(getAgent("oct-momus").permission?.aft_callgraph).toBeUndefined()
+    })
+
+    for (const key of DIAGNOSTICS_AGENTS) {
+        for (const tool of DIAGNOSTICS_TIER) {
+            test(`${key}: permission.${tool} is "allow"`, () => {
+                expect(getAgent(key).permission?.[tool]).toBe("allow")
+            })
+        }
+    }
+
+    // Non-executor presets that read code deny the whole structured write family.
+    for (const key of WRITE_DENY_AGENTS) {
+        for (const tool of WRITE_DENY_FAMILY) {
+            test(`${key}: permission.${tool} is "deny"`, () => {
+                expect(getAgent(key).permission?.[tool]).toBe("deny")
+            })
+        }
+    }
+
+    // Out-of-scope presets gain no AFT entries at all.
+    for (const key of ["oct-librarian", "oct-multimodal-looker", "oct-ultrabrain"] as const) {
+        test(`${key}: has NO aft_*/lsp_* permission entries (out of scope by design)`, () => {
+            for (const tool of [...READ_TIER, ...DIAGNOSTICS_TIER, ...WRITE_DENY_FAMILY, "aft_callgraph"]) {
+                expect(getAgent(key).permission?.[tool]).toBeUndefined()
+            }
+        })
+    }
+
+    test("oct-junior: scoped file-tool allows, deep-only rewrites denied, deletion denied", () => {
+        const perm = getAgent("oct-junior").permission!
+        for (const tool of ["aft_edit", "aft_write", "aft_apply_patch"] as const) {
+            expect(perm[tool]).toEqual({ "*": "allow", "../*": "deny", "*tmp/*": "allow" })
+        }
+        expect(perm.aft_ast_search).toBe("allow")
+        expect(perm.aft_safety).toBe("allow")
+        expect(perm.aft_bash).toBe("allow")
+        expect(perm.lsp_prepare_rename).toBe("allow")
+        expect(perm.lsp_rename).toBe("allow")
+        // The whole workspace-wide rewrite family is deep-only: leaving any
+        // member of it unlisted would silently grant it while the host SDK
+        // ignores the "*" wildcard.
+        expect(perm.aft_ast_replace).toBe("deny")
+        expect(perm.aft_refactor).toBe("deny")
+        expect(perm.aft_import).toBe("deny")
+        expect(perm.aft_move).toBe("deny")
+        expect(perm.aft_delete).toBe("deny")
+    })
+
+    test("oct-deep: deep-only rewrite tools allowed, deletion asks", () => {
+        const perm = getAgent("oct-deep").permission!
+        for (const tool of ["aft_edit", "aft_write", "aft_apply_patch"] as const) {
+            expect(perm[tool]).toEqual({ "*": "allow", "../*": "deny", "*tmp/*": "allow" })
+        }
+        expect(perm.aft_ast_search).toBe("allow")
+        expect(perm.aft_ast_replace).toBe("allow")
+        expect(perm.aft_refactor).toBe("allow")
+        expect(perm.aft_import).toBe("allow")
+        expect(perm.aft_move).toBe("allow")
+        expect(perm.aft_delete).toBe("ask")
+        expect(perm.aft_safety).toBe("allow")
+        expect(perm.aft_bash).toBe("allow")
+        expect(perm.lsp_rename).toBe("allow")
+    })
+
+    test("executors: builtin write follows the same scoped rules as edit", () => {
+        for (const key of EXECUTOR_AGENTS) {
+            const perm = getAgent(key).permission!
+            expect(perm.write).toEqual(perm.edit)
         }
     })
 })
@@ -209,7 +311,7 @@ describe("createConfigHook", () => {
         await hook(cfg as Parameters<typeof hook>[0])
         expect(cfg.agent).toBeDefined()
         expect(Object.keys(cfg.agent!)).toHaveLength(9)
-        // HIGH-G: hook now CLONES the preset (so later mutations do not leak
+        // The hook now CLONES the preset (so later mutations do not leak
         // back into OCTEAM_AGENTS); use toEqual for deep equality.
         for (const key of ALL_AGENT_KEYS) {
             expect(cfg.agent![key]).toEqual(OCTEAM_AGENTS[key])
@@ -217,7 +319,7 @@ describe("createConfigHook", () => {
     })
 
     test("overrides SECURITY fields on a pre-existing oct-* entry, preserves non-security fields", async () => {
-        // C-4: oct-* names are security-hardened presets. A user (or attacker
+        // oct-* names are security-hardened presets. A user (or attacker
         // with config write access) must NOT be able to bypass them by
         // pre-defining the same name with looser permissions or a malicious
         // prompt. Security fields (mode, description, prompt, permission) are

@@ -1,5 +1,5 @@
 /**
- * B2: gate ensemble verdict tests.
+ * Gate ensemble verdict tests.
  *
  * Gate steps with `verifiers` dispatch multiple verifiers in parallel and
  * aggregate their verdicts via `ensemble_policy`. Tests cover:

@@ -132,8 +132,8 @@ describe("parseDecompose", () => {
         expect(parseDecompose("<decompose>{bad json}</decompose>").parseFailed).toBe(true)
     })
 
-    test("tag with no JSON braces is treated as parse failure (H-14)", () => {
-        // H-14: extractTaggedJSON now enumerates ALL complete <tag>...</tag>
+    test("tag with no JSON braces is treated as parse failure", () => {
+        // extractTaggedJSON now enumerates ALL complete <tag>...</tag>
         // pairs and treats the LAST as authoritative. A tag with no brace
         // block is a parse failure (the LLM used the tag but produced invalid
         // content). Pre-fix regex required `{...}` to match, so this was
@@ -149,9 +149,9 @@ describe("parseDecompose", () => {
         expect(parseDecompose('<decompose>{"foo":1}</decompose>').parseFailed).toBe(true)
     })
 
-    test("H-16 strict: items missing a description make the whole decompose fail", () => {
+    test("strict: items missing a description make the whole decompose fail", () => {
         const text = '<decompose>{"subtasks":[{"subject":"a"},{"subject":"b","description":"y"}]}</decompose>'
-        // H-16: one invalid entry fails the entire decompose (no lossy filter).
+        // One invalid entry fails the entire decompose (no lossy filter).
         expect(parseDecompose(text).parseFailed).toBe(true)
         expect(parseDecompose(text).subtasks).toEqual([])
     })
@@ -275,8 +275,8 @@ describe("handleRecurseIdle leaf: finalize instead of decompose", () => {
         expect(all).toHaveLength(1)
     })
 
-    test("parseFailed (empty array tag): re-dispatches member, NOT completed (H46)", async () => {
-        // H46: a malformed <decompose> block is NOT a leaf. The member
+    test("parseFailed (empty array tag): re-dispatches member, NOT completed", async () => {
+        // A malformed <decompose> block is NOT a leaf. The member
         // explicitly tried to decompose but the format was wrong. Marking
         // the task completed with the raw output would be a false success.
         // The member is re-dispatched with feedback to retry.
@@ -526,9 +526,9 @@ async function setupRecurseTeam(
     await rebuildSessionIndex(root, `${root}__unused`)
 }
 
-// --- MEDIUM-1: maxTasks resource cap ---
+// --- maxTasks resource cap ---
 
-describe("MEDIUM-1: maxTasks cap rejects an over-budget decomposition", () => {
+describe("maxTasks cap rejects an over-budget decomposition", () => {
     test("tasks + proposed subtasks > maxTasks re-dispatches for a direct solution", async () => {
         const calls: DispatchCall[] = []
         const team = makeTeam({
@@ -568,9 +568,9 @@ describe("MEDIUM-1: maxTasks cap rejects an over-budget decomposition", () => {
     })
 })
 
-// --- LOW-4: empty-output leaf placeholder ---
+// --- empty-output leaf placeholder ---
 
-describe("LOW-4: empty member output triggers re-dispatch, not placeholder completion", () => {
+describe("empty member output triggers re-dispatch, not placeholder completion", () => {
     test("a member that produced nothing is re-dispatched, not marked completed", async () => {
         const team = makeTeam({
             activeTask: makeRecurseTask(),
@@ -587,7 +587,7 @@ describe("LOW-4: empty member output triggers re-dispatch, not placeholder compl
     })
 })
 
-// --- LOW-1: teamRecurseTool input validation ---
+// --- teamRecurseTool input validation ---
 
 describe("teamRecurseTool: input validation", () => {
     test('decomposer = "master" is rejected before any team lookup', async () => {
@@ -660,7 +660,7 @@ describe("teamRecurseTool: input validation", () => {
     })
 })
 
-// --- LOW-2: team_resume recurse branches ---
+// --- team_resume recurse branches ---
 
 describe("team_resume: recurse case", () => {
     test("resets interrupted claims to pending and re-dispatches idle members", async () => {
@@ -717,7 +717,7 @@ describe("team_resume: recurse case", () => {
     })
 })
 
-// --- LOW-3: buildSummary recurse case ---
+// --- buildSummary recurse case ---
 
 describe("buildSummary: recurse case", () => {
     test("leads with the root result and renders a depth-indented task tree", async () => {

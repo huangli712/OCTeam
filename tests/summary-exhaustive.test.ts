@@ -46,7 +46,7 @@ function makeConsensusTask(opts: Partial<ConsensusTask> = {}): ConsensusTask {
     } as ConsensusTask
 }
 
-describe("buildSummary: consensus explicit case (P2-1)", () => {
+describe("buildSummary: consensus explicit case", () => {
     test("consensus concatenates member outputs (no parallel-style reduce header)", async () => {
         const task = makeConsensusTask({
             responses: { alice: "agree", bob: "agree" },
@@ -73,7 +73,7 @@ describe("buildSummary: consensus explicit case (P2-1)", () => {
     })
 })
 
-describe("buildSummary: exhaustive guard throws on unknown type (P2-1)", () => {
+describe("buildSummary: exhaustive guard throws on unknown type", () => {
     test("a future/unrecognized OrchestrationType triggers a throw, not a silent fallback", async () => {
         // Simulate a type that does not exist yet. Cast through unknown so the
         // test compiles despite the discriminant being a closed union.

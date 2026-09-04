@@ -1,5 +1,5 @@
 /**
- * Regression test for H-4: a gate's `where` condition that requires a field
+ * Regression test: a gate's `where` condition that requires a field
  * the verdict did not provide must route to INVALID (verifier error), not
  * silently evaluate to "condition=false".
  *
@@ -22,7 +22,7 @@ import { describe, expect, test } from "bun:test"
 import { matchesWorkflowCondition } from "../src/orchestration/workflow/gate.js"
 import type { WorkflowCondition } from "../src/core/types/workflow.js"
 
-describe("H-4: missing where-required field is unevaluable, not false", () => {
+describe("missing where-required field is unevaluable, not false", () => {
     test("score_gte with undefined score is unevaluable (not 'false')", () => {
         const cond: WorkflowCondition = { kind: "score_gte", value: 8 }
         // The contract: matchesWorkflowCondition still returns boolean for

@@ -52,7 +52,7 @@ async function setupLiveTeam(root: string, sid: string, members: ReturnType<type
     await writeTeamSpec(root, spec, sid)
 }
 
-describe("team_create: agent must be a hardened oct-* agent (P0-2)", () => {
+describe("team_create: agent must be a hardened oct-* agent", () => {
     test("'build' (bare host agent) is rejected", async () => {
         const root = tmpRoot("p02-crt-build")
         const sid = "ses_p02_crt_build"
@@ -126,7 +126,7 @@ describe("team_create: agent must be a hardened oct-* agent (P0-2)", () => {
     })
 })
 
-describe("team_add_member: agent must be a hardened oct-* agent (P0-2)", () => {
+describe("team_add_member: agent must be a hardened oct-* agent", () => {
     test("'build' is rejected", async () => {
         const root = tmpRoot("p02-add-build")
         const sid = "ses_p02_add_build"
@@ -169,7 +169,7 @@ describe("team_add_member: agent must be a hardened oct-* agent (P0-2)", () => {
     })
 })
 
-describe("team_fix_member: new_agent must be a hardened oct-* agent (P0-2)", () => {
+describe("team_fix_member: new_agent must be a hardened oct-* agent", () => {
     test("'build' is rejected", async () => {
         const root = tmpRoot("p02-fix-build")
         const sid = "ses_p02_fix_build"

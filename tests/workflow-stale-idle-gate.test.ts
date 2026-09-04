@@ -1,5 +1,5 @@
 /**
- * H-8 regression: stale idle guard must cover gate steps too. Pre-fix the
+ * Regression: stale idle guard must cover gate steps too. Pre-fix the
  * guard ran only for task steps; a gate step with step.output already set
  * (from a prior verifier PASS) could be re-processed on a stale idle
  * (capturedNew=false), double-counting the verdict or routing to
@@ -20,7 +20,7 @@ function gateStepAt(steps: readonly WorkflowStep[] | undefined, index: number): 
     return step
 }
 
-describe("H-8: stale idle guard covers gate steps", () => {
+describe("stale idle guard covers gate steps", () => {
     test("gate idle with capturedNew=false and step.output already set is a no-op", async () => {
         const calls: DispatchCall[] = []
         const task = makeWorkflowTask({

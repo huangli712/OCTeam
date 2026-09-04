@@ -1,5 +1,5 @@
 /**
- * H44 (2026-07-28 audit): tollgate INVALID approval can't express "retry
+ * Tollgate INVALID approval can't express "retry
  * verification".
  *
  * Bug: tollgate.ts:189-204 when no escalateTo handler is configured, creates
@@ -56,7 +56,7 @@ function makeTollgateTask(opts: Partial<TollgateTask> = {}): TollgateTask {
     } as TollgateTask
 }
 
-describe("H44: tollgate INVALID approval retries verification (not advances)", () => {
+describe("tollgate INVALID approval retries verification (not advances)", () => {
     const LEAD = "ses_h44_lead"
     let dispatches: DispatchCall[] = []
 

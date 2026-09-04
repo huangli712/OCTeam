@@ -5,7 +5,7 @@
  * The default storage scope is "project": control state lives under
  * <input.directory>/.octeam/, which member agents with edit/bash tools can
  * also write to. This is the root cause behind the symlink/auth/mailbox
- * attack vectors hardened in C-1 through C-10. Without host-level isolation
+ * attack vectors hardened earlier. Without host-level isolation
  * (denying member agents write access to .octeam/), a malicious member can
  * tamper with control state directly.
  *

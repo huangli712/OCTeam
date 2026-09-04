@@ -1,5 +1,5 @@
 /**
- * C18 (2026-07-28 audit): approval_after on a workflow gate pauses BEFORE
+ * approval_after on a workflow gate pauses BEFORE
  * the gate is marked completed.
  *
  * Bug: handleGatePass (verdict.ts:347) calls maybePauseAfterWorkflowStep
@@ -11,7 +11,7 @@
  * re-dispatched; in a DAG workflow the stale dispatchedAt keeps the step
  * waiting forever.
  *
- * Constraint: H-4 added a guard — resetStepAfterCompletion must NOT run
+ * Constraint: an earlier guard requires resetStepAfterCompletion NOT to run
  * before the gotoIdx === -2 (unevaluable where) check, because a completed
  * gate is skipped by the idle router, deadlocking the retry_verifier path.
  * However, approval_after is validator-guaranteed incompatible with
@@ -21,7 +21,7 @@
  *
  * Fix: move resetStepAfterCompletion to BEFORE maybePauseAfterWorkflowStep,
  * but only on the approval_after path (when step.approvalAfter is set).
- * The general gate-PASS path (no approval_after) retains the H-4 ordering.
+ * The general gate-PASS path (no approval_after) retains that ordering.
  */
 import { describe, expect, test } from "bun:test"
 
@@ -37,7 +37,7 @@ function memberByName(team: ReturnType<typeof makeTeam>, name: string) {
     return m
 }
 
-describe("C18: approval_after marks gate completed before pausing", () => {
+describe("approval_after marks gate completed before pausing", () => {
     test("gate with approvalAfter is marked completed when pause fires", async () => {
         const calls: DispatchCall[] = []
         const steps: WorkflowStep[] = [
@@ -74,7 +74,7 @@ describe("C18: approval_after marks gate completed before pausing", () => {
         expect(task.approvalStage).toBeDefined()
         expect(task.approvalRequest?.kind).toBe("workflow_step")
 
-        // C18: the gate step MUST be marked completed BEFORE the pause.
+        // The gate step MUST be marked completed BEFORE the pause.
         // On UNFIXED code: step.completed is false (resetStepAfterCompletion
         // runs after maybePauseAfterWorkflowStep, which returned early).
         // On FIXED code: step.completed is true.
@@ -85,10 +85,10 @@ describe("C18: approval_after marks gate completed before pausing", () => {
         expect(task.steps![1].dispatchedAt).toBeUndefined()
     })
 
-    test("gate WITHOUT approvalAfter still defers completion past gotoIdx check (H-4 parity)", async () => {
-        // Control: gates without approvalAfter must retain the H-4 ordering
-        // (reset only after the gotoIdx === -2 check). This test confirms the
-        // C18 fix does not regress H-4.
+    test("gate WITHOUT approvalAfter still defers completion past gotoIdx check", async () => {
+        // Control: gates without approvalAfter must retain the original
+        // ordering (reset only after the gotoIdx === -2 check). This test
+        // confirms the approval_after fix does not regress it.
         const calls: DispatchCall[] = []
         const steps: WorkflowStep[] = [
             { kind: "task", member: "alice", task: "do work", completed: true, output: "done" },
@@ -97,7 +97,7 @@ describe("C18: approval_after marks gate completed before pausing", () => {
                 verifier: "bob",
                 criteria: "quality check",
                 onFail: "fail",
-                // No approvalAfter — H-4 ordering applies.
+                // No approvalAfter — the original ordering applies.
                 completed: false,
             },
             { kind: "task", member: "erin", task: "final step", completed: false },

@@ -1,5 +1,5 @@
 /**
- * A2: task step auto-retry tests.
+ * Task step auto-retry tests.
  *
  * Task steps with retry_on auto-retry when the output matches a condition
  * (empty, output_contains, output_not_contains, regex). Tests cover:

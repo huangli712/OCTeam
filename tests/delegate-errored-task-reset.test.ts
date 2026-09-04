@@ -1,5 +1,5 @@
 /**
- * H40 (2026-07-28 audit): delegate does not reset errored members' tasks
+ * Delegate does not reset errored members' tasks
  * before the claimable filter, causing false deadlock.
  *
  * Bug: runDelegateStyleTail (delegate.ts:75-117) filters claimable tasks as
@@ -49,7 +49,7 @@ function delegateTask(runId: string): ActiveTask {
     }
 }
 
-describe("H40: delegate resets errored members' tasks before deadlock check", () => {
+describe("delegate resets errored members' tasks before deadlock check", () => {
     test("errored member's claimed task is reset to pending and re-dispatched", async () => {
         const root = tmpRoot("h40-errored-reset")
         const alice = makeMember("alice", "ses_a")

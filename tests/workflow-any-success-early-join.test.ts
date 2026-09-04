@@ -1,5 +1,5 @@
 /**
- * Regression test for H-6: any_success join policy must open the join as soon
+ * Regression test: any_success join policy must open the join as soon
  * as ONE branch succeeds, rather than waiting for all branches to reach
  * terminal state.
  *
@@ -38,7 +38,7 @@ function makeSteps(): WorkflowStep[] {
     ]
 }
 
-describe("H-6: any_success join opens on first success", () => {
+describe("any_success join opens on first success", () => {
     test("any_success: join is ready when ONE branch succeeds (other still running)", () => {
         const steps = makeSteps()
         // Step 1 (alice) is completed; step 2 (bob) is still running.

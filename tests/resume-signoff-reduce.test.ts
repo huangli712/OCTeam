@@ -34,7 +34,7 @@ afterEach(() => {
 })
 afterAll(cleanupTmpRoots)
 
-describe("resumeDispatch signoff/reduce sub-stage recovery (P1-1)", () => {
+describe("resumeDispatch signoff/reduce sub-stage recovery", () => {
     test("signoffStage set + decider not yet responded → decider is re-dispatched (mappers are NOT)", async () => {
         const root = tmpRoot("rd-sig")
         const sid = "ses_rd_sig"

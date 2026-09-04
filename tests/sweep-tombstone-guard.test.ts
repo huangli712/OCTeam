@@ -7,7 +7,7 @@
  * to a team whose on-disk directory is already removed. The sweep's first action
  * — releaseStaleReservations -> withLock -> acquireLock -> fs.mkdir({recursive:
  * true}) — would recreate the just-removed <teamDir>/mailbox/ directory,
- * defeating the C7 tombstone intent.
+ * defeating the tombstone intent.
  *
  * Fix (hooks.ts sweepTeamOnce): `if (team.deleted) return` at the top of the
  * runExclusive callback, mirroring processIdle (handlers.ts:117) and

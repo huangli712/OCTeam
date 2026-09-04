@@ -81,11 +81,11 @@ describe("parseScoreboard", () => {
         expect(parseScoreboard(sb('{"scores":"nope"}')).parseFailed).toBe(true)
     })
 
-    test("H-16 strict: an entry missing a string member makes the whole scoreboard parseFailed", () => {
+    test("strict: an entry missing a string member makes the whole scoreboard parseFailed", () => {
         const r = parseScoreboard(
             sb('{"scores":[{"member":"alice","score":1,"passed":true},{"score":2,"passed":true}]}'),
         )
-        // H-16: one invalid entry fails the entire scoreboard (no lossy filter).
+        // One invalid entry fails the entire scoreboard (no lossy filter).
         expect(r.parseFailed).toBe(true)
         expect(r.scores).toEqual([])
     })
@@ -107,11 +107,11 @@ describe("parseScoreboard", () => {
         expect(r.parseFailed).toBe(true)
     })
 
-    test("non-finite metric values fail the entire scoreboard (H22)", () => {
+    test("non-finite metric values fail the entire scoreboard", () => {
         const r = parseScoreboard(
             sb('{"scores":[{"member":"alice","metrics":{"speed":1e400,"accuracy":0.9},"passed":true}]}'),
         )
-        // H22: pre-fix code silently dropped non-finite values, which could
+        // Pre-fix code silently dropped non-finite values, which could
         // change winner selection. Now the entire scoreboard fails.
         expect(r.parseFailed).toBe(true)
     })
@@ -224,7 +224,7 @@ describe("selectArenaWinner", () => {
         expect(sel.winner).toBe("alice")
     })
 
-    test("H-28: unknown member not in candidates is ignored when all candidates ARE covered", () => {
+    test("unknown member not in candidates is ignored when all candidates ARE covered", () => {
         // All candidates (alice, bob) have entries. Mallory is an extra unknown
         // entry — she is ignored because she is not in the candidate list.
         const sel = selectArenaWinner(
@@ -260,7 +260,7 @@ describe("selectArenaWinner", () => {
         expect(sel.winner).toBe("bob")
     })
 
-    test("H-28: a candidate with duplicate scoreboard entries fails the whole scoreboard", () => {
+    test("a candidate with duplicate scoreboard entries fails the whole scoreboard", () => {
         // alice has 2 entries — this is now a hard failure for the entire
         // scoreboard (not just alice becoming ineligible). The evaluator's
         // contract was violated.

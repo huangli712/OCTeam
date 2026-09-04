@@ -1,5 +1,5 @@
 /**
- * H47 (2026-07-28 audit): route silently accepts partial unknown branch.
+ * Route silently accepts partial unknown branch.
  *
  * Bug: handleRouteIdle (route.ts:90) filters known branches via
  *   selected = branches.filter(b => decision.targets.includes(b.name))
@@ -44,7 +44,7 @@ function makeRouteTask(opts: Partial<RouteTask> = {}): RouteTask {
 
 const LEAD = "ses_h47_lead"
 
-describe("H47: route rejects partial unknown branch names", () => {
+describe("route rejects partial unknown branch names", () => {
     afterEach(() => {
         unindexSession(LEAD)
     })

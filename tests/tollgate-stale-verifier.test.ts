@@ -1,5 +1,5 @@
 /**
- * C17 (2026-07-28 audit): tollgate startVerification does not clear the
+ * Tollgate startVerification does not clear the
  * verifier's stale response before dispatch, so a reused verifier (across
  * gates or after INVALID re-verify) can have its OLD verdict parsed as
  * the NEW gate's verdict.
@@ -66,7 +66,7 @@ const V = {
     pass: '<verdict>{"result":"PASS","rationale":"within tolerance","diff":""}</verdict>',
 }
 
-describe("C17: startVerification clears stale verifier response", () => {
+describe("startVerification clears stale verifier response", () => {
     const LEAD = "ses_c17_lead"
     let dispatches: DispatchCall[] = []
     let ctx: PluginContext

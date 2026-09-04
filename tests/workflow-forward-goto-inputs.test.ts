@@ -1,5 +1,5 @@
 /**
- * Regression test for H-2: a forward goto must not silently dispatch a task
+ * Regression test: a forward goto must not silently dispatch a task
  * whose explicit `inputs` reference skipped steps.
  *
  * Bug: src/orchestration/workflow/engine.ts applyJump handles forward jumps
@@ -38,7 +38,7 @@ afterAll(cleanupTmpRoots)
 const PASS_VERDICT =
     '<verdict>{"result":"PASS","rationale":"ok","diff":""}</verdict>'
 
-describe("H-2: forward goto cannot skip target's explicit inputs", () => {
+describe("forward goto cannot skip target's explicit inputs", () => {
     test("forward goto to a task whose inputs were skipped fails the run with a clear error", async () => {
         const calls: DispatchCall[] = []
         // Steps: 0 task (alice) -> 1 gate (bob) on_pass_goto:3 -> 2 task (carol, skipped) -> 3 task (dave, inputs:[2])
@@ -97,7 +97,7 @@ describe("H-2: forward goto cannot skip target's explicit inputs", () => {
         expect(task.steps![2].completed).toBe(true)
         expect(task.steps![2].skipped).toBe(true)
 
-        // H-2 fix: dave (step 3) MUST NOT be dispatched because his declared
+        // Fix: dave (step 3) MUST NOT be dispatched because his declared
         // input (step 2) was skipped. Either:
         //   - the run finishes with a "missing declared input" error, OR
         //   - dave is never called.

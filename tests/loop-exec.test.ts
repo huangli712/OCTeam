@@ -93,7 +93,7 @@ describe("handleLoopIdle (via processIdle): decider termination", () => {
         const leaderCall = calls.find(c => c.sessionId === "ses_lead")
         expect(leaderCall).toBeDefined()
         expect(leaderCall!.text).toContain("loop_complete:decider_done")
-        // T8: the delivered summary must carry the final decision. Before the
+        // The delivered summary must carry the final decision. Before the
         // ordering fix, decisionHistory.push ran AFTER delivery, so summarizeLoop
         // rendered "final: n/a" with no decision-log line for the done round.
         expect(leaderCall!.text).toContain("[final]")

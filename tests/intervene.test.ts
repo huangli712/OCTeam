@@ -85,7 +85,7 @@ afterEach(() => {
     for (const sid of tracked.splice(0)) unindexSession(sid)
 })
 
-describe("team_intervene (T6: master-only inject-only directive)", () => {
+describe("team_intervene (master-only inject-only directive)", () => {
     test("(a) master sends directive to a member → mailbox holds kind=directive with matching runId", async () => {
         const root = tmpRoot("intervene-a")
         const masterSid = "ses_master_a"
@@ -301,7 +301,7 @@ describe("team_intervene (T6: master-only inject-only directive)", () => {
             activeTask: makeActiveTask(undefined),
         })
 
-        // M-20/C-10: activeTask exists but runId is undefined (pre-capture
+        // activeTask exists but runId is undefined (pre-capture
         // edge). The fix now REFUSES to send an unscoped directive (was: sent
         // with runId=undefined, enabling cross-run replay). The user should
         // wait for the workflow to fully initialize.

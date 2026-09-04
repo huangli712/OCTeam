@@ -1,5 +1,5 @@
 /**
- * H-6 regression: any_success/useSurvivors join policy must cancel the FULL
+ * Regression: any_success/useSurvivors join policy must cancel the FULL
  * non-survivor branch range when one branch succeeds, not just the tail step.
  * Pre-fix dag.ts marked only the tail skipped, leaving intermediate steps
  * still dispatchable. The engine would then concurrently open the join AND
@@ -84,7 +84,7 @@ function buildSteps(): WorkflowStep[] {
     ]
 }
 
-describe("H-6: any_success cancels the full non-survivor branch range", () => {
+describe("any_success cancels the full non-survivor branch range", () => {
     test("isWorkflowJoinSatisfied marks every step of the losing branch skipped", () => {
         const steps = buildSteps()
         const joinStep = steps[5] as WorkflowJoinStep

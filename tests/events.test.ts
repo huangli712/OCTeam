@@ -99,7 +99,7 @@ describe("recordEvent + readRunEvents", () => {
             JSON.stringify({ timestamp: 20, kind: "captured", member: "a", bytes: 1 }) + "\n",
         )
         const events = await readRunEvents(dir, "r2")
-        // N31: events preserve file append order (the persistent order),
+        // Events preserve file append order (the persistent order),
         // NOT timestamp order. Timestamp sorting is unstable under clock
         // rollback / NTP skew / restart.
         expect(events.map(e => e.timestamp)).toEqual([30, 10, 20])

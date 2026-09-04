@@ -1,5 +1,5 @@
 /**
- * H-4 regression: handleGatePass must NOT mark the gate as completed before
+ * Regression: handleGatePass must NOT mark the gate as completed before
  * evaluating the `where` condition. When `where.score_gte` is unevaluable
  * (verifier emitted PASS but omitted the required score field), the gate
  * routes to handleInvalidVerdict which re-dispatches the verifier (per
@@ -22,7 +22,7 @@ function gateStepAt(steps: readonly WorkflowStep[] | undefined, index: number): 
     return step
 }
 
-describe("H-4: PASS-with-unevaluable-where does not deadlock on retry_verifier", () => {
+describe("PASS-with-unevaluable-where does not deadlock on retry_verifier", () => {
     test("gate is NOT marked completed when where is unevaluable, so the retry idle still processes", async () => {
         const calls: DispatchCall[] = []
         const task = makeWorkflowTask({

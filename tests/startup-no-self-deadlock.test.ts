@@ -1,7 +1,8 @@
 /**
- * Regression test for C1: H7 fix caused self-deadlock.
+ * Regression test: an earlier fix caused a self-deadlock.
  *
- * Bug: H7 added loadTeamState() inside team.mutex.runExclusive() in startup.ts.
+ * Bug: that fix added loadTeamState() inside team.mutex.runExclusive() in
+ * startup.ts.
  * loadTeamState() internally calls cached.mutex.runExclusive() (non-reentrant
  * AsyncMutex) when refreshing stale cache. When the cache is >1s old,
  * loadTeamState enters the mutex path and self-deadlocks, permanently
@@ -30,7 +31,7 @@ import { statePath } from "../src/state/paths.js"
 
 afterAll(cleanupTmpRoots)
 
-describe("C1: startup does not self-deadlock when reading disk spawning state", () => {
+describe("startup does not self-deadlock when reading disk spawning state", () => {
     test("disk spawning=true (sibling process) is detected and startup bails within timeout", async () => {
         const root = tmpRoot("c1-deadlock")
         const masterSid = "ses_c1_master"

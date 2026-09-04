@@ -1,5 +1,5 @@
 /**
- * Regression test for H-1: backward jump must reset retry counters on the
+ * Regression test: backward jump must reset retry counters on the
  * TRIGGERING gate (not just intermediate gates).
  *
  * Bug: src/orchestration/workflow/engine.ts applyJump (line 500) gates the
@@ -34,7 +34,7 @@ afterAll(cleanupTmpRoots)
 const FAIL_VERDICT =
     '<verdict>{"result":"FAIL","rationale":"wrong","diff":"off by one"}</verdict>'
 
-describe("H-1: backward jump resets triggering gate retry counters", () => {
+describe("backward jump resets triggering gate retry counters", () => {
     test("triggering gate's attempts/invalidAttempts/malformedAttempts/timeoutAttempts are zeroed after backward jump", async () => {
         const calls: DispatchCall[] = []
         // Two-step workflow: task → gate with on_fail_goto back to step 0.
@@ -57,7 +57,7 @@ describe("H-1: backward jump resets triggering gate retry counters", () => {
                     jumpCount: 0,
                     completed: false,
                     // Pre-existing exhausted budget from earlier in this run.
-                    // The H-1 bug: these are NOT reset for the triggering gate,
+                    // The bug: these are NOT reset for the triggering gate,
                     // so the re-run inherits the exhausted budget.
                     attempts: 2,
                     invalidAttempts: 1,
@@ -86,7 +86,7 @@ describe("H-1: backward jump resets triggering gate retry counters", () => {
         expect(gateStepAt(task.steps, 1).jumpCount).toBe(1)
         expect(task.currentStageIndex).toBe(0)
 
-        // H-1 fix: the triggering gate's retry counters MUST be reset so the
+        // Fix: the triggering gate's retry counters MUST be reset so the
         // re-run gets a fresh budget. Pre-fix: they stayed at 2/1/1/1.
         const gate = gateStepAt(task.steps, 1)
         expect(gate.attempts).toBe(0)
@@ -149,7 +149,7 @@ describe("H-1: backward jump resets triggering gate retry counters", () => {
         const intermediateGate = gateStepAt(task.steps, 0)
         expect(intermediateGate.attempts).toBe(0)
         expect(intermediateGate.invalidAttempts).toBe(0)
-        // Triggering gate (step 2) also reset (H-1 fix).
+        // Triggering gate (step 2) also reset.
         const triggeringGate = gateStepAt(task.steps, 2)
         expect(triggeringGate.attempts).toBe(0)
     })

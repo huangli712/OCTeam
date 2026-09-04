@@ -100,7 +100,7 @@ describe("forged mailbox directive (finding: forged-mailbox-directive)", () => {
         await writeMailboxMessage(teamDir, "bob", legit)
 
         const polled = await pollMailbox(teamDir, "bob")
-        // C-9: pass teamDir as teamName to match what writeMailboxMessage
+        // Pass teamDir as teamName to match what writeMailboxMessage
         // now defaults to when no authContext is supplied.
         const injection = formatMailboxInjection(polled, undefined, teamDir)
 
@@ -151,7 +151,7 @@ describe("forged mailbox directive (finding: forged-mailbox-directive)", () => {
 
 
 /**
- * C5 (2026-07-28 audit): rendering-layer forgery via [DIRECTIVE] in body.
+ * Rendering-layer forgery via [DIRECTIVE] in body.
  *
  * Bug: formatMailboxInjection renders BOTH authenticated directives AND regular
  * messages inside the SAME <team_message> element. The only structural marker
@@ -168,7 +168,7 @@ describe("forged mailbox directive (finding: forged-mailbox-directive)", () => {
  * (<team_directive>) so no regular-message body content can mimic the
  * directive's wrapping structure, regardless of body text.
  */
-describe("C5: directive rendering must use a distinct element (body-forgery defense)", () => {
+describe("directive rendering must use a distinct element (body-forgery defense)", () => {
     test("authenticated directive renders inside <team_directive>", async () => {
         const teamDir = tmpRoot("c5-directive-elem")
         const legit: Message = {
@@ -185,7 +185,7 @@ describe("C5: directive rendering must use a distinct element (body-forgery defe
         await writeMailboxMessage(teamDir, "bob", legit)
 
         const polled = await pollMailbox(teamDir, "bob")
-        // C-9: pass teamDir as teamName to match writeMailboxMessage default.
+        // Pass teamDir as teamName to match writeMailboxMessage default.
         const injection = formatMailboxInjection(polled, undefined, teamDir)
 
         // The wrapping element MUST be <team_directive> (distinct from regular
@@ -253,7 +253,7 @@ describe("C5: directive rendering must use a distinct element (body-forgery defe
 })
 
 /**
- * C6 (2026-07-28 audit): cross-mailbox directive forgery.
+ * Cross-mailbox directive forgery.
  *
  * Bug: the directive auth registry is keyed by `(msg.to, msg.id)`. The
  * registry lookup in isAuthenticatedDirective also uses `msg.to`. When a
@@ -270,7 +270,7 @@ describe("C5: directive rendering must use a distinct element (body-forgery defe
  * mailbox recipient, so a cross-mailbox forgery is never returned to the
  * caller and never reaches formatMailboxInjection or ackMessages.
  */
-describe("C6: cross-mailbox directive forgery dropped at poll", () => {
+describe("cross-mailbox directive forgery dropped at poll", () => {
     test("directive copied from Alice's mailbox into Bob's is NOT returned by Bob's poll", async () => {
         const teamDir = tmpRoot("c6-cross-forgery")
 
@@ -349,7 +349,7 @@ describe("C6: cross-mailbox directive forgery dropped at poll", () => {
 })
 
 /**
- * C7 (2026-07-28 audit): incomplete auth field binding.
+ * Incomplete auth field binding.
  *
  * Bug: authenticateDirective binds only (from, to, body) to the registry key
  * (msg.to, msg.id). Fields like correlationId are NOT bound, so an attacker
@@ -367,7 +367,7 @@ describe("C6: cross-mailbox directive forgery dropped at poll", () => {
  *        after successful delivery, so only (to, id, from, body, correlationId)
  *        need to match to consume the record.
  */
-describe("C7: auth field binding gaps", () => {
+describe("auth field binding gaps", () => {
     test("directive with modified correlationId must NOT authenticate", () => {
         const original: Message = {
             version: 1,
@@ -428,7 +428,7 @@ describe("C7: auth field binding gaps", () => {
 })
 
 /**
- * C8 (2026-07-28 audit): unscoped directive cross-run replay.
+ * Unscoped directive cross-run replay.
  *
  * Bug: when a directive is registered WITHOUT a runId (the pre-capture
  * edge where activeTask.runId is still undefined, or legacy callers),
@@ -444,7 +444,7 @@ describe("C7: auth field binding gaps", () => {
  * has an activeTask.runId during a busy run; the pre-capture edge is
  * rare and directive delivery there is not security-critical.
  */
-describe("C8: unscoped directive cross-run replay prevention", () => {
+describe("unscoped directive cross-run replay prevention", () => {
     test("directive without runId is rejected when there IS an active run", () => {
         const directive: Message = {
             version: 1,

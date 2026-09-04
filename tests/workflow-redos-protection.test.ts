@@ -1,5 +1,5 @@
 /**
- * Regression test for C-8: workflow retry_on.regex must resist ReDoS
+ * Regression test: workflow retry_on.regex must resist ReDoS
  * (catastrophic backtracking) attacks.
  *
  * Bug: src/orchestration/workflow/handler.ts shouldRetryTask() runs
@@ -33,7 +33,7 @@ function stepWithRegex(pattern: string): WorkflowTaskStep {
     } as WorkflowTaskStep
 }
 
-describe("C-8: retry_on.regex resists ReDoS patterns", () => {
+describe("retry_on.regex resists ReDoS patterns", () => {
     test("nested quantifier pattern (a+)+ is rejected before compilation", () => {
         const s = stepWithRegex("(a+)+b")
         // Use a MATCHING input: if the pattern is compiled and tested,

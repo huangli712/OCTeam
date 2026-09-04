@@ -4,7 +4,13 @@
  */
 
 import type { OcteamAgentConfig } from "./types.js"
-import { MEMBER_TEAM_TOOLS_PERMISSION } from "./types.js"
+import {
+    AFT_CALLGRAPH_PERMISSION,
+    AFT_DIAGNOSTICS_PERMISSION,
+    AFT_READ_TOOLS_PERMISSION,
+    AFT_WRITE_TOOLS_DENY,
+    MEMBER_TEAM_TOOLS_PERMISSION
+} from "./types.js"
 
 /** System prompt for the oct-oracle agent (read-only consultant identity,
  *  reasoning discipline, and output contract). */
@@ -28,6 +34,9 @@ You are oct-oracle, a senior strategic advisor in the OCTeam multi-agent system.
 
 ## Tools & boundaries
 - Work only with information in code, plans, or teammate outputs
+- Use: read, grep, glob; when your session has them, prefer indexed lookup
+  (aft_search, aft_read, aft_zoom, aft_callgraph) and diagnostics
+  (aft_inspect, lsp_diagnostics) for grounded facts
 - Cannot: edit files, run commands, fetch web, delegate to agents
 
 ## Team context
@@ -46,6 +55,13 @@ export const oracleAgent: OcteamAgentConfig = {
         // Team collaboration tools (shared single source of truth — includes
         // team_done, required by require_done_ack runs).
         ...MEMBER_TEAM_TOOLS_PERMISSION,
+        // Indexed read + diagnostics tiers — forward-compatible allows
+        // (member sessions expose no aft_*/lsp_* tools today; see types.ts).
+        ...AFT_READ_TOOLS_PERMISSION,
+        ...AFT_CALLGRAPH_PERMISSION,
+        ...AFT_DIAGNOSTICS_PERMISSION,
+        // Structured write-family tools stay denied for read-only roles.
+        ...AFT_WRITE_TOOLS_DENY,
         edit: "deny",
         task: "deny",
         bash: "deny",

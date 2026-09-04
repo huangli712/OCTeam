@@ -1,17 +1,17 @@
 /**
- * H-13 / H31: approval resolution semantics on dispatch failure.
+ * Approval resolution semantics on dispatch failure.
  *
- * H31 fix (2026-08): dispatch failure now leaves approvalStage as PENDING
- * so the master can retry. Pre-H31 code cleared approvalStage on failure,
- * which permanently stuck the run (no way to re-approve after a transient
- * dispatch error). The original H-13 concern (duplicate dispatch) is now
- * mitigated by the dispatchedActor/dispatchedAt idempotency guard in the
- * workflow engine: a re-approve after a failed dispatch finds the step
- * already marked dispatched and skips the duplicate promptAsync call.
+ * Dispatch failure now leaves approvalStage as PENDING so the master can
+ * retry. Earlier code cleared approvalStage on failure, which permanently
+ * stuck the run (no way to re-approve after a transient dispatch error).
+ * The original duplicate-dispatch concern is now mitigated by the
+ * dispatchedActor/dispatchedAt idempotency guard in the workflow engine: a
+ * re-approve after a failed dispatch finds the step already marked
+ * dispatched and skips the duplicate promptAsync call.
  *
- * This test was updated to match the H31 contract: approval stays pending
- * after a dispatch failure, and a second approve attempt re-tries the
- * dispatch (not "no pending" as in the H-13 era).
+ * This test matches the current contract: approval stays pending after a
+ * dispatch failure, and a second approve attempt re-tries the dispatch
+ * (not "no pending" as in the earlier behavior).
  */
 import { describe, expect, test } from "bun:test"
 
@@ -19,8 +19,8 @@ import { applyApprovalDecision } from "../src/tools/control/approve.js"
 import type { ActiveTask } from "../src/core/types.js"
 import { makeCtx, makeTeam, tmpRoot } from "./helpers.js"
 
-describe("H-13: approval resolution stays durable across dispatch failure", () => {
-    test("dispatch failure leaves approval pending for retry (H31 contract)", async () => {
+describe("approval resolution stays durable across dispatch failure", () => {
+    test("dispatch failure leaves approval pending for retry", async () => {
         // Build a team with a pending approval pause. Use the workflow_step
         // approval kind — it calls advanceWorkflowStep which dispatches the
         // next task step. We make that dispatch throw by installing a
@@ -69,9 +69,9 @@ describe("H-13: approval resolution stays durable across dispatch failure", () =
             approved: true,
         })).rejects.toThrow(/synthesized dispatch failure/)
 
-        // H31 contract: approvalStage / approvalRequest stay PENDING so
-        // the master can retry after a transient dispatch failure. Pre-H31
-        // code cleared these, permanently sticking the run.
+        // Contract: approvalStage / approvalRequest stay PENDING so the
+        // master can retry after a transient dispatch failure. Earlier code
+        // cleared these, permanently sticking the run.
         expect(task.approvalStage).toBe(true)
         expect(task.approvalRequest).toBeDefined()
 

@@ -234,7 +234,7 @@ describe("HITL MVP: loop", () => {
         const after = await loadTeamState(root, "alpha", sid)
         expect(after.status).toBe("idle")
         expect(after.activeTask).toBeUndefined()
-        // T8: the human-approved path must deliver the final decision in its
+        // The human-approved path must deliver the final decision in its
         // summary. Reordering push before deliver makes summarizeLoop render
         // "final: done" instead of "final: n/a".
         const summaryCall = calls.find(c => c.text.includes("loop_complete:human_approved"))

@@ -1,5 +1,5 @@
 /**
- * A1: workflow loop tests.
+ * Workflow loop tests.
  *
  * Gate steps with `loop` config bound backward iterations via on_fail_goto.
  * loopIterations replaces jumpCount for loop-controlled gotos. Tests cover:

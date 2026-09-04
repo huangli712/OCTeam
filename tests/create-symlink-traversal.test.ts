@@ -1,5 +1,5 @@
 /**
- * C-1 regression: team_create must reject when the teams directory or the
+ * Regression: team_create must reject when the teams directory or the
  * target team directory escapes the storage root via a symlink. Without the
  * assertNoSymlinkTraversal guard before fs.mkdir, a symlinked teams/ redirect
  * can write config.json and state.json outside storageRoot, and a later
@@ -19,7 +19,7 @@ import { teamsDir } from "../src/state/paths.js"
 
 afterAll(cleanupTmpRoots)
 
-describe("team_create symlink traversal (C-1)", () => {
+describe("team_create symlink traversal", () => {
     test("rejects when teams/ is a symlink to outside storage root", async () => {
         const root = tmpRoot("create-symlink-teams")
         const sid = "ses_create_symlink_teams"

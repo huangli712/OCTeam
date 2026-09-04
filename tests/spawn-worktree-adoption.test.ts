@@ -37,6 +37,16 @@ import {
 
 const execFileP = promisify(execFile)
 
+/** Per-test timeout. These tests spawn real git subprocesses (worktree add,
+ *  init, commit), so they need more headroom than bun's 5s default, which
+ *  tripped intermittently under full-suite concurrency. */
+const TEST_TIMEOUT_MS = 30_000
+
+/** Bound for waiting on the first session.create, which is gated behind a real
+ *  `git worktree add`. Kept below TEST_TIMEOUT_MS so a genuine hang fails with
+ *  this informative error instead of an opaque harness kill. */
+const SPAWN_WAIT_MS = 15_000
+
 const tracked: string[] = []
 afterEach(() => {
     for (const sid of tracked.splice(0)) unindexSession(sid)
@@ -132,11 +142,34 @@ async function seedLeftover(h: Harness): Promise<void> {
  * post-create continuation finishes) guarantees the reset already happened.
  */
 async function drive(h: Harness, ctx: ReturnType<typeof makeSpawnCtx>): Promise<void> {
+    // TEMPORARY DIAGNOSTIC PROBE — revert after the hang is localized.
+    const t0 = Date.now()
+    const marks: string[] = []
+    const at = () => `${Date.now() - t0}ms`
+    const dump = (label: string) => {
+        const m = h.team.members.find(x => !x.isMaster)
+        console.error(
+            `[PROBE ${label}] +${at()} sessionCreates=${h.sessionCreates}`
+            + ` initialized=${String(m?.initialized)} sessionId=${String(m?.sessionId)}`
+            + ` status=${String(m?.status)} worktreePath=${String(m?.worktreePath)}`
+            + ` | timeline: ${marks.join(" → ") || "(none)"}`,
+        )
+    }
+    const wd1 = setTimeout(() => dump("3s"), 3000)
+    const wd2 = setTimeout(() => dump("20s"), 20000)
+
     const readiness = ensureMembersReady(ctx, h.team)
-    await waitUntil(() => h.sessionCreates > 0, { timeoutMs: 5000, pollMs: 10 })
+    marks.push(`called@${at()}`)
+    await waitUntil(() => h.sessionCreates > 0, { timeoutMs: SPAWN_WAIT_MS, pollMs: 10 })
+    marks.push(`sawCreate@${at()}(initialized=${String(h.team.members.find(x => !x.isMaster)?.initialized)})`)
     await new Promise(resolve => setTimeout(resolve, 0))
+    marks.push(`tick@${at()}(initialized=${String(h.team.members.find(x => !x.isMaster)?.initialized)})`)
     for (const m of h.team.members) if (!m.isMaster) m.initialized = true
+    marks.push(`setTrue@${at()}`)
     await readiness
+    marks.push(`readinessResolved@${at()}`)
+    clearTimeout(wd1)
+    clearTimeout(wd2)
 }
 
 describe("spawn worktree adoption (finding: retry-after-teardown branch collision)", () => {
@@ -163,14 +196,14 @@ describe("spawn worktree adoption (finding: retry-after-teardown branch collisio
             "git", ["branch", "--list", h.branchName], { cwd: h.projectDir },
         )
         expect(after.stdout.trim()).not.toBe("")
-    })
+    }, TEST_TIMEOUT_MS)
 
     test("2. leftover at a NON-canonical path is not adopted — falls back to createWorktree", async () => {
         const h = await setupHarness("mismatch")
 
         // Point the member at another directory that exists and has .git —
         // not the canonical member worktree path. Ownership check must reject.
-        const fakeDir = await fs.mkdtemp("wt-adopt-fake-")
+        const fakeDir = tmpRoot("wt-adopt-fake")
         await execFileP("git", ["init", "-q"], { cwd: fakeDir })
         h.team.members[0].worktreePath = fakeDir
 
@@ -179,7 +212,7 @@ describe("spawn worktree adoption (finding: retry-after-teardown branch collisio
         // createWorktree re-ran and reassigned the canonical path.
         expect(h.team.members[0].worktreePath).toBe(h.wtPath)
         expect(h.sessionDirs[0]).toBe(h.wtPath)
-    })
+    }, TEST_TIMEOUT_MS)
 
     test("3. clean member with no worktreePath spawns via createWorktree as before", async () => {
         const h = await setupHarness("clean")
@@ -192,7 +225,7 @@ describe("spawn worktree adoption (finding: retry-after-teardown branch collisio
             "git", ["branch", "--list", h.branchName], { cwd: h.projectDir },
         )
         expect(branches.stdout.trim()).not.toBe("")
-    })
+    }, TEST_TIMEOUT_MS)
 
     test("4. adopted worktree survives a session.create failure (non-destructive rollback)", async () => {
         const h = await setupHarness("rollback")
@@ -216,5 +249,5 @@ describe("spawn worktree adoption (finding: retry-after-teardown branch collisio
             "git", ["branch", "--list", h.branchName], { cwd: h.projectDir },
         )
         expect(branches.stdout.trim()).not.toBe("")
-    })
+    }, TEST_TIMEOUT_MS)
 })

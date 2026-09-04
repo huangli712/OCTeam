@@ -1,5 +1,5 @@
 /**
- * H-14 regression: extractTaggedJSON must enumerate ALL complete <tag>...</tag>
+ * Regression: extractTaggedJSON must enumerate ALL complete <tag>...</tag>
  * pairs (not just those whose payload contains a {...} block) and treat the
  * LAST one as authoritative. Pre-fix the regex required `{...}` to match, so
  * a malformed trailing block like `<decision>oops</decision>` (no braces) was
@@ -10,7 +10,7 @@ import { describe, expect, test } from "bun:test"
 
 import { parseDecision } from "../src/orchestration/protocol/decisions.js"
 
-describe("H-14: extractTaggedJSON treats trailing malformed tag as parse failure", () => {
+describe("extractTaggedJSON treats trailing malformed tag as parse failure", () => {
     test("trailing <decision>not-json</decision> does NOT silently revert to an earlier valid block", () => {
         // Decider restated an earlier "done" then wrote a corrupt final block.
         // Pre-fix: extractTaggedJSON skipped the no-braces trailing block,
@@ -35,7 +35,7 @@ describe("H-14: extractTaggedJSON treats trailing malformed tag as parse failure
         expect(result.decision).toBe("continue")
     })
 
-    test("trailing <decision>{} empty-brace block is treated as parse failure (M22)", () => {
+    test("trailing <decision>{} empty-brace block is treated as parse failure", () => {
         const output = [
             '<decision>{"decision":"done"}</decision>',
             '<decision>{}</decision>',  // empty JSON object — parses but lacks decision

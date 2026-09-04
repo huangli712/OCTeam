@@ -1,5 +1,5 @@
 /**
- * H-23 regression: fixmember rollback must restore agent/model unconditionally
+ * Regression: fixmember rollback must restore agent/model unconditionally
  * (including back to undefined). Pre-fix code guarded each restore on
  * `savedX !== undefined`, which skipped restoration when the original value
  * was absent — the new value then silently persisted via the next unrelated
@@ -18,7 +18,7 @@ import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRo
 
 afterAll(cleanupTmpRoots)
 
-describe("H-23: fixmember rollback restores agent/model to undefined", () => {
+describe("fixmember rollback restores agent/model to undefined", () => {
     test("when saveTeamState fails, member.agent originally undefined is rolled back to undefined", async () => {
         const root = tmpRoot("h23-rollback-undef")
         const sid = "ses_h23_master"
@@ -75,7 +75,7 @@ describe("H-23: fixmember rollback restores agent/model to undefined", () => {
             await initTeamState(root, makeState("alpha", sid, [member]), sid)
             const team = await loadTeamState(root, "alpha", sid)
             const alice = team.members.find(m => m.name === "alice")!
-            // H-23 contract: agent stays undefined after the failed fixmember.
+            // Contract: agent stays undefined after the failed fixmember.
             // Pre-fix: agent was left as "oct-oracle" because the rollback
             // skipped restoration when savedAgent === undefined.
             expect(alice.agent).toBeUndefined()

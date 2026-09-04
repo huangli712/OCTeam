@@ -1,5 +1,5 @@
 /**
- * H43 (2026-07-28 audit): tollgate FAIL retry does not clear the stale
+ * Tollgate FAIL retry does not clear the stale
  * producer artifact before re-dispatch.
  *
  * Bug: handleTollgateIdle (tollgate.ts:298-311) on a FAIL verdict sets
@@ -11,7 +11,7 @@
  *
  * Contrast: advanceToGatedStage:113 DOES delete task.responses[stage.member]
  * before re-dispatch (HIGH-D fix). The FAIL-retry path lacks the same
- * clearing. C17 (already fixed) added the same clearing to
+ * clearing. An earlier fix added the same clearing to
  * startVerification for the verifier slot.
  *
  * Fix: delete task.responses[stage.member] before re-dispatching the
@@ -71,7 +71,7 @@ const V = {
         `<verdict>{"result":"FAIL","rationale":"${rationale}","diff":"${diff}"}</verdict>`,
 }
 
-describe("H43: tollgate FAIL retry clears stale producer artifact", () => {
+describe("tollgate FAIL retry clears stale producer artifact", () => {
     const LEAD = "ses_h43_lead"
     let dispatches: DispatchCall[] = []
 
@@ -107,7 +107,7 @@ describe("H43: tollgate FAIL retry clears stale producer artifact", () => {
         expect(dispatches.some(c => c.sessionId === "ses_a")).toBe(true)
         // tollgatePhase is back to produce.
         expect(task.tollgatePhase).toBe("produce")
-        // H43: the stale producer artifact MUST be cleared.
+        // The stale producer artifact MUST be cleared.
         expect(task.responses["alice"]).toBeUndefined()
     })
 

@@ -128,7 +128,7 @@ describe("parseVerdict", () => {
 
     test("does NOT parse an arbitrate <裁决> tag (collision avoided)", () => {
         // <裁决> is owned by parseArbitrationDecision; tollgate must ignore it so
-        // the two parsers never cross-wire. This is the T-2 regression guard.
+        // the two parsers never cross-wire. This is the regression guard.
         const r = parseVerdict('<裁决>{"result":"PASS","rationale":"leaked"}</裁决>')
         expect(r.parseFailed).toBe(true)
         expect(r.verdict).toBeUndefined()
@@ -171,7 +171,7 @@ describe("getExpectedMember: tollgate type", () => {
         expect(getExpectedMember(task)).not.toBe("alice")
     })
 
-    test("escalate phase returns the escalateTo handler (T-1 load-bearing)", () => {
+    test("escalate phase returns the escalateTo handler (load-bearing)", () => {
         const task = makeTollgateTask({
             gatedStages: [g],
             tollgatePhase: "escalate",
@@ -502,7 +502,7 @@ describe("handleTollgateIdle: FAIL retry semantics", () => {
         await handleTollgateIdle(ctx, team, idle(team, "alice"))
         expect(task.tollgatePhase).toBe("verify")
         expect(calls.some(c => c.sessionId === "ses_bob")).toBe(true)
-        // C17: startVerification clears responses[verifier] before dispatch.
+        // startVerification clears responses[verifier] before dispatch.
         // Simulate bob (verifier) actually producing output after dispatch.
         task.responses["bob"] = V.fail()
 
@@ -518,7 +518,7 @@ describe("handleTollgateIdle: FAIL retry semantics", () => {
         task.responses["alice"] = "revised artifact 2"
         await handleTollgateIdle(ctx, team, idle(team, "alice"))
         expect(task.tollgatePhase).toBe("verify")
-        // C17: re-populate verifier output after dispatch clears it.
+        // Re-populate verifier output after dispatch clears it.
         task.responses["bob"] = V.fail()
 
         // FAIL #3: attempts 3, exceeds 2 -> fail.
@@ -561,7 +561,7 @@ describe("handleTollgateIdle: FAIL retry semantics", () => {
 
 // --- INVALID escalation: T-1 deadlock regression (core) ---
 
-describe("handleTollgateIdle: INVALID escalation (T-1 regression)", () => {
+describe("handleTollgateIdle: INVALID escalation", () => {
     test("INVALID + escalateTo -> escalate phase -> re-verify, producer never re-dispatched", async () => {
         const calls: DispatchCall[] = []
         const ctx = makeCtx({ calls })
@@ -610,7 +610,7 @@ describe("handleTollgateIdle: INVALID escalation (T-1 regression)", () => {
         expect(team.members.find(m => m.name === "alice")!.turnCount).toBe(producerTurnBefore)
     })
 
-    test("H-26: INVALID without escalateTo -> HITL escalation to leader (approval pause), not auto-fail", async () => {
+    test("INVALID without escalateTo -> HITL escalation to leader (approval pause), not auto-fail", async () => {
         const calls: DispatchCall[] = []
         const ctx = makeCtx({ calls })
         const task = makeTollgateTask({
@@ -630,7 +630,7 @@ describe("handleTollgateIdle: INVALID escalation (T-1 regression)", () => {
         await handleTollgateIdle(ctx, team, idle(team, "bob"))
 
         expect(task.gatedStages![0].verdict).toBe("INVALID")
-        // H-26: the run is now paused for HITL approval, not auto-failed.
+        // The run is now paused for HITL approval, not auto-failed.
         // The team is still busy (approval pending).
         expect(team.status).toBe("busy")
         expect(team.activeTask).toBeDefined()
@@ -669,7 +669,7 @@ describe("handleTollgateIdle: INVALID escalation (T-1 regression)", () => {
 
 // --- INVALID cycle cap (P2 regression) ---
 
-describe("handleTollgateIdle: INVALID cycle cap (P2 regression)", () => {
+describe("handleTollgateIdle: INVALID cycle cap", () => {
     test("maxInvalidCycles=2 -> the 3rd INVALID fails with tollgate_invalid:exhausted", async () => {
         const calls: DispatchCall[] = []
         const ctx = makeCtx({ calls })

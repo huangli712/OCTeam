@@ -1,5 +1,5 @@
 /**
- * H41 (2026-07-28 audit): reduce reducer-error fallback bypasses signoff.
+ * Reduce reducer-error fallback bypasses signoff.
  *
  * Bug: handleReduceIdle (reduce.ts:74-101) when the reducer itself is
  * errored, falls back to the parallel non-reduce delivery path and calls
@@ -66,7 +66,7 @@ describe("reducer mapper snapshot", () => {
     })
 })
 
-describe("H41: reducer-errored fallback honors signoff", () => {
+describe("reducer-errored fallback honors signoff", () => {
     test("reducer errored + signoffPolicy set → signoff triggered before finishRun", async () => {
         const calls: DispatchCall[] = []
         const ctx = makeCtx({ calls })

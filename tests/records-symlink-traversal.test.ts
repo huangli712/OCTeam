@@ -1,5 +1,5 @@
 /**
- * C-2 regression: events.ts appendJsonl, capture.ts readFile, and runs.ts
+ * Regression: events.ts appendJsonl, capture.ts readFile, and runs.ts
  * readdir/readFile/rm must all reject when the target path or an ancestor
  * is a symlink that escapes the team directory. Without the trustedRoot
  * parameter / assertNoSymlinkTraversal guard, a symlinked runs/ or
@@ -22,7 +22,7 @@ import { initLogger, __test__ as logTest } from "../src/core/log.js"
 
 afterAll(cleanupTmpRoots)
 
-describe("records symlink traversal (C-2)", () => {
+describe("records symlink traversal", () => {
     test("recordEvent rejects when runs/ is a symlink to outside team dir", async () => {
         const dir = tmpRoot("c2-events")
         const outside = tmpRoot("c2-events-outside")

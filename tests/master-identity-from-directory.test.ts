@@ -1,5 +1,5 @@
 /**
- * Regression test for C-3: master identity must come from the trusted
+ * Regression test: master identity must come from the trusted
  * directory layout (project scope), NOT from the disk-persisted
  * state.leadSessionId field.
  *
@@ -34,7 +34,7 @@ afterEach(() => {
     for (const sid of tracked.splice(0)) unindexSession(sid)
 })
 
-describe("C-3: master session comes from directory layout, not disk leadSessionId (project scope)", () => {
+describe("master session comes from directory layout, not disk leadSessionId (project scope)", () => {
     test("tampered state.leadSessionId does NOT gain master privilege", async () => {
         const root = tmpRoot("c3-master-tamper")
         const legitimateSid = "legit-leader-sid"

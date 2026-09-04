@@ -102,7 +102,7 @@ describe("parseRouteDecision", () => {
         expect(parseRouteDecision('<route>{"rationale": "no branch"}</route>').parseFailed).toBe(true)
     })
 
-    test("H-16 strict: non-string branch values make the entire decision parseFailed", () => {
+    test("strict: non-string branch values make the entire decision parseFailed", () => {
         const text = '<route>{"branches": ["valid", 42, null, "also-valid"]}</route>'
         expect(parseRouteDecision(text).parseFailed).toBe(true)
     })
@@ -555,7 +555,7 @@ async function setupRouteTeam(
     await rebuildSessionIndex(root, `${root}__unused`)
 }
 
-// --- LOW-1: teamRouteTool input validation (5 error branches) ---
+// --- teamRouteTool input validation (5 error branches) ---
 
 describe("teamRouteTool: input validation", () => {
     test('router = "master" is rejected before any team lookup', async () => {
@@ -650,7 +650,7 @@ describe("teamRouteTool: input validation", () => {
     })
 })
 
-// --- LOW-2: buildRouterPrompt format ---
+// --- buildRouterPrompt format ---
 
 describe("buildRouterPrompt", () => {
     test("renders branch list, input, decision format, and i18n warning", () => {
@@ -678,7 +678,7 @@ describe("buildRouterPrompt", () => {
     })
 })
 
-// --- LOW-3: Phase B errored target -> checkTermination fail-fast ---
+// --- Phase B errored target -> checkTermination fail-fast ---
 
 describe("checkTermination: route Phase B errored target", () => {
     test("an errored target fails the run (route tolerance is 0)", async () => {
@@ -720,7 +720,7 @@ describe("checkTermination: route Phase B errored target", () => {
     })
 })
 
-// --- LOW-4: summary + resume route branches ---
+// --- summary + resume route branches ---
 
 describe("buildSummary: route case", () => {
     test("excludes router decision JSON, shows target outputs + rationale", async () => {

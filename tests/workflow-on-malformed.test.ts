@@ -1,5 +1,5 @@
 /**
- * A3: on_malformed gate policy tests.
+ * on_malformed gate policy tests.
  *
  * parse_failure (verifier output that cannot be parsed as a <verdict>) now
  * routes through on_malformed instead of on_invalid, with fallback to

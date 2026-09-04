@@ -554,9 +554,9 @@ describe("misc", () => {
 // Group G: resume (defends v4 fix D — quorum-specific predicate)
 // ============================================================
 
-describe("resume integration (v4 fix D defense)", () => {
+describe("resume integration", () => {
     test("G1: resumeDispatch filters errored participants and re-drives the quorum barrier", async () => {
-        // Scenario from Momus v3 concern D1: N=3, A/B idle+response, C errored+no-response.
+        // Scenario: N=3, A/B idle+response, C errored+no-response.
         // Without the errored guard in resumeQuorumMode, dispatch would count C as a no-op
         // dispatch, suppressing the zero-dispatch barrier re-drive and hanging the run.
         const calls: DispatchCall[] = []

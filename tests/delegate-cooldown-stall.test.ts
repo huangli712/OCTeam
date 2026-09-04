@@ -1,5 +1,5 @@
 /**
- * C16 (2026-07-28 audit): delegate cooldown can permanently strand
+ * Delegate cooldown can permanently strand
  * claimable tasks.
  *
  * Bug: runDelegateStyleTail filters idle members by NOTIFY_COOLDOWN_MS.
@@ -44,7 +44,7 @@ function delegateTask(runId: string): ActiveTask {
     }
 }
 
-describe("C16: delegate cooldown must not permanently strand claimable tasks", () => {
+describe("delegate cooldown must not permanently strand claimable tasks", () => {
     test("all idle members in cooldown → dispatch anyway to avoid stall", async () => {
         const root = tmpRoot("c16-stall")
         const alice = makeMember("alice", "ses_a")

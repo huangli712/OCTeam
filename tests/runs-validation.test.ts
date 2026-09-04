@@ -1,5 +1,5 @@
 /**
- * Regression tests for runs.ts zod validation (H3 / Rank 8 minimal scope).
+ * Regression tests for runs.ts zod validation (minimal scope).
  *
  * Before the fix, run records were read via bare `JSON.parse(raw) as RunRecord`
  * with no schema check — a structurally-invalid-but-parseable record flowed
@@ -43,7 +43,7 @@ function writeRecord(teamDir: string, runId: string, payload: string): void {
     writeFileSync(path.join(dir, "record.json"), payload, "utf8")
 }
 
-describe("runs.ts zod validation (H3)", () => {
+describe("runs.ts zod validation", () => {
     it("readRunRecord returns the parsed object for a well-formed record", async () => {
         const root = tmpRoot("runs-valid")
         writeRecord(root, "run-good", validRecord("run-good", 5000))

@@ -20,6 +20,69 @@ export const MEMBER_TEAM_TOOLS_PERMISSION: OcteamAgentPermission = {
 }
 
 /**
+ * Indexed read/search tier (host "AFT bridge" tools). Member sessions —
+ * plain and worktree alike — expose NO aft_* tools, so these explicit allows
+ * are forward-proofing, not live grants: they keep the tools usable the
+ * moment the host injects them (same pattern as 
+ * MEMBER_TEAM_TOOLS_PERMISSION) instead of relying on the "*" wildcard,
+ * which the host SDK may silently ignore. Spread by every preset whose role
+ * includes direct code reading. Locked by tests/agents.test.ts
+ * (table-driven: preset x tier).
+ */
+export const AFT_READ_TOOLS_PERMISSION: OcteamAgentPermission = {
+    aft_search: "allow",
+    aft_grep: "allow",
+    aft_glob: "allow",
+    aft_read: "allow",
+    aft_outline: "allow",
+    aft_zoom: "allow",
+}
+
+/**
+ * Single-key call-graph tier. Kept separate because its grant set
+ * (oracle, explore, junior, deep) matches no other tier: explore takes
+ * callgraph without diagnostics, while the analysis presets (metis,
+ * momus) deliberately stay light without it. Locked by tests/agents.test.ts.
+ */
+export const AFT_CALLGRAPH_PERMISSION: OcteamAgentPermission = {
+    aft_callgraph: "allow",
+}
+
+/**
+ * Read-only diagnostics tier (codebase health + LSP navigation).
+ * lsp_rename is deliberately absent: it applies workspace edits and is a
+ * WRITE tool (see AFT_WRITE_TOOLS_DENY). Locked by tests/agents.test.ts.
+ */
+export const AFT_DIAGNOSTICS_PERMISSION: OcteamAgentPermission = {
+    aft_inspect: "allow",
+    lsp_diagnostics: "allow",
+    lsp_symbols: "allow",
+    lsp_goto_definition: "allow",
+    lsp_find_references: "allow",
+    lsp_status: "allow",
+}
+
+/**
+ * Write-family deny for non-executor presets (read-only + analysis agents).
+ * Explicit denies are honored for named tools even while the host SDK
+ * ignores the "*" wildcard, so this blocks the structured write tools the
+ * moment the host injects them — defense in depth beyond "*": "deny".
+ * Executors (oct-junior, oct-deep) must NOT spread this.
+ */
+export const AFT_WRITE_TOOLS_DENY: OcteamAgentPermission = {
+    aft_edit: "deny",
+    aft_write: "deny",
+    aft_apply_patch: "deny",
+    aft_ast_replace: "deny",
+    aft_refactor: "deny",
+    aft_import: "deny",
+    aft_move: "deny",
+    aft_delete: "deny",
+    aft_bash: "deny",
+    lsp_rename: "deny",
+}
+
+/**
  * Permission action for an OCTeam agent — mirrors opencode's
  * PermissionActionConfig ("ask" | "allow" | "deny").
  */

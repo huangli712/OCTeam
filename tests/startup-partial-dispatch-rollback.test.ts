@@ -1,5 +1,5 @@
 /**
- * Regression test for H-9: startup partial spawn rollback must abort
+ * Regression test: startup partial spawn rollback must abort
  * already-dispatched members, not just clear the activeTask.
  *
  * Bug: src/orchestration/lifecycle/startup.ts dispatch catch block (line 286)
@@ -22,7 +22,7 @@ import { cleanupTmpRoots } from "./helpers.js"
 
 afterAll(cleanupTmpRoots)
 
-describe("H-9: startup partial dispatch rollback aborts already-dispatched members", () => {
+describe("startup partial dispatch rollback aborts already-dispatched members", () => {
     test("when the 2nd of 3 dispatches fails, the 1st dispatched member is aborted/marked errored", async () => {
         // We verify the principle at the test level: if dispatch partially
         // succeeds then throws, the already-dispatched members should NOT

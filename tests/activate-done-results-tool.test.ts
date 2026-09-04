@@ -1,6 +1,6 @@
 /**
  * Coverage-gap regression tests for three tool handlers that previously had
- * NO direct execute() coverage (audit 2026-06-30 Context Mining finding):
+ * NO direct execute() coverage:
  *   - teamActivateTool        (src/tools/lifecycle/activate.ts) — 0% handler covered
  *   - teamDoneTool            (src/tools/control/done.ts)     — 0% handler covered
  *   - teamResultsTool         (src/tools/query/results.ts)  — 0% handler covered

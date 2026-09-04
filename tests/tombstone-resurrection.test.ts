@@ -1,5 +1,5 @@
 /**
- * Regression tests for concurrency bug C1: deleted team directories were
+ * Regression tests for a concurrency bug: deleted team directories were
  * unconditionally resurrected by racing event-handler write paths.
  *
  * Root cause: loadTeamState returns the SAME in-memory Team reference to every
@@ -87,9 +87,9 @@ afterEach(() => {
     }
 })
 
-// --- T1: main race (integration) ---
+// --- main race (integration) ---
 
-describe("C1 T1: processIdle does not resurrect a just-deleted team dir", () => {
+describe("processIdle does not resurrect a just-deleted team dir", () => {
     test("handler holds team ref → delete completes → processIdle no-ops; state.json/runs/events.jsonl absent", async () => {
         const root = tmpRoot("tomb-1")
         roots.push(root)
@@ -140,9 +140,9 @@ describe("C1 T1: processIdle does not resurrect a just-deleted team dir", () => 
     })
 })
 
-// --- T2: saveTeamState guard (unit, covers handleStatusEvent path) ---
+// --- saveTeamState guard (unit, covers handleStatusEvent path) ---
 
-describe("C1 T2: saveTeamState guard skips persistence for tombstoned team", () => {
+describe("saveTeamState guard skips persistence for tombstoned team", () => {
     test("team.deleted=true → saveTeamState no-ops; state.json is NOT recreated", async () => {
         const root = tmpRoot("c1-t2")
         roots.push(root)
@@ -167,9 +167,9 @@ describe("C1 T2: saveTeamState guard skips persistence for tombstoned team", () 
     })
 })
 
-// --- T3: stripRuntimeFields excludes `deleted` (integration) ---
+// --- stripRuntimeFields excludes `deleted` (integration) ---
 
-describe("C1 T3: stripRuntimeFields never persists the tombstone to state.json", () => {
+describe("stripRuntimeFields never persists the tombstone to state.json", () => {
     test("team.deleted=true + saveTeamState → state.json has NO `deleted` key (anti-bricking)", async () => {
         const root = tmpRoot("c1-t3")
         roots.push(root)
@@ -196,9 +196,9 @@ describe("C1 T3: stripRuntimeFields never persists the tombstone to state.json",
     })
 })
 
-// --- T4: force-delete mid-orchestration (integration) ---
+// --- force-delete mid-orchestration (integration) ---
 
-describe("C1 T4: force-delete of a busy team → subsequent handler processIdle is a no-op", () => {
+describe("force-delete of a busy team → subsequent handler processIdle is a no-op", () => {
     test("busy team with activeTask + running member → team_delete(force) → processIdle → no resurrection", async () => {
         const root = tmpRoot("c1-t4")
         roots.push(root)
@@ -241,9 +241,9 @@ describe("C1 T4: force-delete of a busy team → subsequent handler processIdle 
     })
 })
 
-// --- T5: master idle path race (unit) ---
+// --- master idle path race (unit) ---
 
-describe("C1 T5: master idle event during master-team delete → processIdle no-ops via tombstone", () => {
+describe("master idle event during master-team delete → processIdle no-ops via tombstone", () => {
     test("master pseudo-member processIdle on deleted team → guard fires before master branch", async () => {
         const root = tmpRoot("c1-t5")
         roots.push(root)
@@ -271,9 +271,9 @@ describe("C1 T5: master idle event during master-team delete → processIdle no-
     })
 })
 
-// --- T6: self-heal on registry rebuild (integration) ---
+// --- self-heal on registry rebuild (integration) ---
 
-describe("C1 T6: tombstone does not survive a registry rebuild (self-heal)", () => {
+describe("tombstone does not survive a registry rebuild (self-heal)", () => {
     test("deleted=true → saveTeamState → invalidateTeam → reload yields deleted===undefined", async () => {
         const root = tmpRoot("c1-t6")
         roots.push(root)
@@ -299,7 +299,7 @@ describe("C1 T6: tombstone does not survive a registry rebuild (self-heal)", () 
     })
 })
 
-describe("S3: deletion markers are scoped to a team run", () => {
+describe("deletion markers are scoped to a team run", () => {
     test("a replacement team removes the previous run's marker and persists its first save", async () => {
         const root = tmpRoot("s3-marker-generation")
         roots.push(root)

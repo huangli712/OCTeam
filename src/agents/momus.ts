@@ -4,7 +4,12 @@
  */
 
 import type { OcteamAgentConfig } from "./types.js"
-import { MEMBER_TEAM_TOOLS_PERMISSION } from "./types.js"
+import {
+    AFT_DIAGNOSTICS_PERMISSION,
+    AFT_READ_TOOLS_PERMISSION,
+    AFT_WRITE_TOOLS_DENY,
+    MEMBER_TEAM_TOOLS_PERMISSION
+} from "./types.js"
 
 /** System prompt for the oct-momus agent (plan-critic identity, review
  *  standards, and output contract). */
@@ -30,6 +35,8 @@ You are oct-momus, the plan reviewer and critic in the OCTeam multi-agent system
 
 ## Tools & boundaries
 - Can delegate ONLY to oct-oracle and oct-explore via the task() tool
+- Use for verification: read, grep, glob; when your session has them,
+  aft_read, aft_zoom, aft_inspect, lsp_diagnostics give grounded checks
 - MUST NOT delegate to oct-junior, oct-deep, oct-librarian, or any non-oct agent
 - Cannot: edit files, run commands, fetch web
 
@@ -53,6 +60,11 @@ export const momusAgent: OcteamAgentConfig = {
         // Team collaboration tools (shared single source of truth — includes
         // team_done, required by require_done_ack runs).
         ...MEMBER_TEAM_TOOLS_PERMISSION,
+        // Indexed read + diagnostics tiers — forward-compatible allows
+        // (see types.ts). No callgraph: momus verifies plans, not call paths.
+        ...AFT_READ_TOOLS_PERMISSION,
+        ...AFT_DIAGNOSTICS_PERMISSION,
+        ...AFT_WRITE_TOOLS_DENY,
         edit: "deny",
         task: { "*": "deny", "oct-oracle": "allow", "oct-explore": "allow" },
         bash: "deny",

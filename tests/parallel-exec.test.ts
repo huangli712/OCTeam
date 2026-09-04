@@ -80,7 +80,7 @@ describe("handleParallelIdle: barrier progression", () => {
         expect(calls.some(c => c.sessionId === "ses_lead")).toBe(false)
     })
 
-    test("dispatched idle participant without output escalates to errored and finishes (R2)", async () => {
+    test("dispatched idle participant without output escalates to errored and finishes", async () => {
         const calls: DispatchCall[] = []
         const ctx = makeCtx({ calls })
         const task = makeParallelTask({
@@ -97,7 +97,7 @@ describe("handleParallelIdle: barrier progression", () => {
 
         await handleParallelIdle(ctx, team)
 
-        // R2: bob (empty output) is escalated to errored, and with
+        // bob (empty output) is escalated to errored, and with
         // maxErroredMembers=0, the run fails immediately instead of
         // hanging at "busy" until wall-clock timeout.
         const bob = team.members.find(m => m.name === "bob")
@@ -108,7 +108,7 @@ describe("handleParallelIdle: barrier progression", () => {
         expect(calls.some(c => c.sessionId === "ses_lead")).toBe(true)
     })
 
-    test("R2: empty-response with tolerance delivers survivors instead of hanging", async () => {
+    test("empty-response with tolerance delivers survivors instead of hanging", async () => {
         const calls: DispatchCall[] = []
         const ctx = makeCtx({ calls })
         const task = makeParallelTask({

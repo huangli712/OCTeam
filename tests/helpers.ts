@@ -391,11 +391,11 @@ export function makeTeam(opts: MakeTeamOptions = {}): Team {
         mutex: new AsyncMutex(),
         directory: opts.directory ?? tmpRoot("team"),
     } as unknown as Team
-    // C9: register the master session in the in-memory index so tools that
+    // Register the master session in the in-memory index so tools that
     // verify master authorization via isIndexedMasterOf find the team. Test
     // fixtures built with makeTeam are in-memory only (no disk scan via
-    // rebuildSessionIndex), so without this registration the C9 hardening
-    // check would reject every fixture-driven master call.
+    // rebuildSessionIndex), so without this registration the master-auth
+    // hardening check would reject every fixture-driven master call.
     if (team.leadSessionId) {
         indexMasterTeam(team.leadSessionId, team.teamName, team.leadSessionId,
             path.dirname(team.directory), team.directory)

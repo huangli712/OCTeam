@@ -55,7 +55,7 @@ describe("isForbiddenLateralMessage (isolated comms gate)", () => {
     })
 })
 
-// --- T5: directive priority (Part A) + runId-scoped Transform filtering (Part B/C) ---
+// --- directive priority (Part A) + runId-scoped Transform filtering (Part B/C) ---
 
 const LEAD = "ses_lead_msg"
 const MEMBER = "ses_member_msg"
@@ -155,7 +155,7 @@ async function exists(p: string): Promise<boolean> {
     }
 }
 
-describe("formatMailboxInjection directive priority (T5 Part A)", () => {
+describe("formatMailboxInjection directive priority (Part A)", () => {
     test("(a) directives render FIRST with [DIRECTIVE] marker, before regular messages", () => {
         // Register the directive as authenticated (writeMailboxMessage does
         // this automatically for real writes; this pure unit test must do it
@@ -178,7 +178,7 @@ describe("formatMailboxInjection directive priority (T5 Part A)", () => {
     })
 })
 
-describe("transform hook runId-scoped directive filtering (T5 Part B/C)", () => {
+describe("transform hook runId-scoped directive filtering (Part B/C)", () => {
     afterEach(() => {
         unindexSession(MEMBER)
         unindexSession(LEAD)
@@ -203,7 +203,7 @@ describe("transform hook runId-scoped directive filtering (T5 Part B/C)", () => 
 
     test("(d) directive WITHOUT runId → injected when NO active run (pre-capture backward-compat)", async () => {
         const root = tmpRoot("t5-norun")
-        // C-10: unscoped directives are legitimate only when there is no
+        // Unscoped directives are legitimate only when there is no
         // active run (pre-capture edge). With an active run they are now
         // rejected to prevent cross-run replay — see auth.ts fail-closed.
         const dir = await setupTeam(root, undefined)

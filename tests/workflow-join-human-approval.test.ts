@@ -1,5 +1,5 @@
 /**
- * Regression test for H-3: fanout join completion must provide a task-level
+ * Regression test: fanout join completion must provide a task-level
  * human_approval boundary.
  *
  * Bug: src/orchestration/workflow/engine.ts handleWorkflowIdleReady dispatches
@@ -23,7 +23,7 @@ import { cleanupTmpRoots, makeCtx, makeTeam, makeWorkflowTask, type DispatchCall
 
 afterAll(cleanupTmpRoots)
 
-describe("H-3: fanout join completion respects task-level human_approval", () => {
+describe("fanout join completion respects task-level human_approval", () => {
     test("join completion with human_approval:true pauses before downstream dispatch", async () => {
         const calls: DispatchCall[] = []
         // Workflow: fanout with 1 branch → join → downstream task.
@@ -56,7 +56,7 @@ describe("H-3: fanout join completion respects task-level human_approval", () =>
         // should observe the branch completion and proceed through the join.
         await processIdle(ctx, team, team.members[0], "ses_alice")
 
-        // H-3 fix: after the join completes, the run must pause for master
+        // Fix: after the join completes, the run must pause for master
         // approval BEFORE carol (downstream) is dispatched. Pre-fix: carol
         // is dispatched immediately, no approval requested.
         const carolCall = calls.find(c => c.sessionId === "ses_carol")

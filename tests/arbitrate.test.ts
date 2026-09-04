@@ -533,7 +533,7 @@ async function setupArbitrateTeam(
     await rebuildSessionIndex(root, `${root}__unused`)
 }
 
-// --- LOW-1: teamArbitrateTool input validation (error branches) ---
+// --- teamArbitrateTool input validation (error branches) ---
 
 describe("teamArbitrateTool: input validation", () => {
     test('arbiter = "master" is rejected before any team lookup', async () => {
@@ -644,7 +644,7 @@ describe("teamArbitrateTool: input validation", () => {
     })
 })
 
-// --- LOW-2: team_resume arbitrate branches ---
+// --- team_resume arbitrate branches ---
 describe("team_resume: arbitrate case", () => {
     test("Phase A re-dispatches only debaters that have no captured response", async () => {
         const root = tmpRoot("arb-resume-a-redispatch")
@@ -812,7 +812,7 @@ describe("team_resume: arbitrate case", () => {
     })
 })
 
-// --- LOW-3: buildSummary arbitrate case ---
+// --- buildSummary arbitrate case ---
 
 describe("buildSummary: arbitrate case", () => {
     test("leads with the ruling + rationale, shows debater positions, excludes <ruling> JSON", async () => {

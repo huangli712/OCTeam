@@ -1,5 +1,5 @@
 /**
- * Regression test for H-5: ensemble score/confidence aggregation must only
+ * Regression test: ensemble score/confidence aggregation must only
  * consider results that SUPPORT the final verdict, not all results including
  * INVALID and dissenting votes.
  *
@@ -36,7 +36,7 @@ function makeEnsembleGate(
     } as unknown as WorkflowGateStep
 }
 
-describe("H-5: ensemble aggregate score/confidence excludes INVALID and dissenting votes", () => {
+describe("ensemble aggregate score/confidence excludes INVALID and dissenting votes", () => {
     test("majority PASS: aggregate score comes from PASS votes only (INVALID with high score excluded)", () => {
         // 2 PASS verifiers give score=7; 1 INVALID verifier gives score=10.
         // Aggregate score should be max(7, 7) = 7 from the PASS voters — the

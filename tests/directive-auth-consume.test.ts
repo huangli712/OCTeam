@@ -1,5 +1,5 @@
 /**
- * C-5 regression: ackMessages must consume directive auth records when the
+ * Regression: ackMessages must consume directive auth records when the
  * registered directive has a runId. Pre-fix consumeDirectiveAuth(msg) was
  * called without activeRunId, so the fail-closed check inside
  * isAuthenticatedDirective rejected the match → no consumption → the same
@@ -22,7 +22,7 @@ import { mkdir } from "node:fs/promises"
 
 afterAll(cleanupTmpRoots)
 
-describe("consumeDirectiveAuth runId binding (C-5)", () => {
+describe("consumeDirectiveAuth runId binding", () => {
     test("consumeDirectiveAuth deletes a registered directive with runId when msg.runId matches", () => {
         const msg = {
             version: 1 as const,
@@ -69,7 +69,7 @@ describe("consumeDirectiveAuth runId binding (C-5)", () => {
         }
 
         // Register the directive (mimics writeMailboxMessage during a real run).
-        // C-9: use root as teamName so it matches what ackMessages passes
+        // Use root as teamName so it matches what ackMessages passes
         // (teamDirectory) for consumption.
         authenticateDirective(msg, root, "r-ack")
         expect(isAuthenticatedDirective(msg, "r-ack", root)).toBe(true)

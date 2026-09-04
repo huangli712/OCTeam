@@ -45,7 +45,7 @@ function makeParallelTask(opts: Partial<ActiveTask> = {}): ActiveTask {
 
 // --- (a) peer-quorum signoff excludes an errored member from dispatch ---
 
-describe("P0-1: errored member is not revived by a peer-quorum signoff dispatch", () => {
+describe("errored member is not revived by a peer-quorum signoff dispatch", () => {
     test("the review prompt goes ONLY to surviving reviewers, never the errored member", async () => {
         const calls: DispatchCall[] = []
         const ctx = makeCtx({ calls })
@@ -81,7 +81,7 @@ describe("P0-1: errored member is not revived by a peer-quorum signoff dispatch"
 
 // --- (b) the quorum denominator excludes the errored member ---
 
-describe("P0-1: peer-quorum denominator excludes errored members", () => {
+describe("peer-quorum denominator excludes errored members", () => {
     test("surviving reviewers reach quorum (2/2) even though a third member errored", async () => {
         const calls: DispatchCall[] = []
         // The reviewer that is about to idle approves; the other survivor already
@@ -145,7 +145,7 @@ describe("P0-1: peer-quorum denominator excludes errored members", () => {
 
 // --- (c) dispatchToMember is a no-op on an errored member ---
 
-describe("P0-1: dispatchToMember refuses to dispatch an errored member", () => {
+describe("dispatchToMember refuses to dispatch an errored member", () => {
     test("status stays errored, turnCount unchanged, and no prompt is sent", async () => {
         const calls: DispatchCall[] = []
         const ctx = makeCtx({ calls })

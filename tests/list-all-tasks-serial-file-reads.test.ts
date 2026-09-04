@@ -68,7 +68,7 @@ describe("listAllTasks must read task files concurrently (finding: list-all-task
             inFlight++
             if (inFlight > peak) peak = inFlight
             // Extract taskId from the file path so the id matches the filename
-            // (readTaskFile validates parsed.id === taskId per C12 fix).
+            // (readTaskFile validates parsed.id === taskId).
             const taskId = String(file).split("/").pop()?.replace(/\.json$/, "") ?? "unknown"
             return new Promise<string>(resolve => {
                 releasers.push(() => {

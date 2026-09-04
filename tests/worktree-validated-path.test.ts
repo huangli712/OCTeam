@@ -1,5 +1,5 @@
 /**
- * C15 (2026-07-28 audit): cleanWorktree validates `resolved` (relative to
+ * cleanWorktree validates `resolved` (relative to
  * worktreesRoot) but passes the original `worktreePath` to git (resolved
  * relative to projectDir as cwd). The two paths can diverge.
  *
@@ -37,7 +37,7 @@ async function pathExists(p: string): Promise<boolean> {
     try { await access(p); return true } catch { return false }
 }
 
-describe("C15: cleanWorktree passes validated absolute path to git", () => {
+describe("cleanWorktree passes validated absolute path to git", () => {
     test("relative worktreePath is resolved against worktreesRoot, not projectDir", async () => {
         const projectDir = await mkdtemp(path.join(os.tmpdir(), "c15-project-"))
         const storageRoot = await mkdtemp(path.join(os.tmpdir(), "c15-storage-"))

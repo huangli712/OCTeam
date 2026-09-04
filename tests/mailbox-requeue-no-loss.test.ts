@@ -1,5 +1,5 @@
 /**
- * Regression test for C-5: releaseStaleReservations requeue must be
+ * Regression test: releaseStaleReservations requeue must be
  * append-BEFORE-unlink, not unlink-BEFORE-append.
  *
  * Bug: src/messaging/mailbox.ts releaseStaleReservations() unlinks the
@@ -30,7 +30,7 @@ import { cleanupTmpRoots, tmpRoot } from "./helpers.js"
 
 afterAll(cleanupTmpRoots)
 
-describe("C-5: releaseStaleReservations requeue is append-before-unlink (no message loss)", () => {
+describe("releaseStaleReservations requeue is append-before-unlink (no message loss)", () => {
     test("requeue succeeds: reserved entry removed AFTER inbox append succeeds", async () => {
         const teamDir = tmpRoot("c5-normal-requeue")
         const recipient = "alice"
@@ -90,13 +90,13 @@ describe("C-5: releaseStaleReservations requeue is append-before-unlink (no mess
         mkdirSync(inboxPath(teamDir, recipient))
 
         // The reaper will try to requeue; the append must fail. With the
-        // C-5 fix (append-first), the failure is caught and the reserved
+        // append-first fix, the failure is caught and the reserved
         // file is preserved for the next sweep — the function does NOT throw.
         // (Pre-fix code unlinked first, then failed on append, losing the
         // message AND propagating the error.)
         await releaseStaleReservations(teamDir, recipient)
 
-        // C-5 fix: append-first means the reserved file is still there
+        // The fix: append-first means the reserved file is still there
         // when append fails. Pre-fix: unlink-first means it's gone.
         const reservedContents = (() => {
             try { return readFileSync(rPath, "utf8") }

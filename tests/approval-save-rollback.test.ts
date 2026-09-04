@@ -1,5 +1,5 @@
 /**
- * H-30 regression: maybeRequestApproval must rollback the in-memory
+ * Regression: maybeRequestApproval must rollback the in-memory
  * approvalStage/approvalRequest when saveTeamState fails. Pre-fix code set
  * those fields, called saveTeamState, and let any throw propagate — the
  * team was left with activeTask.approvalStage=true in memory but no pause
@@ -15,7 +15,7 @@ import { maybeRequestApproval } from "../src/orchestration/control/approval.js"
 import type { ActiveTask } from "../src/core/types.js"
 import { makeCtx, makeTeam, tmpRoot } from "./helpers.js"
 
-describe("H-30: maybeRequestApproval rolls back pause on save failure", () => {
+describe("maybeRequestApproval rolls back pause on save failure", () => {
     test("saveTeamState failure clears approvalStage/approvalRequest in memory", async () => {
         // Build a team whose state save will fail. We sabotage state.json
         // with a symlink so atomicWrite refuses (its leaf-symlink guard).
@@ -58,7 +58,7 @@ describe("H-30: maybeRequestApproval rolls back pause on save failure", () => {
             summary: "approve to advance",
         })).rejects.toThrow(/symlink/i)
 
-        // H-30 contract: the in-memory pause fields MUST be cleared so the
+        // Contract: the in-memory pause fields MUST be cleared so the
         // orchestrator does not idle on a phantom pause. Pre-fix: these stayed
         // set, stranding the team.
         expect(task.approvalStage).toBeUndefined()

@@ -1,5 +1,5 @@
 /**
- * Regression test for C-10: destroyWorktree must NOT delete the
+ * Regression test: destroyWorktree must NOT delete the
  * `team/<team>/<member>` branch when the member never had a worktree
  * registered (worktreePath is undefined).
  *
@@ -51,7 +51,7 @@ async function branchExists(dir: string, branch: string): Promise<boolean> {
     }
 }
 
-describe("C-10: destroyWorktree refuses branch deletion when worktreePath is undefined", () => {
+describe("destroyWorktree refuses branch deletion when worktreePath is undefined", () => {
     test("does NOT delete an existing unmerged branch when worktreePath is undefined", async () => {
         const projectDir = tmpRoot("c10-no-worktree")
         const worktreesRoot = path.join(projectDir, ".octeam", "worktrees")

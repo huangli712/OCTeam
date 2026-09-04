@@ -4,7 +4,12 @@
  */
 
 import type { OcteamAgentConfig } from "./types.js"
-import { MEMBER_TEAM_TOOLS_PERMISSION } from "./types.js"
+import {
+    AFT_CALLGRAPH_PERMISSION,
+    AFT_READ_TOOLS_PERMISSION,
+    AFT_WRITE_TOOLS_DENY,
+    MEMBER_TEAM_TOOLS_PERMISSION
+} from "./types.js"
 
 /** System prompt for the oct-explore agent (identity, search discipline,
  *  output contract, and team context). */
@@ -28,7 +33,8 @@ You are oct-explore, the codebase search and navigation specialist in the OCTeam
 - Do NOT guess file contents — say so if uncertain and narrow the search
 
 ## Tools & boundaries
-- Use: read, grep, glob, outline, zoom, callgraph tools
+- Use: read, grep, glob; prefer the indexed tools when your session has them
+  (aft_search, aft_grep, aft_glob, aft_read, aft_outline, aft_zoom, aft_callgraph)
 - Cannot: edit files, run commands, fetch web, delegate to agents
 
 ## Team context
@@ -48,6 +54,15 @@ export const exploreAgent: OcteamAgentConfig = {
         // Team collaboration tools (shared single source of truth — includes
         // team_done, required by require_done_ack runs).
         ...MEMBER_TEAM_TOOLS_PERMISSION,
+        // Indexed search tier — forward-compatible allows: member sessions
+        // expose no aft_* tools today (see types.ts), so these keep the tools
+        // usable once the host injects them. callgraph joins the core tier
+        // for the search specialist.
+        ...AFT_READ_TOOLS_PERMISSION,
+        ...AFT_CALLGRAPH_PERMISSION,
+        // Structured write-family tools stay denied for read-only roles even
+        // if the host injects them later (the "*" wildcard may be ignored).
+        ...AFT_WRITE_TOOLS_DENY,
         edit: "deny",
         task: "deny",
         bash: "deny",

@@ -1,5 +1,5 @@
 /**
- * Regression test for C-9: planner overwrite rollback must not lose data
+ * Regression test: planner overwrite rollback must not lose data
  * when the backup read fails.
  *
  * Bug: src/tools/workflow/planner.ts readFileWithFallback() returns null for
@@ -92,7 +92,7 @@ afterEach(() => {
     atomicWritePaths.splice(0)
 })
 
-describe("C-9: planner overwrite backup failure does NOT delete existing file", () => {
+describe("planner overwrite backup failure does NOT delete existing file", () => {
     test("when backup read fails, the existing file is preserved (not deleted)", async () => {
         const dir = tmpRoot("c9-backup-fail")
         // Pre-populate both files with real content (simulating an existing team).
@@ -150,7 +150,7 @@ describe("C-9: planner overwrite backup failure does NOT delete existing file", 
     })
 })
 
-describe("C-9: workflow file is also backed up (pair recovery)", () => {
+describe("workflow file is also backed up (pair recovery)", () => {
     test("workflow restore is attempted when team restore fails", async () => {
         const dir = tmpRoot("c9-independent-restore")
         writeFileSync(teamFilePath(dir), JSON.stringify({ name: PLAN_TEAM_ID, members: [] }))

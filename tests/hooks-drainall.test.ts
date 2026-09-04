@@ -131,7 +131,7 @@ function reconcileCtx(root: string): PluginContext {
     } as unknown as PluginContext
 }
 
-describe("reconcileCrashedTeams preserves lastInterruptedTask (T3)", () => {
+describe("reconcileCrashedTeams preserves lastInterruptedTask", () => {
     test("busy crash: lastInterruptedTask preserved; team NOT auto-failed (concurrent-instance safety)", async () => {
         const root = tmpRoot("reconcile-busy")
         const sid = "ses_crash_busy"
@@ -152,7 +152,7 @@ describe("reconcileCrashedTeams preserves lastInterruptedTask (T3)", () => {
         expect(team.status).toBe("busy")
         expect(team.activeTask).toEqual(task)
         expect(team.members[0].status).toBe("running")
-        // T3: the interrupted task is preserved for an explicit team_resume.
+        // The interrupted task is preserved for an explicit team_resume.
         expect(team.lastInterruptedTask).toEqual(task)
     })
 

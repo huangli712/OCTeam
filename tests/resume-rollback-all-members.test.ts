@@ -1,5 +1,5 @@
 /**
- * H-31 regression: team_resume catch-block rollback must process members that
+ * Regression: team_resume catch-block rollback must process members that
  * were dispatched during Phase 2 (status="running", turnCount incremented)
  * even when they were idle at Phase 1 entry. Pre-fix code only snapshotted
  * errored members in Phase 1, so the catch-block rollback loop skipped
@@ -23,7 +23,7 @@ afterEach(() => {
     for (const sid of tracked.splice(0)) unindexSession(sid)
 })
 
-describe("H-31: resume rollback marks Phase-2-dispatched idle members as errored", () => {
+describe("resume rollback marks Phase-2-dispatched idle members as errored", () => {
     test("a member that turned running during partial resume is marked errored on rollback", async () => {
         const root = tmpRoot("h31-resume")
         const sid = "ses_h31_master"
@@ -71,7 +71,7 @@ describe("H-31: resume rollback marks Phase-2-dispatched idle members as errored
 
         // Reload to inspect persisted state.
         const after = await loadTeamState(root, "alpha", sid)
-        // H-31 contract: alice (Phase-2-dispatched, turned running) MUST be
+        // Contract: alice (Phase-2-dispatched, turned running) MUST be
         // marked errored. Pre-fix: she was not in the Phase 1 snapshot, so the
         // rollback loop skipped her — she stayed "running" with no activeTask.
         const alice = after.members.find(m => m.name === "alice")!

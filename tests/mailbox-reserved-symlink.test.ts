@@ -1,5 +1,5 @@
 /**
- * Regression test for C-6: mailbox reserved directory must resist
+ * Regression test: mailbox reserved directory must resist
  * symlink-based read/delete attacks from a hostile .octeam/ writer.
  *
  * Bug: src/messaging/mailbox.ts releaseStaleReservations() iterates
@@ -18,7 +18,7 @@
  * - or requeues the parsed content into the inbox (arbitrary content
  *   injection)
  *
- * C-1's assertNoSymlinkTraversal helper (state/locks.ts) closes the
+ * The assertNoSymlinkTraversal helper (state/locks.ts) closes the
  * atomicWrite sink but NOT the read/stat/unlink paths inside the reaper.
  *
  * Fix: walk the path chain (dir + reserved file path) against teamDirectory
@@ -37,7 +37,7 @@ import { cleanupTmpRoots, tmpRoot } from "./helpers.js"
 
 afterAll(cleanupTmpRoots)
 
-describe("C-6: releaseStaleReservations refuses symlinked reserved entries", () => {
+describe("releaseStaleReservations refuses symlinked reserved entries", () => {
     test("symlinked reserved entry does NOT cause read/delete of outside file", async () => {
         const teamDir = tmpRoot("c6-symlink-reserved")
         const recipient = "alice"

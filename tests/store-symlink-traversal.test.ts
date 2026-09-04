@@ -1,5 +1,5 @@
 /**
- * C-3 regression: worktreePath in state.json is passed VERBATIM as the child
+ * Regression: worktreePath in state.json is passed VERBATIM as the child
  * session's directory at spawn/dispatch time. isValidTeamState previously
  * did only a lexical path.resolve containment check, which cannot detect a
  * worktreePath that resolves inside worktrees/ lexically but is a symlink
@@ -24,7 +24,7 @@ import { cleanupTmpRoots, makeMember, makeState, tmpRoot } from "./helpers.js"
 
 afterAll(cleanupTmpRoots)
 
-describe("worktreePath symlink hardening (C-3)", () => {
+describe("worktreePath symlink hardening", () => {
     test("state.json with worktreePath that is a symlink to outside is rejected", async () => {
         const root = tmpRoot("c3-wt-symlink")
         const sid = "ses_c3_wt_symlink"

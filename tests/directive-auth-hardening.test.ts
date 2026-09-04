@@ -1,5 +1,5 @@
 /**
- * Regression tests for C-2 (directive authentication hardening).
+ * Regression tests for directive authentication hardening.
  *
  * Three confirmed gaps in messaging/auth.ts + deliver.ts + hooks.ts:
  *
@@ -46,7 +46,7 @@ function makeDirective(overrides: Partial<Message> = {}): Message {
     } as Message
 }
 
-describe("C-2.1: cross-run replay must fail CLOSED when activeRunId is undefined", () => {
+describe("cross-run replay must fail CLOSED when activeRunId is undefined", () => {
     test("directive authenticated with runId=A is rejected when activeRunId is undefined", () => {
         const msg = makeDirective({ id: "run-bound-001" })
         authenticateDirective(msg, "teamX", "run-A")
@@ -77,7 +77,7 @@ describe("C-2.1: cross-run replay must fail CLOSED when activeRunId is undefined
     })
 })
 
-describe("C-2.2: broadcast recipient auth must not overwrite earlier recipients", () => {
+describe("broadcast recipient auth must not overwrite earlier recipients", () => {
     test("broadcast to multiple recipients: EACH recipient's polled directive renders as [DIRECTIVE]", async () => {
         const teamDir = tmpRoot("dir-broadcast")
         const id = "broadcast-001"
@@ -108,7 +108,7 @@ describe("C-2.2: broadcast recipient auth must not overwrite earlier recipients"
     })
 })
 
-describe("C-2.3: authenticated directives must be consumed after delivery (one-shot)", () => {
+describe("authenticated directives must be consumed after delivery (one-shot)", () => {
     test("replay of same JSONL after ack no longer receives [DIRECTIVE]", async () => {
         const teamDir = tmpRoot("dir-replay-after-ack")
         const legit = makeDirective({ id: "oneshot-001" })

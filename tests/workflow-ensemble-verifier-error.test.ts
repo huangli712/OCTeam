@@ -1,5 +1,5 @@
 /**
- * Regression test for H-7: a fanout ensemble gate's branch can be correctly
+ * Regression test: a fanout ensemble gate's branch can be correctly
  * re-identified as already-errored when ANY of its verifiers errors out,
  * not just the first verifier in the list.
  *
@@ -61,7 +61,7 @@ function makeEnsembleFanoutTask(): WorkflowTask {
     } as unknown as WorkflowTask
 }
 
-describe("H-7: ensemble verifier error finds already-errored branch via any verifier", () => {
+describe("ensemble verifier error finds already-errored branch via any verifier", () => {
     test("first verifier error marks branch A errored", () => {
         const task = makeEnsembleFanoutTask()
         // v1 errors out first.

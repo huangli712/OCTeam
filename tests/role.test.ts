@@ -184,7 +184,7 @@ describe("prependStandingInstruction", () => {
 })
 
 /**
- * M1: cross-check that role.ts's OCTEAM_AGENTS allowlist and agents/index.ts's
+ * Cross-check that role.ts's OCTEAM_AGENTS allowlist and agents/index.ts's
  * OCTEAM_AGENTS registry are consistent. Without this, a new agent added to
  * the registry but not mapped in ROLES would pass the config hook but fail
  * isOCTeamAgent at dispatch — a confusing operational gap.
@@ -192,7 +192,7 @@ describe("prependStandingInstruction", () => {
 import { isOCTeamAgent, OCTEAM_AGENTS as ROLE_AGENTS } from "../src/core/role.js"
 import { OCTEAM_AGENTS as REGISTRY_AGENTS } from "../src/agents/index.js"
 
-describe("M1: OCTEAM_AGENTS consistency (role allowlist vs agent registry)", () => {
+describe("OCTEAM_AGENTS consistency (role allowlist vs agent registry)", () => {
     test("every role-mapped agent exists in the agent registry", () => {
         for (const agentName of ROLE_AGENTS) {
             expect(REGISTRY_AGENTS[agentName]).toBeDefined()

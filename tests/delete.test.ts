@@ -181,7 +181,7 @@ exit 0
         expect(result).toContain("deleted")
         const observations = (await readFile(logPath, "utf8")).trim().split("\n")
         expect(observations.length).toBeGreaterThan(0)
-        // H26: worktree cleanup now runs BEFORE quarantine rename so the
+        // Worktree cleanup now runs BEFORE quarantine rename so the
         // worktree paths still exist when git is invoked. Pre-fix code ran
         // cleanup after quarantine, operating on non-existent paths.
         expect(observations.every(observation => observation === "present")).toBe(true)

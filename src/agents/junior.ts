@@ -4,7 +4,12 @@
  */
 
 import type { OcteamAgentConfig } from "./types.js"
-import { MEMBER_TEAM_TOOLS_PERMISSION } from "./types.js"
+import {
+    AFT_CALLGRAPH_PERMISSION,
+    AFT_DIAGNOSTICS_PERMISSION,
+    AFT_READ_TOOLS_PERMISSION,
+    MEMBER_TEAM_TOOLS_PERMISSION
+} from "./types.js"
 
 /** System prompt for the oct-junior agent (identity, task discipline,
  *  tool boundaries, and team context). */
@@ -29,7 +34,10 @@ You are oct-junior, a focused task executor in the OCTeam multi-agent system.
 - If the task is ambiguous or appears wrong, STOP and report — do not guess
 
 ## Tools & boundaries
-- Use: read, grep, glob, edit, bash (run diagnostics and tests)
+- Use: read, grep, glob, edit, write, bash (run diagnostics and tests);
+  prefer the structured tools when your session has them
+  (aft_edit, aft_write, aft_apply_patch for edits;
+  lsp_diagnostics to verify touched files)
 - Cannot: delegate to other agents, fetch web resources
 
 ## Team context
@@ -53,9 +61,34 @@ export const juniorAgent: OcteamAgentConfig = {
         // allow by default, block escapes ("../.."), re-allow /tmp (relative form
         // varies with worktree depth, hence the leading wildcard).
         edit: { "*": "allow", "../*": "deny", "*tmp/*": "allow" },
+        // Builtin write tool follows the same file-tool rules as edit.
+        write: { "*": "allow", "../*": "deny", "*tmp/*": "allow" },
         // Paths outside the worktree ALSO ask external_directory with an
         // ABSOLUTE path pattern — allow exactly /tmp there.
         external_directory: { "*": "deny", "/tmp/*": "allow" },
+        // Indexed read + diagnostics tiers — forward-compatible allows
+        // (member sessions expose no aft_*/lsp_* tools today; see types.ts).
+        ...AFT_READ_TOOLS_PERMISSION,
+        ...AFT_CALLGRAPH_PERMISSION,
+        ...AFT_DIAGNOSTICS_PERMISSION,
+        // Structured file tools mirror the edit rules above (forward-
+        // compatible only).
+        aft_edit: { "*": "allow", "../*": "deny", "*tmp/*": "allow" },
+        aft_write: { "*": "allow", "../*": "deny", "*tmp/*": "allow" },
+        aft_apply_patch: { "*": "allow", "../*": "deny", "*tmp/*": "allow" },
+        // Structural search is read-only; the whole workspace-wide rewrite
+        // family (ast_replace/refactor/import/move) is deep-only; deletion is
+        // denied for the focused executor.
+        aft_ast_search: "allow",
+        aft_ast_replace: "deny",
+        aft_refactor: "deny",
+        aft_import: "deny",
+        aft_move: "deny",
+        aft_delete: "deny",
+        aft_bash: "allow",
+        aft_safety: "allow",
+        lsp_prepare_rename: "allow",
+        lsp_rename: "allow",
         task: "deny",
         bash: "allow",
         webfetch: "deny",

@@ -1,5 +1,5 @@
 /**
- * C-8: validateWorkflowArgs must reject malformed nested control fields in
+ * validateWorkflowArgs must reject malformed nested control fields in
  * workflow_file steps. Pre-fix gaps:
  *   1. gate.loop with no/non-integer max_iterations, or out-of-range.
  *   2. task/gate max_*_retries with non-integer or >5 (resource exhaustion).
@@ -38,7 +38,7 @@ function buildArgs(steps: unknown[]): ResolvedWorkflowToolArgs {
     }
 }
 
-describe("C-8: gate.loop strict validation", () => {
+describe("gate.loop strict validation", () => {
     test("rejects loop with no max_iterations", async () => {
         const team = await makeTeam()
         const args = buildArgs([
@@ -142,7 +142,7 @@ describe("workflow gate enum validation", () => {
     }
 })
 
-describe("C-8: max_*_retries integer+range validation", () => {
+describe("max_*_retries integer+range validation", () => {
     test("rejects task max_task_retries that is not an integer", async () => {
         const team = await makeTeam()
         const args = buildArgs([
@@ -209,7 +209,7 @@ describe("C-8: max_*_retries integer+range validation", () => {
     })
 })
 
-describe("C-8: fanout required_branches null guard", () => {
+describe("fanout required_branches null guard", () => {
     test("rejects required_branches: null without TypeError", async () => {
         const team = await makeTeam()
         const args = buildArgs([
@@ -227,7 +227,7 @@ describe("C-8: fanout required_branches null guard", () => {
     })
 })
 
-describe("C-8: goto target marker check", () => {
+describe("goto target marker check", () => {
     test("rejects on_pass_goto pointing at a fanout marker", async () => {
         const team = await makeTeam()
         const args = buildArgs([

@@ -66,7 +66,7 @@ afterEach(() => {
 
 afterAll(cleanupTmpRoots)
 
-describe("P7 transform ACK observability", () => {
+describe("transform ACK observability", () => {
     test("counts a dropped mailbox turn when session.error follows transform ACK", async () => {
         const root = tmpRoot("hooks-p7-dropped-turn")
         const member = makeMember(MEMBER_NAME, MEMBER)

@@ -1,5 +1,5 @@
 /**
- * Regression test for H-8: a stale workflow idle (no fresh output captured)
+ * Regression test: a stale workflow idle (no fresh output captured)
  * must NOT advance the task/gate state machine.
  *
  * Bug: src/orchestration/lifecycle/idle.ts dispatches to handleWorkflowIdle
@@ -32,7 +32,7 @@ const STALE_VERDICT =
 const PASS_VERDICT =
     '<verdict>{"result":"PASS","rationale":"ok","diff":""}</verdict>'
 
-describe("H-8: stale workflow idle does not advance task/gate state machine", () => {
+describe("stale workflow idle does not advance task/gate state machine", () => {
     test("gate step: stale idle (no fresh output) does NOT consume the verdict", async () => {
         const calls: DispatchCall[] = []
         const task = makeWorkflowTask({
@@ -77,7 +77,7 @@ describe("H-8: stale workflow idle does not advance task/gate state machine", ()
     })
 })
 
-describe("H-8: handleWorkflowIdle receives capturedNew signal", () => {
+describe("handleWorkflowIdle receives capturedNew signal", () => {
     test("the idle dispatch path forwards capturedNew to the workflow handler", async () => {
         // Structural test: verify that processIdle passes the capturedNew
         // signal through to handleWorkflowIdle. We can't directly assert on

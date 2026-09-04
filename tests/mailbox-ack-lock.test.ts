@@ -1,5 +1,5 @@
 /**
- * Regression tests for concurrency bug C2: ackMessages ran append+unlink
+ * Regression tests for a concurrency bug: ackMessages ran append+unlink
  * OUTSIDE the mailbox lock, racing releaseStaleReservations at the reservation
  * TTL boundary -> a message could land in BOTH processed.jsonl AND inbox.
  *
@@ -44,7 +44,7 @@ async function readJsonl(p: string): Promise<Array<Record<string, unknown>>> {
     }
 }
 
-describe("C2 T1: ackMessages processes reserved messages atomically", () => {
+describe("ackMessages processes reserved messages atomically", () => {
     test("reserved msg -> ack -> in processed.jsonl, reservation gone, inbox empty", async () => {
         const teamDir = tmpRoot("c2-t1")
         const recipient = "alice"
@@ -65,7 +65,7 @@ describe("C2 T1: ackMessages processes reserved messages atomically", () => {
     })
 })
 
-describe("C2 T2: ackMessages with prune does NOT self-deadlock", () => {
+describe("ackMessages with prune does NOT self-deadlock", () => {
     test("processed.jsonl over cap -> ack triggers prune -> returns < 2s (not 30s deadlock)", async () => {
         const teamDir = tmpRoot("c2-t2")
         const recipient = "alice"
@@ -74,7 +74,7 @@ describe("C2 T2: ackMessages with prune does NOT self-deadlock", () => {
         // Pre-fill processed.jsonl beyond PROCESSED_MAX_LINES (1000) so ack's
         // prune step runs. Pre-fix (naive lock-wrap calling the locked
         // pruneProcessedLog), this would hang 30s on the non-reentrant lock.
-        // H14: entries now carry a timestamp so the time-based pruner can age
+        // Entries now carry a timestamp so the time-based pruner can age
         // them out. Use an expired timestamp so they get pruned on ack.
         const expiredTs = Date.now() - RESERVATION_TTL_MS * 5
         const filler = Array.from({ length: 1001 }, (_, i) =>
@@ -98,7 +98,7 @@ describe("C2 T2: ackMessages with prune does NOT self-deadlock", () => {
     })
 })
 
-describe("C2 T3: after ack completes, releaseStaleReservations finds nothing to re-add", () => {
+describe("after ack completes, releaseStaleReservations finds nothing to re-add", () => {
     test("stale reservation -> ack first -> release sees empty reserved dir -> no re-delivery", async () => {
         const teamDir = tmpRoot("c2-t3")
         const recipient = "alice"
@@ -130,7 +130,7 @@ describe("C2 T3: after ack completes, releaseStaleReservations finds nothing to 
     })
 })
 
-describe("C2 T4: concurrent ack for different recipients does not serialize", () => {
+describe("concurrent ack for different recipients does not serialize", () => {
     test("ack alice + ack bob concurrently -> both finish fast (separate locks)", async () => {
         const teamDir = tmpRoot("c2-t4")
         const msgA = makeMessage("a1")
@@ -153,13 +153,13 @@ describe("C2 T4: concurrent ack for different recipients does not serialize", ()
     })
 })
 
-describe("C2 T5: prune during ack keeps most recent entries", () => {
+describe("prune during ack keeps most recent entries", () => {
     test("1000 old + 2 new -> ack -> processed trimmed to 1000, newest kept", async () => {
         const teamDir = tmpRoot("c2-t5")
         const recipient = "alice"
         const pp = processedPath(teamDir, recipient)
 
-        // H14: old entries carry an expired timestamp so the time-based
+        // Old entries carry an expired timestamp so the time-based
         // pruner removes them. New messages (m1, m2) have a current timestamp.
         const expiredTs = Date.now() - RESERVATION_TTL_MS * 5
         const filler = Array.from({ length: 1000 }, (_, i) =>
@@ -177,7 +177,7 @@ describe("C2 T5: prune during ack keeps most recent entries", () => {
         await ackMessages(teamDir, recipient, reserved)
 
         const processed = await readJsonl(pp)
-        // H14: prune is now time-based, not line-based. The 1000 old entries
+        // Prune is now time-based, not line-based. The 1000 old entries
         // (expired timestamp) are pruned; the 2 new entries survive.
         expect(processed.some(m => m.id === "m1")).toBe(true)
         expect(processed.some(m => m.id === "m2")).toBe(true)

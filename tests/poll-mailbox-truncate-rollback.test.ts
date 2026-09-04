@@ -1,5 +1,4 @@
 /**
- * Regression test for the 2026-06-30 audit MINOR finding:
  * `pollMailbox` previously degraded from exactly-once to at-least-once if
  * `truncateFile` failed after the reserved copies were written — messages
  * would exist in BOTH `inbox` and `reserved/`, and `releaseStaleReservations`

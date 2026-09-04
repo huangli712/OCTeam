@@ -16,14 +16,14 @@ describe("parseVerdict structured fields", () => {
         ])
     })
 
-    test("H40: any malformed issue makes the entire issues field unevaluable", () => {
+    test("any malformed issue makes the entire issues field unevaluable", () => {
         const result = parseVerdict('<verdict>{"result":"FAIL","score":"bad","confidence":null,"issues":[{"severity":"unknown","message":"drop"},{"severity":"critical","message":7}]}</verdict>')
 
         expect(result.verdict).toBe("FAIL")
         expect(result.parseFailed).toBeUndefined()
         expect(result.score).toBeUndefined()
         expect(result.confidence).toBeUndefined()
-        // H40: a mix of valid + invalid issues now returns undefined (unevaluable)
+        // A mix of valid + invalid issues now returns undefined (unevaluable)
         // rather than silently dropping the invalid ones. Pre-fix code kept only
         // the valid entry, which was fail-open for quality gates.
         expect(result.issues).toBeUndefined()

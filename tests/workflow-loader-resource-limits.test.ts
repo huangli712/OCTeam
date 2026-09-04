@@ -1,5 +1,5 @@
 /**
- * Regression tests for C-7: workflow loader must enforce resource limits
+ * Regression tests: workflow loader must enforce resource limits
  * to prevent OOM and stack exhaustion from a malicious or buggy workflow_file.
  *
  * Bug: src/orchestration/workflow/loader.ts loadWorkflowFile + validateWorkflowStepArray
@@ -24,7 +24,7 @@ import { cleanupTmpRoots, tmpRoot } from "./helpers.js"
 
 afterAll(cleanupTmpRoots)
 
-describe("C-7.1: loadWorkflowFile rejects oversized files", () => {
+describe("loadWorkflowFile rejects oversized files", () => {
     test("file larger than the byte cap is rejected before reading", async () => {
         const root = tmpRoot("c7-oversize-file")
         const dir = path.join(root, ".octeam", "workflows")
@@ -46,7 +46,7 @@ describe("C-7.1: loadWorkflowFile rejects oversized files", () => {
     })
 })
 
-describe("C-7.2: validateWorkflowSteps rejects excessive step counts", () => {
+describe("validateWorkflowSteps rejects excessive step counts", () => {
     test("linear workflow with too many steps is rejected", () => {
         // Build a workflow with too many task steps. The cap will be a
         // module constant (e.g. 256); we'll exceed it.
@@ -110,7 +110,7 @@ describe("C-7.2: validateWorkflowSteps rejects excessive step counts", () => {
     })
 })
 
-describe("C-7.3: validateWorkflowSteps rejects excessive fanout recursion depth", () => {
+describe("validateWorkflowSteps rejects excessive fanout recursion depth", () => {
     test("deeply nested fanout (depth > cap) is rejected", () => {
         // Build a deeply nested workflow: fanout → branch → fanout → ...
         // Each level nests one deeper. Without a depth cap, this would
@@ -145,7 +145,7 @@ describe("C-7.3: validateWorkflowSteps rejects excessive fanout recursion depth"
     })
 })
 
-describe("C-7.4: validateWorkflowSteps rejects excessive branches per fanout", () => {
+describe("validateWorkflowSteps rejects excessive branches per fanout", () => {
     test("fanout with too many branches is rejected", () => {
         // The matrix/foreach expansion in lower.ts caps at 64, but the raw
         // loader accepts any branch array length — a hostile file can

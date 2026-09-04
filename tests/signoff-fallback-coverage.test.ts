@@ -1,6 +1,5 @@
 /**
- * Coverage-gap regression tests for maybeTriggerSignoff's two fallback paths
- * (audit 2026-06-30 finding #5):
+ * Coverage-gap regression tests for maybeTriggerSignoff's two fallback paths:
  *   - decider mode + decider unavailable (no sessionId OR errored) → fall back
  *   - peer-quorum mode + zero eligible reviewers → fall back
  *

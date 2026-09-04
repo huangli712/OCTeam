@@ -1,5 +1,5 @@
 /**
- * H-2 regression: when dispatchTaskStep's input guard calls finishRun (because
+ * Regression: when dispatchTaskStep's input guard calls finishRun (because
  * a declared input was skipped), the run is terminated. The pre-fix code
  * returned plain false, which the fanout advance path interpreted as
  * "actor unavailable inside a tolerance fanout" → markWorkflowFanoutBranchErrored
@@ -16,7 +16,7 @@ import { advanceWorkflowStep } from "../src/orchestration/workflow/engine.js"
 import type { WorkflowTask, WorkflowStep } from "../src/core/types.js"
 import { makeCtx, makeTeam, makeWorkflowTask, type DispatchCall } from "./helpers.js"
 
-describe("H-2: input-skipped termination in a tolerance fanout", () => {
+describe("input-skipped termination in a tolerance fanout", () => {
     test("advance does not dispatch later branches after input-guard finishRun", async () => {
         // Layout: tolerance fanout with three branches, processed in index order.
         //   0: fanout (maxErrored=2)
@@ -27,7 +27,7 @@ describe("H-2: input-skipped termination in a tolerance fanout", () => {
         //   4: task dave    (branch b3) — independent, ready in same iteration
         //   5: join
         //
-        // H-2 contract: after bob's input guard terminates the run, carol and
+        // Contract: after bob's input guard terminates the run, carol and
         // dave MUST NOT be dispatched. Pre-fix advance would have degraded
         // through handleWorkflowDispatchUnavailable and kept dispatching.
         //
@@ -107,7 +107,7 @@ describe("H-2: input-skipped termination in a tolerance fanout", () => {
         // fires before dispatchToMember.
         const bobDispatch = calls.find(c => c.sessionId === "ses_bob")
         expect(bobDispatch).toBeUndefined()
-        // The H-2 contract: NO step processed AFTER bob's termination may
+        // The contract: NO step processed AFTER bob's termination may
         // dispatch. Carol (index 3) and dave (index 4) come after bob (2).
         // Pre-fix: handleWorkflowDispatchUnavailable returned "degraded" and
         // the loop kept going, dispatching carol and possibly dave.
