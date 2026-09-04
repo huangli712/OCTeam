@@ -20,12 +20,12 @@ export const MEMBER_TEAM_TOOLS_PERMISSION: OcteamAgentPermission = {
 }
 
 /**
- * Indexed read/search tier (host "AFT bridge" tools). Member sessions —
- * plain and worktree alike — expose NO aft_* tools, so these explicit allows
- * are forward-proofing, not live grants: they keep the tools usable the
- * moment the host injects them (same pattern as 
- * MEMBER_TEAM_TOOLS_PERMISSION) instead of relying on the "*" wildcard,
- * which the host SDK may silently ignore. Spread by every preset whose role
+ * Indexed read/search tier (host "AFT bridge" tools). The host injects
+ * these into member sessions and enforces the permission maps — an allow
+ * entry surfaces the tool, a deny entry hides it — so these are live
+ * grants, and naming them explicitly still matters because the host SDK
+ * may silently ignore the "*" wildcard (same pattern as
+ * MEMBER_TEAM_TOOLS_PERMISSION). Spread by every preset whose role
  * includes direct code reading. Locked by tests/agents.test.ts
  * (table-driven: preset x tier).
  */
@@ -64,9 +64,10 @@ export const AFT_DIAGNOSTICS_PERMISSION: OcteamAgentPermission = {
 
 /**
  * Write-family deny for non-executor presets (read-only + analysis agents).
- * Explicit denies are honored for named tools even while the host SDK
- * ignores the "*" wildcard, so this blocks the structured write tools the
- * moment the host injects them — defense in depth beyond "*": "deny".
+ * The host hides denied tools from the member session entirely, so this is
+ * the live enforcement keeping structured write tools out of read-only
+ * roles — defense in depth beyond "*": "deny", and effective even while
+ * the host SDK ignores the "*" wildcard.
  * Executors (oct-junior, oct-deep) must NOT spread this.
  */
 export const AFT_WRITE_TOOLS_DENY: OcteamAgentPermission = {

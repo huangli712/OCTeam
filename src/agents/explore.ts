@@ -54,14 +54,12 @@ export const exploreAgent: OcteamAgentConfig = {
         // Team collaboration tools (shared single source of truth — includes
         // team_done, required by require_done_ack runs).
         ...MEMBER_TEAM_TOOLS_PERMISSION,
-        // Indexed search tier — forward-compatible allows: member sessions
-        // expose no aft_* tools today (see types.ts), so these keep the tools
-        // usable once the host injects them. callgraph joins the core tier
+        // Indexed search tier — live grants; the host injects the tools and
+        // enforces these maps (see types.ts). callgraph joins the core tier
         // for the search specialist.
         ...AFT_READ_TOOLS_PERMISSION,
         ...AFT_CALLGRAPH_PERMISSION,
-        // Structured write-family tools stay denied for read-only roles even
-        // if the host injects them later (the "*" wildcard may be ignored).
+        // Structured write-family tools stay hidden from read-only roles.
         ...AFT_WRITE_TOOLS_DENY,
         edit: "deny",
         task: "deny",

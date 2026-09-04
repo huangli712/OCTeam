@@ -64,7 +64,7 @@ export const metisAgent: OcteamAgentConfig = {
         // Team collaboration tools (shared single source of truth — includes
         // team_done, required by require_done_ack runs).
         ...MEMBER_TEAM_TOOLS_PERMISSION,
-        // Indexed read tier — forward-compatible allows (see types.ts).
+        // Indexed read tier — live grants (see types.ts).
         // Deliberately no callgraph/diagnostics: the analysis tier stays
         // light and delegates heavy investigation to explore/oracle.
         ...AFT_READ_TOOLS_PERMISSION,

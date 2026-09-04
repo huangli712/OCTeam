@@ -55,12 +55,12 @@ export const oracleAgent: OcteamAgentConfig = {
         // Team collaboration tools (shared single source of truth — includes
         // team_done, required by require_done_ack runs).
         ...MEMBER_TEAM_TOOLS_PERMISSION,
-        // Indexed read + diagnostics tiers — forward-compatible allows
-        // (member sessions expose no aft_*/lsp_* tools today; see types.ts).
+        // Indexed read + diagnostics tiers — live grants; the host injects
+        // the tools and enforces these maps (see types.ts).
         ...AFT_READ_TOOLS_PERMISSION,
         ...AFT_CALLGRAPH_PERMISSION,
         ...AFT_DIAGNOSTICS_PERMISSION,
-        // Structured write-family tools stay denied for read-only roles.
+        // Structured write-family tools stay hidden from read-only roles.
         ...AFT_WRITE_TOOLS_DENY,
         edit: "deny",
         task: "deny",

@@ -60,8 +60,8 @@ export const momusAgent: OcteamAgentConfig = {
         // Team collaboration tools (shared single source of truth — includes
         // team_done, required by require_done_ack runs).
         ...MEMBER_TEAM_TOOLS_PERMISSION,
-        // Indexed read + diagnostics tiers — forward-compatible allows
-        // (see types.ts). No callgraph: momus verifies plans, not call paths.
+        // Indexed read + diagnostics tiers — live grants (see types.ts).
+        // No callgraph: momus verifies plans, not call paths.
         ...AFT_READ_TOOLS_PERMISSION,
         ...AFT_DIAGNOSTICS_PERMISSION,
         ...AFT_WRITE_TOOLS_DENY,

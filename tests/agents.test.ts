@@ -132,10 +132,10 @@ describe("member team tools — every preset allows all member-reachable team to
     })
 })
 
-describe("AFT tool tiers — forward-compatible permission entries", () => {
-    // Member sessions (plain and worktree alike) expose NO aft_*/lsp_* tools
-    // today. These entries forward-proof the presets for host-side injection
-    // — same rationale as the member team-tools table above.
+describe("AFT tool tiers — live permission entries", () => {
+    // The host injects aft_*/lsp_* tools into member sessions and enforces
+    // these maps: allows surface a tool, denies hide it — verified against
+    // real member sessions (plain and worktree alike).
     const READ_TIER = ["aft_search", "aft_grep", "aft_glob", "aft_read", "aft_outline", "aft_zoom"] as const
     const DIAGNOSTICS_TIER = ["aft_inspect", "lsp_diagnostics", "lsp_symbols", "lsp_goto_definition", "lsp_find_references", "lsp_status"] as const
     const WRITE_DENY_FAMILY = ["aft_edit", "aft_write", "aft_apply_patch", "aft_ast_replace", "aft_refactor", "aft_import", "aft_move", "aft_delete", "aft_bash", "lsp_rename"] as const

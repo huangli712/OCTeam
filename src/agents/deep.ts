@@ -75,14 +75,13 @@ export const deepAgent: OcteamAgentConfig = {
         // Paths outside the worktree ALSO ask external_directory with an
         // ABSOLUTE path pattern — allow exactly /tmp there.
         external_directory: { "*": "deny", "/tmp/*": "allow" },
-        // Indexed read + diagnostics tiers — forward-compatible allows
-        // (member sessions expose no aft_*/lsp_* tools today; see types.ts).
+        // Indexed read + diagnostics tiers — live grants; the host injects
+        // the tools and enforces these maps (see types.ts).
         ...AFT_READ_TOOLS_PERMISSION,
         ...AFT_CALLGRAPH_PERMISSION,
         ...AFT_DIAGNOSTICS_PERMISSION,
         // Structured file tools mirror the edit rules above; workspace-wide
-        // rewrite tools are deep-only, deletion asks first (forward-
-        // compatible only).
+        // rewrite tools are deep-only, deletion asks first.
         aft_edit: { "*": "allow", "../*": "deny", "*tmp/*": "allow" },
         aft_write: { "*": "allow", "../*": "deny", "*tmp/*": "allow" },
         aft_apply_patch: { "*": "allow", "../*": "deny", "*tmp/*": "allow" },
