@@ -918,7 +918,17 @@ export async function saveTeamState(team: Team): Promise<void> {
         // Synchronize membership in place to preserve the array reference.
         // Update existing members' fields from disk (e.g. concurrent
         // status/session changes by another process), not just add/remove.
-        if (team.members) {
+        //
+        // Guarded by diskChanged for the same reason as the activeTask sync
+        // below: toWrite.members was frozen at merge time, so writing it back
+        // when no other process touched disk reverts in-memory mutations made
+        // during the await (disk write + stat). Concretely: spawn resets
+        // member.initialized = false and saves; the member's idle
+        // acknowledgement sets it back to true inside that window; an
+        // unconditional write-back reverts it, and because that acknowledgement
+        // never repeats, the member stays uninitialized until the role-setup
+        // barrier times out.
+        if (diskChanged && team.members) {
             const mergedMembers = toWrite.members ?? []
             const mergedMap = new Map(mergedMembers.map(m => [m.name, m] as const))
             const mergedNames = new Set(mergedMap.keys())

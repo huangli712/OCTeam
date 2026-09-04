@@ -142,34 +142,11 @@ async function seedLeftover(h: Harness): Promise<void> {
  * post-create continuation finishes) guarantees the reset already happened.
  */
 async function drive(h: Harness, ctx: ReturnType<typeof makeSpawnCtx>): Promise<void> {
-    // TEMPORARY DIAGNOSTIC PROBE — revert after the hang is localized.
-    const t0 = Date.now()
-    const marks: string[] = []
-    const at = () => `${Date.now() - t0}ms`
-    const dump = (label: string) => {
-        const m = h.team.members.find(x => !x.isMaster)
-        console.error(
-            `[PROBE ${label}] +${at()} sessionCreates=${h.sessionCreates}`
-            + ` initialized=${String(m?.initialized)} sessionId=${String(m?.sessionId)}`
-            + ` status=${String(m?.status)} worktreePath=${String(m?.worktreePath)}`
-            + ` | timeline: ${marks.join(" → ") || "(none)"}`,
-        )
-    }
-    const wd1 = setTimeout(() => dump("3s"), 3000)
-    const wd2 = setTimeout(() => dump("20s"), 20000)
-
     const readiness = ensureMembersReady(ctx, h.team)
-    marks.push(`called@${at()}`)
     await waitUntil(() => h.sessionCreates > 0, { timeoutMs: SPAWN_WAIT_MS, pollMs: 10 })
-    marks.push(`sawCreate@${at()}(initialized=${String(h.team.members.find(x => !x.isMaster)?.initialized)})`)
     await new Promise(resolve => setTimeout(resolve, 0))
-    marks.push(`tick@${at()}(initialized=${String(h.team.members.find(x => !x.isMaster)?.initialized)})`)
     for (const m of h.team.members) if (!m.isMaster) m.initialized = true
-    marks.push(`setTrue@${at()}`)
     await readiness
-    marks.push(`readinessResolved@${at()}`)
-    clearTimeout(wd1)
-    clearTimeout(wd2)
 }
 
 describe("spawn worktree adoption (finding: retry-after-teardown branch collision)", () => {
